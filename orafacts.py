@@ -4,9 +4,8 @@
 #
 # Module for Ansible to retrieve Oracle facts from a host.
 #
-# Develop here
 #
-# Written by : sam.kohler@cru.org
+# Written by : Cru Ansible Module development team
 #
 #  To use your cutom module pass it in to the playbook using:
 #  --module-path custom_modules
@@ -14,7 +13,7 @@
 # This module will get Oracle information from an Oracle database server
 #
 # For programming:
-# ansible-playbook clone_database.yml -i cru_inventory --extra-vars="hosts=test_rac source_db_name=fscm9xu dest_db_name=testdb source_host=tlorad01 adupe_ss=true" --tags "orafacts" --step -vvv
+# ansible-playbook clone_database.yml -i cru_inventory --extra-vars="hosts=test_rac source_db_name=fscm9xu dest_db_name=testdb source_host=tlorad01 adupe=ss" --tags "orafacts" --step -vvv
 #
 # The Data collection to include: (to be checked off when implemented)
 #  [X]  1) all hosts on the cluster
@@ -58,18 +57,10 @@ import commands
 import json
 import sys
 import os
+import os.path
 import subprocess
 from subprocess import PIPE,Popen
 import re
-
-# libnames = ['commands', 'json', 'sys', 'os', 'subprocess', 're'] #'cx_Oracle',
-# for libname in libnames:
-#     try:
-#         lib = __import__(libname)
-#     except:
-#         print sys.exc_info()
-#     else:
-#         globals()[libname] = lib
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -91,10 +82,11 @@ EXAMPLES = '''
   - name: Gather Oracle facts
     orafacts:
 
-  # if cloning and source database information is desired
-  - name: Gather oracle facts for cloning
-    orafacts:
-      source_db: fscm9p
+  # Gathers Oracle installation information on target hosts
+    - name: Gather Oracle facts on destination servers
+      orafacts:
+      register: target_host
+      tags: orafacts
 
 '''
 ora_home = ''
@@ -119,7 +111,7 @@ def get_nodes(vstring):
   return tmp
 
 
-def get_ora_homes():
+def get_rac_homes():
    """Return the different Oracle and Grid homes versions installed on the host. Include opatch versions on the host and cluster name"""
    global ora_home
    has_changed = False
@@ -142,6 +134,7 @@ def get_ora_homes():
            tempHomes.update({vkey: vvalue})
       elif "home" in newhome.lower():
          homenum = str(re.search("\d.",newhome).group())
+         ora_home = newhome
          # tempHomes.update({'ORACLE_' + homenum + '_HOME' : newhome})
          # this command returns : Oracle Database 11g     11.2.0.4.0
          dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
@@ -200,7 +193,7 @@ def si_running_homes():
       for vdbproc in vproc.split("\n"):
           vprocid,vdbname = vdbproc.split()
           vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
-          dbs.update({vdbname: {'home': vhome, 'pid': vprocid}})
+          dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'pid': vprocid}})
 
       return(dbs)
 
@@ -249,14 +242,10 @@ def tnsnames():
     if vtns1:
         return(str(vtns1) + "/tnsnames.ora")
     else:
-        return("ERROR - TNSNAMES.ORA NOT LOCATED")
-
-
-# def getstatusoutput(command):
-#     process = Popen(command, stdout=PIPE)
-#     out, _ = process.communicate()
-#
-#     return (process.returncode, out)
+        if os.path.exists(ora_home + "/network/admin/tnsnames.ora"):
+          return(ora_home + "/network/admin/tnsnames.ora")
+        else:
+          return("not located or does not exist")
 
 
 def listener_info():
@@ -265,70 +254,48 @@ def listener_info():
   lsnrfax={}
 
   temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
-  lsnrfax['parameter_file'] = temp
+  if temp:
+    lsnrfax['parameter_file'] = temp
+  else:
+    lsnrfax['parameter_file'] = "not located or does not exist"
 
   temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
-  lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
+  if temp:
+    lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
+  else:
+    lsnrfax['log_file'] = "not located or does not exist"
 
   temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
-  lsnrfax['version'] = temp
-
+  if temp:
+    lsnrfax['version'] = temp
+  else:
+    lsnrfax['version'] = "not determined"
   return(lsnrfax)
 
-#
-# def hugepages():
-#     """Return hugepages information"""
-# This function is screwed up. It returns erronious numbers, but works on the host in a python script!!!
-# import os
-    # fp = os.popen('/u01/oracle/bin/homes',"r")
-    #while 1:
-#     line = p.readline()
-#     if not line: break
-# #     print line
-# HugePages_Total:   51200
-# HugePages_Free:    30317
-# HugePages_Rsvd:      181
-# HugePages_Surp:        0
-# Hugepagesize:       2048 kB
-    # temphp = {}
-    # with open("/proc/meminfo") as fp:
-    #       for line in enumerate(fp):
-    #           if "HugePages_Total" in line:
-    #               hptotal = re.findall('\d+', line[1])
-    #           elif "HugePages_Free" in line:
-    #               hpfree = re.findall('\d+', line[1])
-    #           elif "AnonHugePages" in line:
-    #               anontotal = re.findall('\d+', line[1])
-    # hps = str(commands.getstatusoutput("grep HugePages /proc/meminfo | grep Anon | awk '{ print $2 }'")[1])
-    # subprocess.call('ls | wc -l', shell=True)    http://sharats.me/the-ever-useful-and-neat-subprocess-module.html
-    # anontotal = subprocess.call('grep HugePages /proc/meminfo | grep Anon | awk { print $2 }', shell=True)
-    # vcommand = "grep HugePages /proc/meminfo | grep HugePages_Free | awk '{ print $2 }'"
-    # error, freetotal = subprocess.call("grep HugePages /proc/meminfo | grep HugePages_Free | awk '{ print $2 }'", shell=True)
-    # freetotal = commands.getoutput("""grep HugePages /proc/meminfo | grep HugePages_Free | awk '{ print $2 }'""")
-    #anontotal = re.findall('\d+',anontotal)
-    # output, errors = anontotal.communicate()
-    # hptotal = str(commands.getoutput("sudo grep HugePages_Total /proc/meminfo | grep Total | awk '{ print $2 }'"))
-    # hpfree = str(commands.getoutput("sudo grep HugePages_Free /proc/meminfo | grep Free | awk '{ print $2 }'"))
-    # anontotal = str(commands.getoutput("sudo grep AnonHugePages /proc/meminfo | grep Free | awk '{ print $2 }'"))
-    # hprsvd = str(commands.getstatusoutput("grep HugePages /proc/meminfo | grep Rsvd | awk '{ print $2 }'"))
-    # hpsurp = str(commands.getstatusoutput("grep HugePages /proc/meminfo | grep Surp | awk '{ print $2 }'"))
-    #  temphp.update({'hugepages':{'anon': anontotal, 'total': hptotal, 'free': hpfree, 'rsvd': hprsvd, 'surp': hpsurp}})
-    # temphp.update({"hugepages": {"free": hpfree, "total": hptotal, "anon": anontotal}})
-    # return(temphp)
 
-# def source_info(srcdb, srchost, srcsystmpwd):
-#   # get source database information when cloning
-#   # http://www.oracle.com/technetwork/articles/dsl/python-091105.html
-#   os.system("export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH")
-#   dns_tns="(DESCRIPTION=(ADDRESS_LIST=(ADDRESS=(PROTOCOL=TCP)(HOST=" + srchost + ")(PORT=1521)))(CONNECT_DATA=(SID=" + srcdb + "1)))"
-#   con = cx_Oracle.connect('system', srcsystmpwd, dns_tns)
-#   cur = con.cursor()
-#   cur.execute('select instance from v$instance')
-#   dbver=cur.fetchall()
-#   cur.close()
-#   con.close()
-#
-#   return(dbver[0])
+def get_si_homes():
+   """Return the different Oracle and Grid homes versions installed on the host. Include opatch versions on the host and cluster name"""
+   global ora_home
+   has_changed = False
+   tempHomes = {}
+   allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
+   for newhome in allhomes.split("\n"):
+      if "home" in newhome.lower():
+         homenum = str(re.search("\d.",newhome).group())
+         ora_home = newhome
+         # tempHomes.update({'ORACLE_' + homenum + '_HOME' : newhome})
+         # this command returns : Oracle Database 11g     11.2.0.4.0
+         #  dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
+        #  dbver = str(get_field(4, commands.getstatusoutput("export ORACLE_HOME=" + newhome + "; " + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'")[1]))
+         dbver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome + "; " + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database' | awk '{ print $4 }'")[1])
+         # also see what version of opatch is running in each home: opatch version | grep Version
+         # opver = get_field(3, commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
+         opver = str(commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
+        #  srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
+         tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2] }})
+        #  tempHomes.update({ homenum + "g": {'HOME': newhome, 'VERSION': dbver}})
+
+   return (tempHomes)
 
 # ================================== Main ======================================
 # def main(argv):
@@ -343,8 +310,6 @@ def main(argv):
       supports_check_mode = True,
   )
 
-  #  # since the default can be overridden with False, check if it was before executing:
-  #  if (module.params['get_facts'].lower() == 'yes') or (module.params['get_facts'].lower() == 'true'):
 
   # check if Oracle install is Single Instance (SI) or Real Application Cluster (RAC)
   vrac = is_rac()
@@ -358,17 +323,11 @@ def main(argv):
   # get the hostname to passback:
   dest_host = 'ora_facts_' + str(commands.getstatusoutput("hostname | sed 's/\..*//'")[1])
 
-  # define dictionary obj to return from this module
-  ansible_facts_dict = {
-     "changed" : False,
-     "msg" : msg,
-     "ansible_facts" : {}
-  }
 
   # Run these functions for RAC:  <<< ============================== RAC
   if is_rac():
     # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
-    all_homes = get_ora_homes()
+    all_homes = get_rac_homes()
     for (vkey, vvalue) in all_homes.items():
       ansible_facts['orafacts'][vkey] = vvalue
       # ansible_facts['orafacts'].update({vkey: vvalue})
@@ -386,13 +345,17 @@ def main(argv):
 
   else: # Run these for Single Instance <<< ========================= SI
 
+    all_homes = get_si_homes()
+    for (vkey, vvalue) in all_homes.items():
+      ansible_facts['orafacts'][vkey] = vvalue
+
     run_homes = rac_running_homes()
     for (vkey, vvalue) in run_homes.items():
       ansible_facts['orafacts'][vkey] = vvalue
       # tmpfacts[vkey] = vvalue
 
 
-  ora_home = ansible_facts['orafacts']['11g']['home']
+  # ora_home = ansible_facts['orafacts']['11g']['home']
 
   # Run these functions on either RAC or SI
 
@@ -403,16 +366,9 @@ def main(argv):
 
   vtmp = listener_info()
   ansible_facts['orafacts']['lsnrctl'] = vtmp
-  # tmpfacts['lsnrctl'] = vtmp
 
-  # ansible_facts['orafacts'] = { dest_host: tmpfacts }
 
-  # module.exit_json( meta=ansible_facts_dict )
-  # This one is working to output info to ansible play:
-  # module.exit_json( ansible_facts )
   module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
-  # This one worked to make the facts usable by Ansible
-  # print json.dumps( ansible_facts_dict )
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
