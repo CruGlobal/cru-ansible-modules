@@ -349,7 +349,7 @@ def main(argv):
     for (vkey, vvalue) in all_homes.items():
       ansible_facts['orafacts'][vkey] = vvalue
 
-    run_homes = rac_running_homes()
+    run_homes = si_running_homes()
     for (vkey, vvalue) in run_homes.items():
       ansible_facts['orafacts'][vkey] = vvalue
       # tmpfacts[vkey] = vvalue
