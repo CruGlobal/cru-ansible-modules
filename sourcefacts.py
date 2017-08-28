@@ -98,13 +98,6 @@ def main ():
       supports_check_mode=True,
   )
 
-  # define dictionary obj to return from this module
-  ansible_facts_dict={
-     "changed": False,
-     "msg": "",
-     "ansible_facts": {}
-  }
-
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
   vdb = module.params.get('source_db_name') + '1'
