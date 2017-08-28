@@ -134,33 +134,33 @@ def get_ora_homes():
          except:
            error, = exception.args
            err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: %s' % (error.message)
-         
+
          # get everything between '[' and ']' from the string returned.
          gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
          tempHomes.update({'grid': {'version': gver, 'home': newhome}})
-         
+
          # cluster name
          try:
            clu_name = (os.popen(newhome + "/bin/olsnodes -c").read()).rstrip()
          except:
            error, = exception.args
            err_msg = err_msg + ' ERROR: get_ora_homes() - cluster name: %s' % (error.message)
-         
+
          tempHomes.update({'cluster_name': clu_name})
-         
+
          # node names in the cluster
          try:
            clu_names = get_nodes((os.popen(newhome + "/bin/olsnodes -n -i").read()).rstrip())
          except:
            error, = exception.args
            err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: %s' % (error.message)
-         
+
          for (vkey, vvalue) in clu_names.items():
            tempHomes.update({vkey: vvalue})
 
       elif "home" in newhome.lower():
          homenum = str(re.search("\d.",newhome).group())
-         
+
          # this command returns : Oracle Database 11g     11.2.0.4.0
          try:
            dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
@@ -175,7 +175,7 @@ def get_ora_homes():
            error, = exception.args
            err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: %s' % (error.message)
 
-         try: 
+         try:
            srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
          except:
            error, = exception.args
@@ -214,7 +214,7 @@ def rac_running_homes():
         elif "grid" in vhome:
             vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
 
-        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'version': vver, 'status': 'running'}}) #this should work with or without the error
+        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'version': vver, 'pid': vprocid, 'status': 'running'}}) #this should work with or without the error
 
     #dbs.update({'whoami': vwhoami}) #running as "oracle"
     return(dbs)
@@ -224,7 +224,7 @@ def si_running_homes():
     """Return running databases and the homes their running from for Single Instance Oracle installation"""
     global ora_home
     dbs = {}
-    
+
     # SI is different from RAC in that it doesn't use sudo for ls -l for finding vhome
     # This is more of an authentication problem we're having right now.
     # This function will get all the running databases and the homes they're
@@ -325,7 +325,7 @@ def is_lsnr_up():
     vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
     error, = exception.args
-    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr : %s' % (error.message)   
+    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr : %s' % (error.message)
 
   # the command returns 1 if no listener, so return 0
   if int(vlsnr) == 0:
@@ -365,7 +365,7 @@ def listener_info():
     else:
       lsnrfax['log_file'] = "No listener.log found."
 
-    # Find lsnrctl version 
+    # Find lsnrctl version
     try:
       temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
     except:
@@ -400,13 +400,6 @@ def main(argv):
 
   if is_ora_installed():
     if is_ora_running():
-      # check if Oracle install is Single Instance (SI) or Real Application Cluster (RAC)
-      if is_rac():
-        msg="RAC Environment"
-      elif not is_rac():
-        msg="Single Instance Environment"
-      else:
-        msg="Error determing RAC or SI"
 
       # get the hostname to passback:
       try:
@@ -417,6 +410,7 @@ def main(argv):
 
       # Run these functions for RAC:  <<< ============================== RAC
       if is_rac():
+        msg="RAC Environment"
 
         # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
         all_homes = get_ora_homes()
@@ -432,7 +426,8 @@ def main(argv):
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
 
       else: # Run these for Single Instance <<< ========================= SI
-        
+        msg="Single Instance Environment"
+
         if is_ora_installed():
           if is_ora_running():
               run_homes = si_running_homes()
@@ -447,10 +442,12 @@ def main(argv):
             msg = msg + ". Oracle is not installed. (No /etc/oratab file detected)"
 
       # Run the following functions on either RAC or SI
+
       # Get tnsnames info
       vtmp = tnsnames()
       ansible_facts['orafacts']['tnsnames'] = vtmp
 
+      # Get local listener info
       vtmp = listener_info()
       ansible_facts['orafacts']['lsnrctl'] = vtmp
 
