@@ -65,7 +65,7 @@ import re
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
-                    'version': '0.1'}
+                    'version': '0.3'}
 
 DOCUMENTATION = '''
 ---
@@ -384,7 +384,6 @@ def listener_info():
 
 
 # ================================== Main ======================================
-# def main(argv):
 def main(argv):
   global ora_home
   global err_msg
@@ -426,22 +425,16 @@ def main(argv):
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
 
       else: # Run these for Single Instance <<< ========================= SI
-        msg="Single Instance Environment"
+        msg="Single Instance (SI) Environment"
 
-        if is_ora_installed():
-          if is_ora_running():
-              run_homes = si_running_homes()
-              if run_homes:
-                  for (vkey, vvalue) in run_homes.items():
-                    ansible_facts['orafacts'][vkey] = vvalue
-              else:
-                  msg = msg + ".\n However, it appears No Oracle database is running."
-          else:
-            msg = msg + ". Oracle appears to be installed, but no databases are running. (No pmon services detected.)"
+        run_homes = si_running_homes()
+        if run_homes:
+          for (vkey, vvalue) in run_homes.items():
+            ansible_facts['orafacts'][vkey] = vvalue
         else:
-            msg = msg + ". Oracle is not installed. (No /etc/oratab file detected)"
+          msg = msg + ".\n However, it appears No Oracle database is running."
 
-      # Run the following functions on either RAC or SI
+      # Run the following functions for both RAC and SI
 
       # Get tnsnames info
       vtmp = tnsnames()
@@ -451,13 +444,15 @@ def main(argv):
       vtmp = listener_info()
       ansible_facts['orafacts']['lsnrctl'] = vtmp
 
+      # Add any error messages caught before passing back
       msg = msg + err_msg
 
       module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
+
     else:
-      msg="\nOracle is not running"
+      msg="\nOracle does not appear to be running. (No pmon services running)"
   else:
-    msg="\nOracle is not installed on this host"
+    msg="\nOracle does not appear to be installed on this host. (No /etc/oratab file found)"
 
   msg = msg + err_msg
 
