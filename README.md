@@ -42,3 +42,13 @@ Get Oracle Database facts from a remote database (ie, a database not in the grou
 
     - debug: msg="{{ src_facts }}"
 ```
+
+You also need to edit your ansible.cfg file and make the following entry:
+```
+local_user=myusername
+```
+note: local_user found by going to a terminal and typing 'whoami'
+this value can also be passed via command line:
+```
+--extra-vars="local_user=myusername
+```
