@@ -51,6 +51,9 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 # [..] various imports
 # from ansible.module_utils.basic import AnsibleModule
+#
+# Last updated August 28, 2017    Sam Kohler
+#
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 import commands
@@ -65,7 +68,7 @@ import re
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
-                    'version': '0.1'}
+                    'version': '0.3'}
 
 DOCUMENTATION = '''
 ---
@@ -90,14 +93,18 @@ EXAMPLES = '''
 
 '''
 ora_home = ''
+err_msg=''
+v_rec_count=0
 
 def get_field(fieldnum, vstring):
+    """Simple fuction to return a field from a string of items"""
     x = 1
     for i in vstring.split():
       if fieldnum == x:
         return i
       else:
         x += 1
+
 
 def get_nodes(vstring):
   """Return the number of nodes in a RAC cluster and their names"""
@@ -111,197 +118,271 @@ def get_nodes(vstring):
   return tmp
 
 
-def get_rac_homes():
+def get_ora_homes():
    """Return the different Oracle and Grid homes versions installed on the host. Include opatch versions on the host and cluster name"""
    global ora_home
+   global err_msg
+   global v_rec_count
+
    has_changed = False
    tempHomes = {}
-   allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
+   try:
+      allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
+   except:
+      err_msg = err_msg + ' ERROR: get_ora_homes(): (%s)' % (sys.exc_info()[0])
+
    for newhome in allhomes.split("\n"):
       if "grid" in newhome.lower():
-         # tempHomes.update({'GRID': {'HOME': newhome})
          # use the path returned above 'newhome' and execute this command to get grid version:
-         tmpver = str(commands.getstatusoutput(newhome + '/bin/crsctl query crs activeversion'))
+         try:
+           tmpver = str(commands.getstatusoutput(newhome + '/bin/crsctl query crs activeversion'))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: (%s)' % (sys.exc_info()[0])
+
          # get everything between '[' and ']' from the string returned.
          gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
          tempHomes.update({'grid': {'version': gver, 'home': newhome}})
+
          # cluster name
-         clu_name = (os.popen(newhome + "/bin/olsnodes -c").read()).rstrip()
+         try:
+           clu_name = (os.popen(newhome + "/bin/olsnodes -c").read()).rstrip()
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - cluster name: (%s)' % (sys.exc_info()[0])
+
          tempHomes.update({'cluster_name': clu_name})
+
          # node names in the cluster
-         clu_names = get_nodes((os.popen(newhome + "/bin/olsnodes -n -i").read()).rstrip())
+         try:
+           clu_names = get_nodes((os.popen(newhome + "/bin/olsnodes -n -i").read()).rstrip())
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s)' % (sys.exc_info()[0])
+
          for (vkey, vvalue) in clu_names.items():
            tempHomes.update({vkey: vvalue})
+
       elif "home" in newhome.lower():
          homenum = str(re.search("\d.",newhome).group())
-         ora_home = newhome
-         # tempHomes.update({'ORACLE_' + homenum + '_HOME' : newhome})
+
          # this command returns : Oracle Database 11g     11.2.0.4.0
-         dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
+         try:
+           dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
+
          # also see what version of opatch is running in each home: opatch version | grep Version
-         # opver = get_field(3, commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
-         opver = str(commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
-         srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
+         try:
+           opver = str(commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: (%s)' % (sys.exc_info()[0])
+
+         try:
+           srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
+
          tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
-        #  tempHomes.update({ homenum + "g": {'HOME': newhome, 'VERSION': dbver}})
 
    return (tempHomes)
 
 
 def rac_running_homes():
-    """Return running databases, their versions and the homes they are running out of for RAC installation"""
+    """Return running databases for RAC, their versions and the homes they are running out of for RAC installation"""
     # This function will get all the running databases and the homes they're
     # running out of. The pgrep statement was taken from Tanel Poders website. http://blog.tanelpoder.com
+    global err_msg
+    global v_rec_count
+    global ora_home
     dbs = {}
-    # vwhoami = str(commands.getstatusoutput("whoami")[1])  <<== result of this was "oracle"
-    # db_processes=os.system("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")
-    vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
+
+    try:
+      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
+    except:
+      err_msg = err_msg + ' Error: rac_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
+
     for vdbproc in vproc.split("\n"):
         vprocid,vdbname = vdbproc.split()
-        # This commented out command provided by oracle uses grep against /etc/oratab...doesn't help during upgrade
-        # vhome = str(commands.getstatusoutput("/app/oracle/12.1.0.2/dbhome_1/bin/dbhome " + vdbname))
-        vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
+        # get Oracle home the db process is running out of
+        try:
+          vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
+        except:
+          err_msg = err_msg + ' Error: rac_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
+
         # Get the running database version from the Oracle home path:
         if "oracle" in vhome:
             vver = vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
         elif "grid" in vhome:
             vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
-            #vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
-        # This SHOULD work, but because we have a problem with LDAP the above command
-        # gives this : "home": "sudo: ldap_sasl_bind_s(): Invalid credentials\\n /app/oracle/12.1.0.2/dbhome_1/"
-        # so we need to edit out the error:
-        # dbs.update({vdbname: {'home': vhome[5:-2], 'pid': vprocid}})
-        # index 5 gets rid of (0, ' out of (0, '/app/12.1.0.2/grid/network/admin')
-        # con = cx_Oracle.connect('system/'+ {{ database_passwords[db_name][item] }} + '@' + vdbname + '.ccci.org')
-        # print con.version
-        # con.close()
-        # dbs.update({vdbname: {'home': vhome[ 5 + vhome.find("/") - 5 : -2], 'version': vver, 'status': 'running'}}) #this should work with or without the error
-        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'version': vver, 'status': 'running'}}) #this should work with or without the error
+
+        ora_home = vhome[ vhome.find("/") : -3 ]
+        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'version': vver, 'pid': vprocid, 'status': 'running'}}) #this should work with or without the error
+
+
+
     #dbs.update({'whoami': vwhoami}) #running as "oracle"
     return(dbs)
 
 
 def si_running_homes():
-    #"""Return running databases and the homes their running from for Single Instance Oracle installation"""
-      # SI is different from RAC in that it doesn't use sudo for ls -l for finding vhome
-      # This is more of an authentication problem we're having right now.
-      # This function will get all the running databases and the homes they're
-      # running out of. This was taken from Tanel Poders website. http://blog.tanelpoder.com
-      dbs = {}
-      # db_processes=os.system("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")
-      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
-      for vdbproc in vproc.split("\n"):
-          vprocid,vdbname = vdbproc.split()
-          vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
-          dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'pid': vprocid}})
+    """Return running databases and the homes their running from for Single Instance Oracle installation"""
+    global ora_home
+    global v_rec_count
+    dbs = {}
 
-      return(dbs)
+    # SI is different from RAC in that it doesn't use sudo for ls -l for finding vhome
+    # This is more of an authentication problem we're having right now.
+    # This function will get all the running databases and the homes they're
+    # running out of. This was taken from Tanel Poders website. http://blog.tanelpoder.com
+
+    # db_processes=os.system("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")
+    try:
+      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
+    except:
+      err_msg = err_msg + ' Error: si_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
+
+    for vdbproc in vproc.split("\n"):
+      vprocid,vdbname = vdbproc.split()
+
+      try:
+        vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq")[1])
+      except:
+        err_msg = err_msg + ' Error: si_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
+
+      # Get the running database version from the Oracle home path:
+      if "oracle" in vhome:
+        vver = vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
+      elif "grid" in vhome:
+        vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
+
+    dbs.update({vdbname: {'home': vhome[1: -1], 'pid': vprocid, 'version': vver, 'status': 'running'}})
+    ora_home = vhome[1: -1]
+
+    return(dbs)
 
 
 def is_rac():
+    """Determine if a host is running RAC or Single Instance"""
+    global err_msg
+
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-    vproc = str(commands.getstatusoutput("ps -ef | grep lck | grep -v grep | wc -l")[1])
+    try:
+      vproc = str(commands.getstatusoutput("ps -ef | grep lck | grep -v grep | wc -l")[1])
+    except:
+      err_msg = err_msg + ' Error: is_rac() - vproc: (%s)' % (sys.exc_info()[0])
 
     if int(vproc) > 0:
       # if > 0 "lck" processes running, it's RAC
-      return (1)
-    else: # else it's Single Instance
-      return (0)
+      return True
+    else:
+      return False
+
+
+def is_ora_running():
+    """Determine if Oracle database processses are running on a host"""
+    try:
+      vproc = str(commands.getstatusoutput("ps -ef | grep pmon | grep -v grep | wc -l")[1])
+    except:
+      err_msg = err_msg + ' Error: is_ora_running() - proc: (%s)' % (sys.exc_info()[0])
+
+    if int(vproc) == 0:
+      # No databases are running
+      return False
+    elif int(vproc) > 0:
+      return True
+
+
+def is_ora_installed():
+    """Quick determination if Oracle db software has been installed"""
+    # Check if there's an /etc/oratab
+    if os.path.isfile("/etc/oratab"):
+      return True
+    else:
+      # no /etc/oratab installed, so Oracle may not be installed.
+      return False
 
 
 def tnsnames():
-    # global ora_home
-    # Find which TNS_NAMES file is being used:
-    # first check for TNS_ADMIN environmental variable
+    """Locate tnsnames.ora file being used by this host"""
+    try:
+      vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
+    except:
+      err_msg = err_msg + ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
 
-    # This command returns something like this : /app/12.1.0.2/grid/network/admin/tnsnames.ora
-    # v_cmd = "/usr/bin/strace " + ora_home + "/bin/sqlplus -L scott/tiger@orcl 2>&1| /bin/grep -i 'open.*tnsnames.ora' | /bin/awk -F'\"' '{ print $2 }' | /usr/bin/head -n 1"
-    # v_cmd = "/usr/bin/strace " + ora_home + "/bin/sqlplus -L scott/tiger@orcl 2>&1| /bin/grep -i 'open.*tnsnames.ora'"
-    # vtns1 = str(commands.getstatusoutput(v_cmd))
-    # vtns1 = str(commands.getstatusoutput("strace sqlplus -L scott\/tiger\@orcl 2>&1| grep -i 'open.*tnsnames.ora'"))
-    # p = subprocess.Popen(v_cmd, stdout=subprocess.PIPE, shell=True )
-    # (output, err) = p.communicate()
-    # p_status = p.wait()
-    # vtns1 = str(output)
-    # vtns1 = str(commands.getstatusoutput("strace sqlplus -L scott/tiger@orcl 2>&1| grep -i 'open.*tnsnames.ora' | awk -F'\"' '{ print $2 }' | head -n 1")[1])
-    # re.findall(r'"([^"]*)"', inputString)
-
-    # subprocess.check_output(['strace', ora_home + '/bin/sqlplus', '-L', 'scott/tiger@orcl', '2>&1', '|', 'grep', '-i', 'open.*tnsnames.ora', 'awk', '-F\'\"', '{ print $2 }', '|', 'head', '-n', '1'])
-
-    vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
-    # scriptpath="/u01/oracle/bin/"
-    # vtns1 = str(os.system(scriptpath+"tnsloc.sh"))
-    # vtns1 = subprocess.check_output(['/u01/oracle/bin/tnsloc.sh'], shell=True)
-    # vtns1 = commands.getstatusoutput('python --version', shell=True)
-    # proc =  Popen(['sudo su - oracle | /u01/oracle/bin/tnsloc.sh'], stdout=PIPE)
-    # vtns1 = proc.communicate()[0].split()
-    # d = dict(os.environ)
-    # d['LD_LIBRARY_PATH'] = '$ORACLE_HOME/lib:$LD_LIBRARY_PATH'
-    # subprocess.Popen(['/u01/oracle/bin/tnsloc.sh'])
-    # return(vtns1)
     if vtns1:
         return(str(vtns1) + "/tnsnames.ora")
     else:
-        if os.path.exists(ora_home + "/network/admin/tnsnames.ora"):
-          return(ora_home + "/network/admin/tnsnames.ora")
-        else:
-          return("not located or does not exist")
+        return("Could not locate tnsnames.ora file.")
+
+
+def is_lsnr_up():
+  """Determine if the local listener is up"""
+  global err_msg
+  global ora_home
+
+  # determine if the listener is up and running - returns 1 if no listener running 0 if the listener is running
+  try:
+    vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
+  except:
+    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
+
+  # the command returns 1 if no listener, so return 0
+  if int(vlsnr) == 0:
+    return True
+  else:
+    return False
 
 
 def listener_info():
   """Return listner facts"""
   global ora_home
+  global err_msg
   lsnrfax={}
 
-  temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
-  if temp:
-    lsnrfax['parameter_file'] = temp
+  if is_lsnr_up():
+    # Find lsnrctl parameter file
+    try:
+      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
+
+    if temp:
+      lsnrfax['parameter_file'] = temp
+    else:
+      lsnrfax['parameter_file'] = "No parameter file found."
+
+    # Find lsnrctl alert log
+    try:
+      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
+
+    if temp:
+      lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
+    else:
+      lsnrfax['log_file'] = "No listener.log found."
+
+    # Find lsnrctl version
+    try:
+      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
+
+    if temp:
+      lsnrfax['version'] = temp
+    else:
+      lsnrfax['version'] = "Listener version could not be determined."
+
+    return(lsnrfax)
+
   else:
-    lsnrfax['parameter_file'] = "not located or does not exist"
+    return({"lsnrctl": "No listener running"})
 
-  temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
-  if temp:
-    lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
-  else:
-    lsnrfax['log_file'] = "not located or does not exist"
-
-  temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
-  if temp:
-    lsnrfax['version'] = temp
-  else:
-    lsnrfax['version'] = "not determined"
-  return(lsnrfax)
-
-
-def get_si_homes():
-   """Return the different Oracle and Grid homes versions installed on the host. Include opatch versions on the host and cluster name"""
-   global ora_home
-   has_changed = False
-   tempHomes = {}
-   allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
-   for newhome in allhomes.split("\n"):
-      if "home" in newhome.lower():
-         homenum = str(re.search("\d.",newhome).group())
-         ora_home = newhome
-         # tempHomes.update({'ORACLE_' + homenum + '_HOME' : newhome})
-         # this command returns : Oracle Database 11g     11.2.0.4.0
-         #  dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
-        #  dbver = str(get_field(4, commands.getstatusoutput("export ORACLE_HOME=" + newhome + "; " + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'")[1]))
-         dbver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome + "; " + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database' | awk '{ print $4 }'")[1])
-         # also see what version of opatch is running in each home: opatch version | grep Version
-         # opver = get_field(3, commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
-         opver = str(commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
-        #  srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
-         tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2] }})
-        #  tempHomes.update({ homenum + "g": {'HOME': newhome, 'VERSION': dbver}})
-
-   return (tempHomes)
 
 # ================================== Main ======================================
-# def main(argv):
 def main(argv):
   global ora_home
-  tmpfacts = {}
+  global err_msg
+  global v_rec_count
+
   ansible_facts={ 'orafacts': {} }
 
   module = AnsibleModule(
@@ -310,65 +391,71 @@ def main(argv):
       supports_check_mode = True,
   )
 
+  if is_ora_installed():
+    if is_ora_running():
 
-  # check if Oracle install is Single Instance (SI) or Real Application Cluster (RAC)
-  vrac = is_rac()
-  if vrac == 1:
-    msg="RAC Environment"
-  elif vrac == 0:
-    msg="Single Instance Environment"
+      # get the hostname to passback:
+      try:
+        dest_host = 'ora_facts_' + str(commands.getstatusoutput("hostname | sed 's/\..*//'")[1])
+      except:
+        err_msg = err_msg + ' Error: retrieving hostname: (%s)' % (sys.exc_info()[0])
+
+      # Run these functions for RAC:  <<< ============================== RAC
+      if is_rac():
+        msg="RAC Environment"
+
+        # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
+        all_homes = get_ora_homes()
+        for (vkey, vvalue) in all_homes.items():
+          ansible_facts['orafacts'][vkey] = vvalue
+
+        # this returns running databases, their PID and the homes they're running out of
+        run_homes = rac_running_homes()
+        for (vkey, vvalue) in run_homes.items():
+          ansible_facts['orafacts'][vkey] = vvalue
+
+        # vhuge = hugepages()
+        # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
+
+      else: # Run these for Single Instance <<< ========================= SI
+        msg="Single Instance (SI) Environment"
+
+        # get single instance running databases and their homes
+        run_homes = si_running_homes()
+        if run_homes:
+          for (vkey, vvalue) in run_homes.items():
+            ansible_facts['orafacts'][vkey] = vvalue
+        else:
+          msg = msg + ".\n It appears No Oracle database is running."
+
+
+      # Run the following functions for both RAC and SI
+      # Get tnsnames info
+      vtmp = tnsnames()
+      ansible_facts['orafacts']['tnsnames'] = vtmp
+
+      # Get local listener info
+      vtmp = listener_info()
+      ansible_facts['orafacts']['lsnrctl'] = vtmp
+
+      # Add any error messages caught before passing back
+      if err_msg:
+        msg = msg + err_msg
+
+      module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
+
+      sys.exit(0)
+
+    else:
+      msg="\nOracle does not appear to be running. (No pmon services running)"
   else:
-    msg="Error determing RAC or SI"
+    msg="\nOracle does not appear to be installed on this host. (No /etc/oratab file found)"
 
-  # get the hostname to passback:
-  dest_host = 'ora_facts_' + str(commands.getstatusoutput("hostname | sed 's/\..*//'")[1])
+  msg = msg + err_msg
 
+  module.fail_json( msg=msg )
 
-  # Run these functions for RAC:  <<< ============================== RAC
-  if is_rac():
-    # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
-    all_homes = get_rac_homes()
-    for (vkey, vvalue) in all_homes.items():
-      ansible_facts['orafacts'][vkey] = vvalue
-      # ansible_facts['orafacts'].update({vkey: vvalue})
-      # tmpfacts[vkey] = vvalue
-
-
-    # this returns running databases, their PID and the homes they're running out of
-    run_homes = rac_running_homes()
-    for (vkey, vvalue) in run_homes.items():
-      ansible_facts['orafacts'][vkey] = vvalue
-      # tmpfacts[vkey] = vvalue
-
-    # vhuge = hugepages()
-    # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
-
-  else: # Run these for Single Instance <<< ========================= SI
-
-    all_homes = get_si_homes()
-    for (vkey, vvalue) in all_homes.items():
-      ansible_facts['orafacts'][vkey] = vvalue
-
-    run_homes = si_running_homes()
-    for (vkey, vvalue) in run_homes.items():
-      ansible_facts['orafacts'][vkey] = vvalue
-      # tmpfacts[vkey] = vvalue
-
-
-  # ora_home = ansible_facts['orafacts']['11g']['home']
-
-  # Run these functions on either RAC or SI
-
-  # Get tnsnames info
-  vtmp = tnsnames()
-  ansible_facts['orafacts']['tnsnames'] = vtmp
-  # tmpfacts['tnsnames'] = vtmp
-
-  vtmp = listener_info()
-  ansible_facts['orafacts']['lsnrctl'] = vtmp
-
-
-  module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
+  sys.exit(1)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
