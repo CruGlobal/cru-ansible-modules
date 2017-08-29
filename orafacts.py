@@ -439,7 +439,8 @@ def main(argv):
       ansible_facts['orafacts']['lsnrctl'] = vtmp
 
       # Add any error messages caught before passing back
-      msg = msg + err_msg + " ora_home: " + ora_home + "<<"
+      if err_msg:
+        msg = msg + err_msg
 
       module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
 
