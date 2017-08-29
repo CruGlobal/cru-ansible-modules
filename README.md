@@ -50,5 +50,5 @@ local_user=myusername
 note: local_user found by going to a terminal and typing 'whoami'
 this value can also be passed via command line:
 ```
---extra-vars="local_user=myusername
+--extra-vars="local_user=myusername"
 ```
