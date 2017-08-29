@@ -128,16 +128,16 @@ def get_ora_homes():
    tempHomes = {}
    try:
       allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
-   except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' ERROR: get_ora_homes(): (%s) : %s' % (errno, strerror)
+   except:
+      err_msg = err_msg + ' ERROR: get_ora_homes(): (%s)' % (sys.exc_info()[0])
 
    for newhome in allhomes.split("\n"):
       if "grid" in newhome.lower():
          # use the path returned above 'newhome' and execute this command to get grid version:
          try:
            tmpver = str(commands.getstatusoutput(newhome + '/bin/crsctl query crs activeversion'))
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: (%s)' % (sys.exc_info()[0])
 
          # get everything between '[' and ']' from the string returned.
          gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
@@ -146,16 +146,16 @@ def get_ora_homes():
          # cluster name
          try:
            clu_name = (os.popen(newhome + "/bin/olsnodes -c").read()).rstrip()
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - cluster name: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - cluster name: (%s)' % (sys.exc_info()[0])
 
          tempHomes.update({'cluster_name': clu_name})
 
          # node names in the cluster
          try:
            clu_names = get_nodes((os.popen(newhome + "/bin/olsnodes -n -i").read()).rstrip())
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s)' % (sys.exc_info()[0])
 
          for (vkey, vvalue) in clu_names.items():
            tempHomes.update({vkey: vvalue})
@@ -166,19 +166,19 @@ def get_ora_homes():
          # this command returns : Oracle Database 11g     11.2.0.4.0
          try:
            dbver = get_field(4, os.popen(newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
 
          # also see what version of opatch is running in each home: opatch version | grep Version
          try:
            opver = str(commands.getstatusoutput(newhome + "/OPatch/opatch version | grep Version"))
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: (%s)' % (sys.exc_info()[0])
 
          try:
            srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
-         except (RuntimeError, TypeError, NameError), (errno, strerror):
-           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s) : %s' % (errno, strerror)
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
 
          tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
 
@@ -196,16 +196,16 @@ def rac_running_homes():
 
     try:
       vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: rac_running_homes() - vproc : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: rac_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
 
     for vdbproc in vproc.split("\n"):
         vprocid,vdbname = vdbproc.split()
         # get Oracle home the db process is running out of
         try:
           vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
-        except (RuntimeError, TypeError, NameError), (errno, strerror):
-          err_msg = err_msg + ' Error: rac_running_homes() - vhome : (%s) : %s' % (errno, strerror)
+        except:
+          err_msg = err_msg + ' Error: rac_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
 
         # Get the running database version from the Oracle home path:
         if "oracle" in vhome:
@@ -236,16 +236,16 @@ def si_running_homes():
     # db_processes=os.system("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")
     try:
       vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: si_running_homes() - vproc : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: si_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
 
     for vdbproc in vproc.split("\n"):
       vprocid,vdbname = vdbproc.split()
 
       try:
         vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq")[1])
-      except (RuntimeError, TypeError, NameError), (errno, strerror):
-        err_msg = err_msg + ' Error: si_running_homes() - vhome : (%s) : %s' % (errno, strerror)
+      except:
+        err_msg = err_msg + ' Error: si_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
 
       # Get the running database version from the Oracle home path:
       if "oracle" in vhome:
@@ -266,8 +266,8 @@ def is_rac():
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
     try:
       vproc = str(commands.getstatusoutput("ps -ef | grep lck | grep -v grep | wc -l")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: is_rac() - vproc : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: is_rac() - vproc: (%s)' % (sys.exc_info()[0])
 
     if int(vproc) > 0:
       # if > 0 "lck" processes running, it's RAC
@@ -280,8 +280,8 @@ def is_ora_running():
     """Determine if Oracle database processses are running on a host"""
     try:
       vproc = str(commands.getstatusoutput("ps -ef | grep pmon | grep -v grep | wc -l")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: is_ora_running() - proc : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: is_ora_running() - proc: (%s)' % (sys.exc_info()[0])
 
     if int(vproc) == 0:
       # No databases are running
@@ -304,8 +304,8 @@ def tnsnames():
     """Locate tnsnames.ora file being used by this host"""
     try:
       vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: tnsnames() - vtns1 : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
 
     if vtns1:
         return(str(vtns1) + "/tnsnames.ora")
@@ -321,8 +321,8 @@ def is_lsnr_up():
   # determine if the listener is up and running - returns 1 if no listener running 0 if the listener is running
   try:
     vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
-  except (RuntimeError, TypeError, NameError), (errno, strerror):
-    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr : (%s) : %s' % (errno, strerror)
+  except:
+    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
   # the command returns 1 if no listener, so return 0
   if int(vlsnr) == 0:
@@ -341,8 +341,8 @@ def listener_info():
     # Find lsnrctl parameter file
     try:
       temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: listener_info() - find parameter file : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['parameter_file'] = temp
@@ -352,8 +352,8 @@ def listener_info():
     # Find lsnrctl alert log
     try:
       temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: listener_info() - find alert log : (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
@@ -363,8 +363,8 @@ def listener_info():
     # Find lsnrctl version
     try:
       temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
-    except (RuntimeError, TypeError, NameError), (errno, strerror):
-      err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s) : %s' % (errno, strerror)
+    except:
+      err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['version'] = temp
@@ -397,8 +397,8 @@ def main(argv):
       # get the hostname to passback:
       try:
         dest_host = 'ora_facts_' + str(commands.getstatusoutput("hostname | sed 's/\..*//'")[1])
-      except (RuntimeError, TypeError, NameError), (errno, strerror):
-        err_msg = err_msg + ' Error: retrieving hostname (%s) : %s' % (errno, strerror)
+      except:
+        err_msg = err_msg + ' Error: retrieving hostname: (%s)' % (sys.exc_info()[0])
 
       # Run these functions for RAC:  <<< ============================== RAC
       if is_rac():
