@@ -226,6 +226,8 @@ def main ():
         if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
             vtemp = convert_size(float(vtemp),"M")
             ansible_facts[refname][vparams[idx]] = vtemp
+        elif 'db_recovery_file_dest' == vparams[idx]:
+            ansible_facts[refname][vparams[idx]] = vtemp[1:]
         elif 'listener' in vparams[idx]:
             head, sep, tail = vtemp.partition('.')
             ansible_facts[refname][vparams[idx]] = head
