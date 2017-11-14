@@ -51,7 +51,7 @@ EXAMPLES = '''
         systempwd="{{ database_passwords[source_db_name].system }}"
         source_db_name="{{ source_db_name }}"
         source_host="{{ source_host }}"
-      become_user: "{{ local_user }}"
+      become_user: "{{ remote_user }}"
       register: src_facts
 
 '''
@@ -107,7 +107,7 @@ def main ():
     module.fail_json(msg="cx_Oracle module not found")
 
   # check vars passed in are not NULL. All are needed to connect to source db
-  if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None) :
+  if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
 
     try:
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
@@ -126,11 +126,11 @@ def main ():
     # select source db version
     try:
       cur.execute('select version from v$instance')
-      dbver = cur.fetchall()
     except cx_Oracle.DatabaseError, exception:
-      error, - exception.args
+      error, = exception.args
       module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
 
+    dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
     ansible_facts[refname] = {'oracle_version': usable_ver, 'oracle_version_full': retver}
@@ -139,34 +139,35 @@ def main ():
     try:
       cur.execute('select host_name from v$instance')
     except cx_Oracle.DatabaseError, exception:
-      error, - exception.args
+      error, = exception.args
       module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
     ansible_facts[refname]['host_name'] = vtemp
 
-    # Find archivelog mode
+    # Find archivelog mode.
     try:
       cur.execute('select log_mode from v$database')
     except cx_Oracle.DatabaseError, exception:
-      error, - exception.args
+      error, = exception.args
       module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
     if vtemp == 'ARCHIVELOG':
-      vtemp = 'true'
+      vtemp = 'True'
     else:
-      vtemp = 'false'
+      vtemp = 'False'
+
     ansible_facts[refname]['archivelog'] = vtemp
 
     # Get dbid for active db duplication without target, backup only
     try:
       cur.execute('select dbid from v$database')
     except cx_Oracle.DatabaseError, exception:
-      error, - exception.args
-      module.fail_json(msg='Error selecting dbid from v$database, Error: %s' % (error.message), changed=False)
+      error, = exception.args
+      module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -176,7 +177,7 @@ def main ():
     try:
       cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
     except cx_Oracle.DatabaseError, exception:
-      error, - exception.args
+      error, = exception.args
       module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -184,14 +185,40 @@ def main ():
     # diskgroups = [row[0] for row in cur.fetchall()]
     ansible_facts[refname]['diskgroups'] = vtemp #diskgroups
 
+    # Is Block Change Tracking (BCT) enabled or disabled?
+    try:
+      cur.execute("select status from v$block_change_tracking")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['bct_status'] = vtemp
+
+
     meta_msg = ''
 
+    # See if master_notes table exists
+    # try:
+    #   cur.execute("select 1 from all_objects where object_name like 'MASTER_NOTE%'")
+    # except cx_Oracle.DatabaseError, exception:
+    #   error, = exception.args
+    #   module.fail_json(msg='Error selecting master_notes from v$instance, Error: %s' % (error.message), changed=False)
+    #
+    # vtemp = cur.fetchall()
+    # if cur.rowcount == 0:
+    #     ansible_facts[refname]['master_notes'] = "False"
+    # else:
+    #     ansible_facts[refname]['master_notes'] = "True"
+
+    # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
         try:
           v_sel = "select value from v$parameter where name = '" + vparams[idx] + "'"
           cur.execute(v_sel)
         except cx_Oracle.DatabaseError, exception:
-          error, - exception.args
+          error, = exception.args
           module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
         vtemp = cur.fetchall()
@@ -204,7 +231,6 @@ def main ():
             ansible_facts[refname][vparams[idx]] = head
         else:
             ansible_facts[refname][vparams[idx]] = vtemp
-
 
     msg="Custom module sourcefacts succeeded"
 
@@ -231,13 +257,6 @@ def main ():
       ansible_facts['source_host'] = 'ok'
 
     vchanged="False"
-
-
-  ansible_facts_dict = {
-     "changed" : vchanged,
-     "msg": msg,
-     "ansible_facts": {}
-  }
 
   # print json.dumps( ansible_facts_dict )
   module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
