@@ -91,6 +91,8 @@ EXAMPLES = '''
       register: target_host
       tags: orafacts
 
+   NOTE: these modules can be run with the when: master_node statement.
+         However, their returned values cannot be referenced.
 '''
 ora_home = ''
 err_msg=''

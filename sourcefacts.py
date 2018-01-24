@@ -16,10 +16,6 @@ try:
 except ImportError:
     cx_Oracle_found = False
 
-# Name to call facts dictionary being passed back to Ansible
-# This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-refname = 'sourcefacts'
-
 # Reference links
 # http://www.oracle.com/technetwork/articles/dsl/prez-python-queries-101587.html
 
@@ -46,13 +42,16 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
-    # if cloning and source database information is desired
+    # if cloning a database and source database information is desired
     - local_action: sourcefacts
         systempwd="{{ database_passwords[source_db_name].system }}"
         source_db_name="{{ source_db_name }}"
         source_host="{{ source_host }}"
       become_user: "{{ remote_user }}"
       register: src_facts
+
+   NOTE: these modules can be run with the when: master_node statement.
+         However, their returned values cannot be referenced.
 
 '''
 
@@ -85,6 +84,10 @@ def convert_size(size_bytes, vunit):
 def main ():
   """ Return Oracle database parameters from a database not in the specified group"""
   ansible_facts={}
+
+  # Name to call facts dictionary being passed back to Ansible
+  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+  refname = 'sourcefacts'
 
   os.system("/usr/bin/scl enable python27 bash")
   # os.system("scl enable python27 bash")
