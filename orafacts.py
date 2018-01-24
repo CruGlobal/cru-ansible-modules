@@ -308,7 +308,8 @@ def tnsnames():
       err_msg = err_msg + ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
 
     if vtns1:
-        return(str(vtns1) + "/tnsnames.ora")
+        # return(str(vtns1) + "/tnsnames.ora")
+        return(str(vtns1))
     else:
         return("Could not locate tnsnames.ora file.")
 
@@ -432,7 +433,8 @@ def main(argv):
       # Run the following functions for both RAC and SI
       # Get tnsnames info
       vtmp = tnsnames()
-      ansible_facts['orafacts']['tnsnames'] = vtmp
+      ansible_facts['orafacts']['tnsnames'] = vtmp + "/tnsnames.ora"
+      ansible_facts['orafacts']['tns_admin'] = vtmp
 
       # Get local listener info
       vtmp = listener_info()
