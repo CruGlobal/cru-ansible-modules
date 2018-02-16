@@ -199,6 +199,16 @@ def main ():
     vtemp = vtemp[0][0]
     ansible_facts[refname]['bct_status'] = vtemp
 
+    # BCT path
+    try:
+      cur.execute("select filename from v$block_change_tracking")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['bct_path'] = vtemp
 
     meta_msg = ''
 
