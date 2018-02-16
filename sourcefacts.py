@@ -188,6 +188,39 @@ def main ():
     # diskgroups = [row[0] for row in cur.fetchall()]
     ansible_facts[refname]['diskgroups'] = vtemp #diskgroups
 
+    # Open cursors - used in populating dynamic pfiles
+    try:
+      cur.execute("select value from v$parameter where name = 'open_cursors'")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['open_cursors'] = vtemp
+
+    # pga_aggregate_target - used in populating dynamic pfiles
+    try:
+      cur.execute("select value from v$parameter where name = 'pga_aggregate_target'")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error selecting value pga_aggregate_target, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['pga_aggregate_target'] = vtemp
+
+    # use_large_pages - used in populating dynamic pfiles
+    try:
+      cur.execute("select value from v$parameter where name = 'use_large_pages'")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error selecting value use_large_pages, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['use_large_pages'] = vtemp
+
     # Is Block Change Tracking (BCT) enabled or disabled?
     try:
       cur.execute("select status from v$block_change_tracking")
