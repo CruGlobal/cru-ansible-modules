@@ -83,8 +83,7 @@ EXAMPLES = '''
 
 
 '''
-ora_home = ''
-ora_sid = ''
+
 err_msg=''
 v_rec_count=0
 vrco=''
@@ -95,47 +94,93 @@ vohome=''
 vstage=''
 
 
-def get_spfile_info ():
-    """Return a list of spfile backups including Level (LV), Month, Day, Year and time of day"""
-    global err_msg
-    spfile_bus={}
-    velement=[]
-    vcounter=0
+def spfile_bu():
+  """Return a list of spfile backups including Level (LV), Month, Day, Year and time of day"""
 
-    # create a list of spfile backups and write to a file:
-    try:
-        # v_bu_list=str(commands.getstatusoutput("export ORACLE_SID=" + vsrcdb + "1;" + "export ORACLE_HOME=" + vohome + "; echo 'list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
-        v_bu_list=str(commands.getstatusoutput("export ORACLE_SID=" + vsrcdb + "1; export ORACLE_HOME=" + vohome + "; echo 'set dbid = " + vdbid + "; list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
-    except:
-        err_msg = err_msg + ' Error: get_spfile_info () retrieving spfiile bu summary : (%s)' % (sys.exc_info()[0])
+  global err_msg
+  global vsrcdb
+  global vohome
+  global vdbid
+  global vrco
 
-    try:
-        for line in v_bu_list.split('\n'):
-            if line.split(' ')[0][0].isdigit():
-                vcounter += 1
-                spfile_bus.update({ "bu_no": vcounter,
-                                    "key": line.split(' ')[0],
-                                    "type": line.split(' ')[1],
-                                    "level": line.split(' ')[2],
-                                    "status": line.split(' ')[3],
-                                    "device": line.split(' ')[4],
-                                    "compl_time": line.split(' ')[5] + line.split(' ')[6] + line.split(' ')[7] + line.split(' ')[8],
-                                    "pieces": line.split(' ')[9],
-                                    "copies": line.split(' ')[10],
-                                    "compressed": line.split(' ')[11],
-                                    "tag": line.split(' ')[12] })
-    except:
-        err_msg = err_msg + ' Error: get_spfile_info () reading lines from rman_info2.log file: (%s)' % (sys.exc_info()[0])
+  spfile_list = {}
+  linecount = 0
+  one_dict = {}
+  fieldcounter=0
+  tmp_date_dict={}
+  bu_date={}
+  spex={}
+  tmpdatestr=''
 
-    # vtmp=type(spfile_bus)
-    return(spfile_bus)
+  # create a list of spfile backups and write to a file:
+  try:
+    # v_bu_list=str(commands.getstatusoutput("export ORACLE_SID=" + vsrcdb + "1;" + "export ORACLE_HOME=" + vohome + "; echo 'list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
+    v_bu_list=str(commands.getstatusoutput("export NLS_DATE_FORMAT='Mon DD YYYY HH24:MI:SS'; export ORACLE_SID=" + vsrcdb + "1; export ORACLE_HOME=" + vohome + "; echo 'set dbid = " + vdbid + "; list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
+  except:
+      err_msg = err_msg + ' Error: spfile_bu() retrieving spfiile bu summary : (%s)' % (sys.exc_info()[0])
+
+  try:
+    for oneline in v_bu_list.split('\n'):
+      if oneline:
+        if (not oneline[:1].isalpha()) and (oneline[:1] != '-' and oneline[:1] != '='):
+          linecount += 1
+          fieldcounter = 0
+          one_dict={}
+          for afield in oneline.split(' '):
+            if afield:
+              if fieldcounter == 0:
+                one_dict['key'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 1:
+                one_dict['type'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 2:
+                one_dict['level'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 3:
+                one_dict['status'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 4:
+                one_dict['device'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 5:
+                tmp_date_dict['month'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 6:
+                tmp_date_dict['day'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 7:
+                tmp_date_dict['year'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 8:
+                tmp_date_dict['time'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 9:
+                one_dict['pieces'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 10:
+                one_dict['copies'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 11:
+                one_dict['compressed'] = afield
+                fieldcounter += 1
+              elif fieldcounter == 12:
+                one_dict['tag'] = afield
+                fieldcounter += 1
+          tmpdatestr = str(tmp_date_dict['month']) + " " + str(tmp_date_dict['day']) + " " + str(tmp_date_dict['time']) + " " + str(tmp_date_dict['year'])
+          one_dict.update({'backup_date': tmpdatestr})
+          spfile_list.update({linecount: one_dict})
+  except:
+      err_msg = err_msg + ' Error: spfile_bu() parsing fields : (%s)' % (sys.exc_info()[0])
+
+  return(spfile_list) #(spfile_list)
+
 
 # ==============================================================================
 # ================================== Main ======================================
 # ==============================================================================
 
 def main(argv):
-  global ora_home
   global err_msg
   global v_rec_count
   global vrco
@@ -144,53 +189,57 @@ def main(argv):
   global vbu_type
   global vohome
   global vstage
+  vtemp = {}
+  msg = ""
 
   ansible_facts={ 'rmanfacts': {} }
 
   module = AnsibleModule(
       argument_spec = dict(
-        rcopwd          =dict(required=True),
+        rman_pwd        =dict(required=True),
         dbid            =dict(required=True),
         source_db       =dict(required=True),
         bu_type         =dict(required=True),
-        ohome           =dict(required=True),
-        stage           =dict(required=True)
+        ora_home        =dict(required=True),
+        staging_path    =dict(required=True)
       ),
       supports_check_mode=True,
   )
 
   # Get arguements passed from Ansible playbook
-  vrco = module.params.get('rcopwd')
-  vdbid = module.params.get('dbid')
-  vsrcdb = module.params.get('source_db')
+  vrco     = module.params.get('rman_pwd')
+  vdbid    = module.params.get('dbid')
+  vsrcdb   = module.params.get('source_db')
   vbu_type = module.params.get('bu_type')
-  vohome = module.params.get('ohome')
-  vstage = module.params.get('stage')
+  vohome   = module.params.get('ora_home')
+  vstage   = module.params.get('staging_path')
 
 
-if (not vrco and not vdbid and not vsrcdb and not vbu_type and not vohome and not vstage):
+  # if (not vrco) and (not vdbid) and (not vsrcdb) and (not vbu_type) and (not vohome) and (not vstage):
 
-      vtmp=get_spfile_info()
+  if vbu_type == "spfile":
+    try:
+      vtemp = spfile_bu()
+      # for linecnt, item in vtemp:
+      ansible_facts['rmanfacts']['spfile'] = vtemp
+        #ansible_facts['rmanfacts']['spfile'] = vtemp
+    except:
+      err_msg = err_msg + ' Error: parsing spfile_bu return values: (%s)' % (sys.exc_info()[0])
 
-      ansible_facts['rmanfacts']['spfile'] = vtmp
+  # Add any error messages caught before passing back
+  if err_msg:
+    msg = msg + err_msg
 
-      # Add any error messages caught before passing back
-      if err_msg:
-        msg = msg + err_msg
+  if not err_msg:
+    module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
 
-      module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
+    sys.exit(0)
 
-      sys.exit(0)
-
-else:
-      msg="\nError retrieving RMAN backup information for " + vbu_type
-
-
-      msg = msg + err_msg
-
-      module.fail_json( msg=msg )
-
-      sys.exit(1)
+  else:
+    msg="\nError in rmanfacts module retrieving RMAN backup information for " + vbu_type
+    msg = msg + err_msg
+    module.fail_json( msg=msg )
+    sys.exit(1)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
