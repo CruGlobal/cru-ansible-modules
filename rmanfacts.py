@@ -49,6 +49,8 @@ import os.path
 import subprocess
 from subprocess import PIPE,Popen
 import re
+from datetime import datetime
+from datetime import timedelta
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -167,7 +169,13 @@ def spfile_bu():
               elif fieldcounter == 12:
                 one_dict['tag'] = afield
                 fieldcounter += 1
-          tmpdatestr = str(tmp_date_dict['month']) + " " + str(tmp_date_dict['day']) + " " + str(tmp_date_dict['time']) + " " + str(tmp_date_dict['year'])
+          # To restore the database using spfile, you have to restore to at least 1 second past the backup time
+          # convert the time stamp to datetime obj then add one second to it so it's ready to use in the playbook
+          dt_obj = datetime.strptime(str(tmp_date_dict['time']), '%H:%M:%S')
+          temptime = dt_obj + timedelta(seconds=1)
+          newtime = str(temptime.time())
+          # Put all the date time info together in the proper format to use in the RMAN restore script: DD-MON-YYYY HH24:MI:SS
+          tmpdatestr = tmp_date_dict['day'] + "-" + tmp_date_dict['month'].upper() + "-" + tmp_date_dict['year'] + " " + newtime
           one_dict.update({'backup_date': tmpdatestr})
           spfile_list.update({linecount: one_dict})
   except:
