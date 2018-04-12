@@ -51,7 +51,9 @@ EXAMPLES = '''
       register: src_facts
 
    NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced.
+         However, their returned values cannot be referenced. Therefore
+         when running fact collecting modules, run them on both nodes.
+         Do not use the "when: master_node" clause.
 
 '''
 
