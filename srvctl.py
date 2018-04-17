@@ -78,46 +78,86 @@ EXAMPLES = '''
       become_user: "{{ remote_user }}"
       register: src_facts
 
+    values:
+      cmd: [ start | stop ]
+      obj: [ database | instance ]
+       db: database name
+
 '''
+
+
+# Global variables
+vcmd=""
+vobj=""
+vdb=""
+err_msg=""
+
 def get_orahome(vdb):
-
-
-def db_status(vdb):
-    """Return the status of the database"""
+    """Return database home as recorded in /etc/oratab"""
 
     try:
-      # v_bu_list=str(commands.getstatusoutput("export ORACLE_SID=" + vsrcdb + "1;" + "export ORACLE_HOME=" + vohome + "; echo 'list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
-      v_bu_list=str(commands.getstatusoutput("export ORACLE_HOME=" + vohome + "; eexport ORACLE_SID = " + vdbid + "; list backup of spfile summary;' | " + vohome + "/bin/rman catalog rco/" + vrco + "@cat target /")[1])
+        v_orahome=str(commands.getstatusoutput("cat /etc/oratab | grep -m 1 tstdb | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'")[1])
+    except:
+        err_msg = err_msg + ' get_orahome() retrieving ORACLE_HOME from /etc/oratab : (%s)' % (sys.exc_info()[0])
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    return(v_orahome)
+
+
+def get_db_status(vdb, vhome, vstatus):
+    """Return the status of the database"""
+
+
+    try:
+      # for Python3 look at subprocess.check_output
+      t_status=str(commands.getstatusoutput("export ORACLE_HOME=" + vohome + "; export ORACLE_SID=" + vdb + "1 ; " + vhome + "/bin/srvctl status database -d " + vdb + " -v | grep -o ': .*' | cut -f2- -d: | sed 's/\.$//g'"")[1])
     except:
         err_msg = err_msg + ' Error: spfile_bu() retrieving spfiile bu summary : (%s)' % (sys.exc_info()[0])
+
+
 
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
 def main ():
-  """ Execute srvctl commands """
-  ansible_facts={}
+    """ Execute srvctl commands """
 
-  # Name to call facts dictionary being passed back to Ansible
-  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-  refname = 'srvctl'
+    ansible_facts={}
 
-  os.system("/usr/bin/scl enable python27 bash")
-  # os.system("scl enable python27 bash")
+    # Name to call facts dictionary being passed back to Ansible
+    # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+    refname = 'srvctl'
 
-  module = AnsibleModule(
+    os.system("/usr/bin/scl enable python27 bash")
+    # os.system("scl enable python27 bash")
+
+    module = AnsibleModule(
       argument_spec  = dict(
         cmd        =dict(required=True),
         obj        =dict(required=True),
         db         =dict(required=True)
       ),
       supports_check_mode=True,
-  )
+    )
 
+    # Get arguements passed from Ansible playbook
+    vcmd = module.params.get('cmd')
+    vobj = module.params.get('obj')
+    vdb  = module.params.get('db')
 
+    if vobj is 'database':
+        vopt = '-d'
+    elif vobj is 'instance':
+        vopt = '-i'
+        vdb = vdb + "1"
 
-  try:
-    dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
-  except cx_Oracle.DatabaseError, exception:
-    error, = exception.args
-    module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+    vdbhome = get_orahome(vdb)
+
+    # before executing a command get the db status
+    get_db_status(vdb, vdbhome)
+
+    # Execute the command
+    try:
+      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + vdbhome + "; " + vdbhome + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt + " " + vdb)[1])
+    except:
+      err_msg = err_msg + ' Error: srvctl : cmd %s vobj %s db %s opt %s sysinfo: %s' % (vcmd, vobj, vdb, vopt, sys.exc_info()[0])
