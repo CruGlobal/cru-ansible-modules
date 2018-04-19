@@ -133,9 +133,9 @@ def get_db_status(local_vdb):
 
 def wait_for_status(vdb, vstatus):
     """Compare database status of both nodes to expected status. Loop in 5 second intervals until state obtained"""
-    vduration =  (datetime.now() + timedelta(minutes=myttw)).time()
+    start_time =  datetime.now()
 
-    while not all(item == vstatus for item in get_db_status(vdb)) and datetime.now() < vduration:
+    while not all(item == vstatus for item in get_db_status(vdb)) and (datetime.now() - start_time) > myttw:
         time.sleep(2)
 
 
@@ -191,9 +191,9 @@ def main ():
 
     # Execute the srvctl command
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_SID=" + vdb + nodenum + "; export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt + " " + vdb)[1])
+      temp = str(commands.getstatusoutput("export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt + " " + vdb)[1])
     except:
-      err_msg = err_msg + ' Error: srvctl module : cmd %s vobj %s db %s opt %s sysinfo: %s' % (vcmd, vobj, vdb, vopt, sys.exc_info()[0])
+      err_msg = err_msg + ' Error: executing srvctl cmd : cmd %s vobj %s db %s opt %s sysinfo: %s' % (vcmd, vobj, vdb, vopt, sys.exc_info()[0])
       module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
     # Once the command is executed wait for the proper state
