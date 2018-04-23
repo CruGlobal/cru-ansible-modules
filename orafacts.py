@@ -386,15 +386,6 @@ def rac_dblist():
   dblist = []
   database_info = { 'database_details':{} }
 
-  # try:
-  #   srvctl_config = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config")[1])
-  # except:
-  #   err_msg = err_msg + ' Error: rac_dblist() - srvctl_config: (%s)' % (sys.exc_info()[0])
-  #
-  # if srvctl_config:
-  #   for dbname in srvctl_config.split("\n"):
-  #     dblist.append(dbname)
-
   try:
     srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
   except:
