@@ -116,14 +116,14 @@ def main ():
 
     try:
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
 
     cur = con.cursor()
@@ -131,8 +131,8 @@ def main ():
     # select source db version
     try:
       cur.execute('select version from v$instance')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
 
     dbver =  cur.fetchall()
@@ -143,8 +143,8 @@ def main ():
     # select host_name
     try:
       cur.execute('select host_name from v$instance')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -154,8 +154,8 @@ def main ():
     # Find archivelog mode.
     try:
       cur.execute('select log_mode from v$database')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -170,8 +170,8 @@ def main ():
     # Get dbid for active db duplication without target, backup only
     try:
       cur.execute('select dbid from v$database')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
 
     vtemp = cur.fetchall()
@@ -181,8 +181,8 @@ def main ():
     # Find ASM diskgroups used by the database
     try:
       cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -193,8 +193,8 @@ def main ():
     # Open cursors - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'open_cursors'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -204,8 +204,8 @@ def main ():
     # pga_aggregate_target - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'pga_aggregate_target'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value pga_aggregate_target, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -215,8 +215,8 @@ def main ():
     # use_large_pages - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'use_large_pages'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value use_large_pages, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -226,8 +226,8 @@ def main ():
     # Is Block Change Tracking (BCT) enabled or disabled?
     try:
       cur.execute("select status from v$block_change_tracking")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -237,8 +237,8 @@ def main ():
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -265,8 +265,8 @@ def main ():
         try:
           v_sel = "select value from v$parameter where name = '" + vparams[idx] + "'"
           cur.execute(v_sel)
-        except cx_Oracle.DatabaseError, exception:
-          error, = exception.args
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
           module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
         vtemp = cur.fetchall()
