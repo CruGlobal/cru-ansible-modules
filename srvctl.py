@@ -14,6 +14,7 @@ import re                           # regular expression
 import math
 import time
 from subprocess import (PIPE, Popen)
+from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 # import datetime
 # from datetime import datetime, date, time, timedelta
 
@@ -30,8 +31,10 @@ oracle_home = ""
 vchanged = ""
 node_number = ""
 debugme_msg=""
-# time to wait if status doesn't happen by this time abort
-ttw_default = 5
+default_ttw = 5                                                                     # time to wait (in minutes) if status doesn't happen by this time abort
+valid_inst_stopopts=( "normal", "transactional", "local", "immediate", "abort" )    # local only valid for instance
+valid_startopts=("open", "mount", "nomount", "force", "restrict", "recover", "read only", "read write") # all good for instance, and db
+valid_srvctl_options=("eval", "force", "verbose")                                   # eval only valid srvctl start option for database
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
@@ -53,41 +56,51 @@ EXAMPLES = '''
     # if cloning a database and source database information is desired
     - name: start database
       srvctl:
-        cmd: start
-        obj: instance
         db: tstdb
+        cmd: stop
+        obj: instance
         inst: 2
+        stopt: immediate
+        opt: force
         ttw: 7
       become_user: "{{ remote_user }}"
       register: src_facts
+      when: master_node (2)
 
     values:
+       db: database name
       cmd: [ start | stop ]
       obj: [ database | instance ]
-       db: database name
-     inst: 2
-      ttw: time to wait (min) for status change after executing the command. Default 4.
+     inst: [ valid instance number ]
+    stopt: (stop options): [ normal | immediate | transactional | abort | local (1) ]
+           (start options): [ open | mount | nomount | force | restrict | recover ]
+      opt: [ eval | force | verbose ]
+      ttw: time to wait (in min) for status change after executing the command. Default 5.
+
+      (1) local option only available for instance
+      (2) when master_node else it may try to execute on all nodes
 
 '''
 
-
 def get_gihome():
     """Determine the Grid Home directory"""
-    global my_err_msg
     global grid_home
 
-    # gi_home=str(commands.getstatusoutput("dirname $( ps -eo args | grep ocssd.bin | grep -v grep | awk '{print $1}'")[1])
     try:
-       process = subprocess.Popen(["dirname $( ps -eo args | grep ocssd.bin | grep -v grep | awk '{print $1}')"], stdout=PIPE, stderr=PIPE, shell=True)
-       output, code = process.communicate()
+      process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
     except:
-       my_err_msg = my_err_msg + ' Error: srvctl module get_gihome() error - retrieving GRID_HOME excpetion: %s' % (sys.exc_info()[0])
-       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
-       raise Exception (my_err_msg)
+        err_msg = err_msg + ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
-    grid_home = (output.strip()).replace('/bin', '')
+    grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
-    return(grid_home) #/app/12.1.0.2/grid
+    if not grid_home:
+         err_msg = err_msg + ' Error[4]: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+         raise Exception (err_msg)
+
+    return(grid_home)
 
 
 def get_node_num():
@@ -97,24 +110,24 @@ def get_node_num():
     global node_number
     global debugme_msg
     global msg
-    vcmd = ""
+    tmp_cmd = ""
 
     if not grid_home:
-        get_gihome()
+        grid_home = get_gihome()
 
     try:
-      vcmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
-      process = subprocess.Popen([vcmd], stdout=PIPE, stderr=PIPE, shell=True)
+      tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-       my_err_msg = my_err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+       my_err_msg = my_err_msg + ' Error[3]: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
        raise Exception (my_err_msg)
 
-    node_number = output
+    node_number = output.strip()
 
     if debugme:
-        debugme_msg = debugme_msg + "node_status: %s " % (node_number)
+        debugme_msg = debugme_msg + "get_node_num() this node #: %s " % (node_number)
 
     return(node_number)
 
@@ -123,68 +136,91 @@ def get_orahome(local_vdb):
     """Return database home as recorded in /etc/oratab"""
     global my_err_msg
 
+    tmp_cmd = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
     try:
-        process = subprocess.Popen(["cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"], stdout=PIPE, stderr=PIPE, shell=True)
+        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-       my_err_msg = my_err_msg + ' Error: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       my_err_msg = my_err_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
        raise Exception (my_err_msg)
 
-    return(output.strip())
+    ora_home = output.strip()
+
+    if not ora_home:
+        my_err_msg = my_err_msg + ' Error[2]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+        raise Exception (my_err_msg)
+
+    return(ora_home)
 
 
 def get_db_status(local_vdb):
-    """Return the status of the database on every node"""
+    """
+    Return the status of the database on the node it runs onself.
+    The db name can be passed with, or without the instance number attached
+    """
     global grid_home
-    global debugme_msg
-    global my_err_msg
-
+    global msg
+    global debugme
+    err_msg = ""
     node_status = []
-    # local_inst = int(local_inst)
+    tmp_cmd = ""
 
     if not grid_home:
         grid_home = get_gihome()
 
+    if not grid_home:
+        err_msg = err_msg + ' Error[5]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
+        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
+
+    if "ASM" in local_vdb:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora.asm | grep STATE"
+    elif "MGMTDB" in local_vdb:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora.mgmtdb | grep STATE"
+    elif local_vdb[-1].isdigit() :
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb[:-1] + ".db | grep STATE"
+    else:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb + ".db | grep STATE"
+
+    if debugme:
+        msg = msg + tmp_cmd
+
     try:
-      process = subprocess.Popen([ grid_home + "/bin/crsctl status resource ora." + local_vdb + ".db | grep STATE"], stdout=PIPE, stderr=PIPE, shell=True)
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-       my_err_msg = my_err_msg + ' Error: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
-       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
-       raise Exception (my_err_msg)
+       err_msg = err_msg + ' Error[7]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
 
-    node_status=output.split(",")                  #  ['STATE=OFFLINE', ' OFFLINE'] ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']
+    node_status=output.strip().split(",")                  #  ['STATE=OFFLINE', ' OFFLINE']      ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']      ['ONLINE on tlorad01', 'OFFLINE']\r\n",
 
     i = 0
     for item in node_status:
-      node_status[i]=item.strip()                # removes space in front of " OFFLINE"
       if "STATE=" in item:
-          temp_item=item.split("=")[1]             # splits STATE and OFFLINE and returns OFFLINE
-          if "ONLINE" in temp_item:
-              node_status[i]=temp_item.split(" ")[0].strip().rstrip()
-          else:
-              node_status[i]=temp_item
+          node_status[i]=item.split("=")[1].strip()            # splits STATE and OFFLINE and returns status 'OFFLINE'
+          if "ONLINE" in node_status[i]:
+              node_status[i] = node_status[i].strip().split(" ")[0].strip().rstrip()
       elif "ONLINE" in item:
-          node_status[i]=item.split(" ")[1].rstrip()       # ['', 'ONLINE', 'on', 'tlorad02\n']
+          node_status[i]=item.strip().split(" ")[0].strip().rstrip()
+      elif "OFFLINE" in item:
+          node_status[i]=item.strip().rstrip()
       i += 1
 
-    if debugme:
-        debugme_msg = debugme_msg + "node_status: %s " % (node_status)
 
     return(node_status)
 
 
-
 def wait_for_status(vdb, vstatus, vttw, vinst):
-    """Compare database status of both nodes to expected status. Loop in 5 second intervals until state obtained"""
-    global vcmd
+    """Compare database status of both nodes to expected status (vstatus). Loop in 2 second intervals until state obtained"""
+
     global my_err_msg
     # take current time and add 5 minutes (5*60)
-    # this will be the stop time
-    timeout =  time.time() + (60 * int(ttw))
+    # this will be the stop time if state isn't reached
+    timeout =  time.time() + (60 * int(vttw))
     current_status = []
-    vindex = int(vinst) - 1
     if vinst == 0:
         vobj = "database"
     else:
@@ -193,35 +229,37 @@ def wait_for_status(vdb, vstatus, vttw, vinst):
     # If vinst is 0 we're shutting down / starting up the whole db, not an instance ** different comparison.
     if vinst == 0:
       try:
-        while not all(item == vstatus for item in get_db_status(vdb)) and (time.time() < timeout):
+        while not all(item == vstatus for item in get_db_status(vdb) and (time.time() < timeout)):
           time.sleep(2)
       except:
-          my_err_msg = my_err_msg + ' Error: srvctl module wait_for_status() error - waiting for complete database status to change to %s excpetion: %s' % (vstatus, sys.exc_info()[0])
+          my_err_msg = my_err_msg + ' Error[8]: srvctl module wait_for_status() error - waiting for complete database status to change to %s excpetion: %s' % (vstatus, sys.exc_info()[0])
           my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
           raise Exception (my_err_msg)
     else:
+      vindex = int(vinst) - 1
       try:
         current_status = get_db_status(vdb)
         while (vstatus != current_status[vindex]) and (time.time() < timeout):
           time.sleep(2)
           current_status = get_db_status(vdb)
       except:
-          my_err_msg = my_err_msg + ' Error: srvctl module wait_for_status() error - waiting for instance status to change to %s excpetion: %s' % (vstatus, sys.exc_info()[0])
+          my_err_msg = my_err_msg + ' Error[9]: srvctl module wait_for_status() error - waiting for instance status to change to %s excpetion: %s' % (vstatus, sys.exc_info()[0])
           my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
           raise Exception (my_err_msg)
 
     # Did it stop because it timed out or because it succeeded? Pass timeout info back to user, else continue
     if time.time() > timeout:
-      my_err_msg = my_err_msg + " Error: srvctl module wait_for_status() timed out waiting for %s %s status to change during %s. Time to wait was %s." % (vobj, vdb, vcmd, vttw)
+      my_err_msg = my_err_msg + " Error[10]: srvctl module wait_for_status() timed out waiting for %s %s status to change during %s. Time to wait was %s." % (vobj, vdb, vcmd, vttw)
       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
       raise Exception (my_err_msg)
     else:
       return(0)
 
 
-# ===================================================================================
-#                              MAIN
-# ===================================================================================
+# ===================================================================================================
+#                                          MAIN
+# ===================================================================================================
+
 def main ():
   """ Execute srvctl commands """
 
@@ -231,40 +269,81 @@ def main ():
   global vcmd
   global vinst
   global my_err_msg
+  ansible_facts={}
   msg = ""
   cmd_strng=""
+  vinst=0
 
   module = AnsibleModule(
       argument_spec = dict(
         db        = dict(required=True),
         cmd       = dict(required=True),
         obj       = dict(required=True),
-        ttw       = dict(required=False),
-        inst      = dict(required=False)
+        inst      = dict(required=False),
+        stopt     = dict(required=False),
+        opt       = dict(required=False),
+        ttw       = dict(required=False)
       ),
       supports_check_mode = False
   )
 
   # Get arguements passed from Ansible playbook
-  vdb  = module.params["db"]
-  vcmd = module.params["cmd"]
-  vobj = module.params["obj"]
+  vdb      = module.params["db"]
+  vcmd     = module.params["cmd"]
+  vobj     = module.params["obj"]
 
-  # vobj == "instance":
-  # set to 0 if none passed
-  try:
-    vinst = int(module.params["inst"])
-  except:
-    vinst = 0
+  # if instance specified, but none given error
+  vinst = module.params["inst"]
+  if vobj == "instance" and not vinst:
+      my_err_msg = my_err_msg + "ERROR[11]: '%s' option requires valid instance number." % (vobj, vcmd)
+      my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+      raise Exception (my_err_msg)
+  elif vobj == "database" and vinst is not None:
+      msg = msg + " Passing an instance number when doing database operations is invalid. Instance parameter ignored."
+      vinst=0
 
-  try:
-    ttw = module.params["ttw"]
-  except:
-    ttw=ttw_default
-    msg="Time to wait (ttw) not passed. Using default: 5 min."
+  # Time to Wait parameter
+  tmpttw = module.params["ttw"]
+  if tmpttw is None:
+      ttw=default_ttw
+      msg="Time to wait (ttw) not passed. Using default: 5 min."
+  else:
+      ttw=tmpttw
 
+  # startoption / stopoption
+  vstopt = module.params["stopt"]
+  if not vstopt and vcmd == "stop":
+      # stop database no parameter passed, set default
+      vstopt = "-stopoption immediate"
+  # else if parameter isn't NULL, see if it's valid stop option
+  # valid database stoptoptions are a subset of instance stoptoptions
+  elif vcmd == "stop" and exists_in(vstopt in x for x in valid_inst_stopopts):
+      if vobj == "database" and vstopt == "local":
+          msg = msg + "WARNING[1]: %s option invalid during %s %s. Option ignored." % (vstopt, vobj, vcmd)
+      else:
+          vstopt = "-stopoption " + vstopt
+  # else see if its a valid start option: open, mount, nomount
+  elif vstopt and (vcmd == "start" and exists_in(vstopt in x for x in valid_startopts)):
+      vstopt = "-startoption " + vstopt
+  elif vstopt:
+      msg = msg + "WARNING[2]: '%s' invalid option to use with %s. Option ignored." % (vstopt, vcmd)
+
+  # srvctl options. If it's valid use it
+  # stop "eval", "force", "verbose" for start only "eval"
+  vopt = module.params["opt"]
+  if vopt and exists_in(vopt in x for x in valid_srvctl_options):
+      if vcmd == "stop":
+          vopt = "-" + vopt
+      elif vcmd == "start" and vopt == "eval":
+          vopt = "-" + vopt
+      else:
+          msg = msg + "NOTICE [3]: %s option invalid for %s. Option ignored." % (vopt, vcmd)
+          vopt=""
+
+  # at this point there's been no change
   vchanged=False
-  ansible_facts={}
+
+  # collect information needed to proceed.
   grid_home=get_gihome()
   node_number=get_node_num()
   oracle_home=get_orahome(vdb)
@@ -275,121 +354,155 @@ def main ():
       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
       raise Exception (my_err_msg)
 
-  # set ansible flags
-  if vobj == 'database':
-    vopt = '-d'
-  elif vobj == 'instance':
-    vopt1 = '-d'
-    vopt2 = '-i'
-
-  # load expected status based on command
-  if vcmd == 'stop':
-    exp_status="OFFLINE"
-  elif vcmd == 'start':
-    exp_status="ONLINE"
+  # load expected status based on command and options
+  if vcmd == "stop":
+      exp_status="OFFLINE"
+  elif vcmd == 'start' and (vstopt == "nomount" or vstopt == "mount"):
+      exp_status="INTERMEDIATE"
+  elif vcmd == "start" or (vcmd == start and (vstopt == "read only" or vstopt == "read write")):
+      exp_status="ONLINE"   # nomount = INTERMEDIATE
 
   if debugme:
-    my_err_msg = my_err_msg + " parameters passed: vdb: %s vcmd: %s vobj: %s grid_home: %s node_number: %s oracle_home: %s get_db_status(): %s ttw: %s original status array: %s msg: %s" % (vdb, vcmd, vobj, grid_home, node_number, oracle_home, get_db_status(vdb), ttw, debugme_msg, msg)
-    msg = msg + my_err_msg
+      node_num=int(get_node_num())
+      tmp_status=get_db_status(vdb)
+      curr_stat=str(tmp_status[node_num])
+      my_err_msg = my_err_msg + " parameters passed: vdb: %s vcmd: %s vobj: %s grid_home: %s node_number: %s oracle_home: %s get_db_status(): %s ttw: %s original status array: %s msg: %s" % (vdb, vcmd, vobj, grid_home, node_number, oracle_home, curr_stat, ttw, debugme_msg, msg)
+      msg = msg + my_err_msg
 
   # if all nodes are NOT already in the state we're looking for execute srvctl command
   if not all(item == exp_status for item in get_db_status(vdb)):
 
-    # If command against a database
-    if vobj == "database":
+      # Command against a database
+      if vobj == "database":
 
-      if debugme:
-          my_err_msg = my_err_msg + "[99] export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt + " " + vdb
-          msg = msg + my_err_msg
+          if debugme:
+              my_err_msg = my_err_msg + cmd_strng
+              msg = msg + my_err_msg
 
-      # Execute the srvctl command for stop / start database
-      try:
-        cmd_strng = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt + " " + vdb
-        process = subprocess.Popen([cmd_strng], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-      except:
-          my_err_msg = my_err_msg + ' Error: srvctl module executing srvctl command error - executing srvctl command %s on %s with option %s meta sysinfo: %s' % (vcmd, vobj, vopt, sys.exc_info()[0])
-          my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
-          raise Exception (my_err_msg)
+          # Execute the srvctl command for stop / start database
+          #                                                                                                                         srvctl stop database -d tstdb -stopoption immediate
+          if not vopt:
+              cmd_strng = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " " + vstopt
+          else:
+              cmd_strng = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " " + vstopt + " " + vopt
+          try:
+              process = subprocess.Popen([cmd_strng], stdout=PIPE, stderr=PIPE, shell=True)
+              output, code = process.communicate()
+          except:
+              my_err_msg = my_err_msg + ' Error: srvctl module executing srvctl command error - executing srvctl command %s on %s with option %s meta sysinfo: %s' % (vcmd, vobj, vopt, sys.exc_info()[0])
+              my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+              raise Exception (my_err_msg)
 
-    # If command against an instance
-    elif vobj == "instance":
+      # Command against an instance
+      elif vobj == "instance":
 
-      inst_cmd = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " " + vopt1 + " " + vdb + " " + vopt2 + " " + vdb + str(vinst)
+          # if stopping an instance and the other instance is offline you must use force option
+          if vinst == 1:
+              # index for inst 2 = 1
+              other_inst = 1
+          else:
+              # index for inst 1 = 0
+              other_inst = 0
 
-      # if stopping an instance and the other instance is offline you must use force option
-      if vinst == 1:
-        # index for inst 2 = 1
-        other_inst = 1
-      else:
-        # index for inst 1 = 0
-        other_inst = 0
+          # if the instance is not already started or stopped execute the command
+          current_status = get_db_status(vdb)
 
-      current_status = get_db_status(vdb)
+          ckindx = int(vinst) - 1
+          if current_status[ckindx] != exp_status:
 
-      # if the instance is not already started or stopped execute the command
-      if current_status[vinst-1] != exp_status:
+              if (current_status[other_inst] == "OFFLINE") and (vcmd == "stop"):
+                  if not vopt:
+                      vopt = "-force"
+                  else:
+                      vopt = vopt + " -force"
+              elif (current_status[other_inst] == "ONLINE") and (vcmd == "stop"):
+                  if not vopt:
+                      vopt = "-failover"
+                  else:
+                      vopt = vopt + " -failover"
 
-        if (current_status[other_inst] == "OFFLINE") and (vcmd == "stop"):
-          inst_cmd = inst_cmd + " -force"
-        elif (current_status[other_inst] == "ONLINE") and (vcmd == "stop"):
-          inst_cmd = inst_cmd + " -failover"
+              if debugme:
+                  my_err_msg = my_err_msg + (" >>> current_status contains : %s  current_status[other_inst] : %s <<<" % (current_status, str(current_status[other_inst])))
+                  msg = msg + my_err_msg
 
-        if debugme:
-          my_err_msg = my_err_msg + inst_cmd + (" >>> current_status contains : %s  current_status[other_inst] : %s <<<" % (current_status, current_status[other_inst]))
-          msg = msg + my_err_msg
+              # Execute the srvctl command for stop / start database
+              #                                                                                                                        srvctl stop instance -d tstdb -i tstdb1 -failover
+              if not vopt:
+                  cmd_strng = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " -i " + vdb + str(vinst)
+              else:
+                  cmd_strng = "export ORACLE_SID=" + vdb + node_number + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " -i " + vdb + str(vinst) + " " + vopt
 
-        # Execute the srvctl command for stop / start database
-        try:
-          process = subprocess.Popen([inst_cmd], stdout=PIPE, stderr=PIPE, shell=True)
-          output, code = process.communicate()
-        except: # Exception as e:
-          my_err_msg = my_err_msg + ' Error: srvctl module executing srvctl command error - executing srvctl command %s on %s with option %s %s meta sysinfo: %s' % (vcmd, vobj, vopt1, vopt2, sys.exc_info()[0])
-          my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
-          raise Exception (my_err_msg)
+              try:
+                  process = subprocess.Popen([cmd_strng], stdout=PIPE, stderr=PIPE, shell=True)
+                  output, code = process.communicate()
+              except: # Exception as e:
+                  my_err_msg = my_err_msg + ' Error: srvctl module executing srvctl command error - executing srvctl command %s on %s with option %s %s meta sysinfo: %s' % (vcmd, vobj, vopt1, vopt2, sys.exc_info()[0])
+                  my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+                  raise Exception (my_err_msg)
 
-        if debugme:
-          my_err_msg = my_err_msg + ("output of inst_cmd : %s" % output)
+              if debugme:
+                  my_err_msg = my_err_msg + ("output of inst_cmd : %s cmd_string %s" % (output,cmd_strng))
 
-        #Once the command is executed wait for the proper state
-        whatstatus = wait_for_status(vdb, exp_status, ttw, vinst)
+              #Once the command is executed wait for the proper state
+              whatstatus = wait_for_status(vdb, exp_status, ttw, vinst)
 
-        vchanged = "True"
+              vchanged = "True"
 
-        if vcmd == "start":
-          vcmd = "started"
-        elif vcmd == "stop":
-          vcmd = "stopped"
+              if vcmd == "start":
+                  vcmd = "started"
+              elif vcmd == "stop":
+                  vcmd = "stopped"
 
-        if debugme:
-          my_err_msg = my_err_msg + "after wait : whatstatus : %s and exp_status : %s " % (whatstatus, exp_status)
-          msg = msg + "srvctl module complete. %s db %s. cmd %s meta %s extra: %s actual command : %s" % (vdb, exp_status, vcmd, my_err_msg, debugme_msg, cmd_strng) + my_err_msg
+              if debugme:
+                  my_err_msg = my_err_msg + "after wait : whatstatus : %s and exp_status : %s " % (whatstatus, exp_status)
+                  msg = msg + "srvctl module complete. %s db %s. cmd %s meta %s extra: %s actual command : %s" % (vdb, exp_status, vcmd, my_err_msg, debugme_msg, cmd_strng) + my_err_msg
 
-      else:
-        # The instance was already started or stopped.
-        vchanged = False
-        if vcmd == "start":
-          vcmd = ("already started. No action taken.")
-        elif vcmd == "stop":
-          vcmd = ("already stopped. No action taken.")
+          else: # else instance in state already. No action required
 
-    msg = msg + "srvctl module complete. %s db %s. actual command %s" % (vdb, vcmd, cmd_strng)
+              current_db_status = get_db_status(vdb)
 
+              if debugme:
+                  msg = msg + "[DB1] Request to %s %s database already %s . No action taken. meta: %s " % (vcmd, vdb, str(current_db_status), debugme_msg)
+              else:
+                  msg = msg + "[DB2] Request to %s %s database already %s . No action taken." % (vcmd, vdb, str(current_db_status))
+
+              # The instance was already started or stopped.
+              vchanged = False
+              if vcmd == "start":
+                  vcmd = ("instance already started. No action taken.")
+              elif vcmd == "stop":
+                  vcmd = ("instance already stopped. No action taken.")
+
+              msg = msg + "srvctl module complete. %s db %s. actual command %s" % (vdb, vcmd, cmd_strng)
+
+              vchanged = "False"
+
+              module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
   # Database already stopped, or started)
   else:
 
-    current_db_status = get_db_status(vdb)
+      current_db_status = get_db_status(vdb)
 
-    if debugme:
-      msg = msg + "Request to %s %s database already %s . No action taken. meta: %s " % (vcmd, vdb, current_db_status, debugme_msg)
-    else:
-      msg = msg + "Request to %s %s database already %s . No action taken." % (vcmd, vdb, current_db_status)
+      if debugme:
+          msg = msg + "[DB3] Request to %s %s database already %s . No action taken. meta: %s " % (vcmd, vdb, str(current_db_status), debugme_msg)
+      else:
+          msg = msg + "[DB4] Request to %s %s database already %s . No action taken." % (vcmd, vdb, str(current_db_status))
 
-    vchanged = "False"
+      # The instance was already started or stopped.
+      vchanged = False
+      if vcmd == "start":
+          vcmd = ("already started. No action taken.")
+      elif vcmd == "stop":
+          vcmd = ("already stopped. No action taken.")
+
+      msg = msg + "srvctl module complete. %s db %s. actual command %s" % (vdb, vcmd, cmd_strng)
+
+      vchanged = "False"
 
 
   module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
+
 
 if __name__ == '__main__':
     main()

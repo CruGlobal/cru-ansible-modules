@@ -94,9 +94,16 @@ EXAMPLES = '''
    NOTE: these modules can be run with the when: master_node statement.
          However, their returned values cannot be referenced.
 '''
+debugme = False
 ora_home = ''
 err_msg=''
 v_rec_count=0
+grid_home = ""
+err_msg = ""
+node_number = ""
+msg = ""
+grid_home = ""
+
 
 def get_field(fieldnum, vstring):
     """Simple fuction to return a field from a string of items"""
@@ -106,6 +113,31 @@ def get_field(fieldnum, vstring):
         return i
       else:
         x += 1
+
+
+def get_node_num():
+    """Return current node number to ensure that srvctl is only executed on one node (1)"""
+    global grid_home
+    global err_msg
+    global node_number
+    global msg
+    tmp_cmd = ""
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    try:
+      tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+       err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    node_number = int(output.strip())
+
+    return(node_number)
 
 
 def get_nodes(vstring):
@@ -118,6 +150,65 @@ def get_nodes(vstring):
         break
     x += 1
   return tmp
+
+
+def get_gihome():
+    """Determine the Grid Home directory"""
+    global grid_home
+
+    try:
+      process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+        err_msg = err_msg + ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
+
+    if not grid_home:
+         err_msg = err_msg + ' Error: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+         raise Exception (err_msg)
+
+    return(grid_home)
+
+
+def get_ora_homes2():
+    """Using OUI installer information get Oracle Homes for a server """
+    # taken from https://docs.oracle.com/cd/E11857_01/em.111/e12255/oui2_manage_oracle_homes.htm#CJAEHIGJ
+
+    # Get inventory location from the Central Inventory pointer file
+    # Linux location:
+    try:
+      process = subprocess.Popen(["/bin/cat /etc/oraInst.loc | /bin/grep inventory_loc | /bin/cut -d '=' -f 2"], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+        err_msg = err_msg + ' get_ora_homes2() retrieving inventory_loc : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    inventory_loc = output.strip()
+
+    # get oracle homes from the inventory.xml file in the inventory_loc/ContentsXML directory
+    try:
+      process = subprocess.Popen(["/bin/cat " + inventory_loc + "/ContentsXML/inventory.xml | grep OraD | awk -F '=' '{print $3}' | grep -o '.*' | sed 's/\"//g' | awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+        err_msg = err_msg + ' get_ora_homes2() retrieving vorahomes : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    vorahomes=output.strip().split('\n')
+
+    #clean up the output and store results
+    for item in vorahomes:
+        if "11" in item:
+            home11g = item.strip()
+        elif "12" in item:
+            home12c = item.strip()
+
+    if home12c:
+        return (home12c)
+    else:
+        return (home11g)
 
 
 def get_ora_homes():
@@ -187,21 +278,113 @@ def get_ora_homes():
    return (tempHomes)
 
 
+def get_db_status(local_vdb):
+    """
+    Return the status of the database on the node it runs onself.
+    The db name can be passed with, or without the instance number attached
+    """
+    global grid_home
+    global msg
+    global debugme
+    node_number = ""
+    err_msg = ""
+    node_status = []
+    tmp_cmd = ""
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    if not grid_home:
+        err_msg = err_msg + ' Error [1]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
+        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
+
+    node_number = int(get_node_num())
+
+    if node_number is None:
+        err_msg = err_msg + ' Error [2]: orafacts module get_db_status() error - retrieving node_number: %s' % (node_number)
+        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
+
+    if "ASM" in local_vdb:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora.asm | grep STATE"
+    elif "MGMTDB" in local_vdb:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora.mgmtdb | grep STATE"
+    elif local_vdb[-1].isdigit() :
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb[:-1] + ".db | grep STATE"
+    else:
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb + ".db | grep STATE"
+
+    if debugme:
+        msg = msg + tmp_cmd
+
+    try:
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+       err_msg = err_msg + ' Error [3]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    node_status=output.strip().split(",")                  #  ['STATE=OFFLINE', ' OFFLINE'] ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']
+
+    i = 0
+    for item in node_status:
+      if "STATE=" in item:
+          node_status[i]=item.split("=")[1].strip()            # splits STATE and OFFLINE and returns status 'OFFLINE'
+          if "ONLINE" in node_status[i]:
+              node_status[i] = node_status[i].strip().split(" ")[0].strip().rstrip()
+      elif "ONLINE" in item:
+          node_status[i]=item.strip().split(" ")[0].strip().rstrip()
+      elif "OFFLINE" in item:
+          node_status[i]=item.strip().rstrip()
+      i += 1
+
+    tmpindx = int(node_number) - 1
+
+    if node_number is not None:
+        try:
+            status_this_node = node_status[tmpindx]
+        except:
+            err_msg = err_msg + ' Error[4]: orafacts module get_db_status() tmpindx %s items in the node_status list: %s contents: %s node_number: %s excpetion: %s grid_home: %s local_vdb: %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+            err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+            raise Exception (err_msg)
+    else:
+       err_msg = err_msg + ' Error[5]: orafacts module get_db_status() tmpindx %s items in the node_status list %s contents %s node_number %s excpetion: %s grid_home %s local_vdb %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+       err_msg = err_msg + "exc_info(0) %s exc_info(1) %s err_msg %s exc_info(2) %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    return(status_this_node)
+
+
 def rac_running_homes():
-    """Return running databases for RAC, their versions and the homes they are running out of for RAC installation"""
+    """Return running databases for RAC, their version, oracle_home, pid, status"""
     # This function will get all the running databases and the homes they're
     # running out of. The pgrep statement was taken from Tanel Poders website. http://blog.tanelpoder.com
     global err_msg
+    global msg
     global v_rec_count
     global ora_home
+    global grid_home
+    global node_number
+    tempstat = ""
+    tempdb = ""
+    local_cmd = ""
     dbs = {}
+    srvctl_dbs = []
+    tmp_db_status = ""
 
+    if not node_number:
+        node_number = get_node_num()
+
+    # Get a list of running instances
     try:
       vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
     except:
-      err_msg = err_msg + ' Error: rac_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
+      err_msg = err_msg + ' Error: rac_running_homes() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
 
     for vdbproc in vproc.split("\n"):
+
         vprocid,vdbname = vdbproc.split()
         # get Oracle home the db process is running out of
         try:
@@ -216,11 +399,72 @@ def rac_running_homes():
             vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
 
         ora_home = vhome[ vhome.find("/") : -3 ]
-        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -2], 'version': vver, 'pid': vprocid, 'status': 'running'}}) #this should work with or without the error
+
+        if "MGMTDB" in vdbname:
+            vdbname = "MGMTDB"
+
+        tmp_db_status = get_db_status(vdbname)
+
+        tmpnodenum = int(node_number) - 1
+
+        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'status': tmp_db_status}}) #this should work with or without the error
+
+    local_cmd = ""
+    # get a list of all databases registered with srvctl to find those offline
+    tmporahome = get_ora_homes2()
+    local_cmd = "export ORACLE_HOME=" + tmporahome + "; " + tmporahome + "/bin/srvctl config"
+    try:
+      process = subprocess.Popen([local_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+       err_msg = err_msg + ' Error: srvctl module get_db_status() error - retrieving tmporahome: %s excpetion: %s' % (tmporahome, sys.exc_info()[0])
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    # put all the srvctl config databases in a list (srvctl_dbs)
+    for i in output.strip().split("\n"):
+        if i:
+            srvctl_dbs.append(i)
 
 
+    # if we find a db not in the dictionary of running dbs its registered with srvctl but not running and must be offline
+    local_cmd = ""
+    vversion = ""
+    vdatabase = ""
+    vnextdb = ""
+    tmpdbhome = ""
+    tmpdbstatus = ""
 
-    #dbs.update({'whoami': vwhoami}) #running as "oracle"
+    for vdatabase in srvctl_dbs:
+      vnextdb = vdatabase + str(node_number)
+      if vnextdb not in dbs:
+          msg = msg + "srvctl dbs %s" % (vnextdb)
+          # Get ORACLE_HOME for the database
+          local_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + vnextdb + " | /bin/awk -F ':' '{print $2}'"
+          try:
+              process = subprocess.Popen([local_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+              output, code = process.communicate()
+          except:
+              err_msg = err_msg + ' Error: srvctl module rac_running_homes() error - retrieving oracle_home for db %s error: %s' % (vnextdb, sys.exc_info()[0])
+              err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+              raise Exception (err_msg)
+
+          tmpdbhome = output.strip()
+
+          # get the version for the offline database by extracting it from ORACLE_HOME
+          local_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + vnextdb + " | /bin/awk -F ':' '{print $2}' | /bin/awk -F '/' '{print $4}'"
+          try:
+            process = subprocess.Popen([local_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+          except:
+            err_msg = err_msg + "Error: retrieving oracle version for offline RAC database"
+
+          vversion = output.strip()
+
+          tempdbstatus = get_db_status(vnextdb)
+
+          dbs.update({vnextdb: {'home': tmpdbhome, 'version': vversion, 'status': tempdbstatus}})
+
     return(dbs)
 
 
@@ -380,11 +624,42 @@ def listener_info():
     return({"lsnrctl": "No listener running"})
 
 
+def get_version(local_db):
+    """Return the general Oracle version for a given database"""
+    global grid_home
+    global msg
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    if local_db[:-1].isdigit():
+        tmp_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + local_db[:-1] + " | cut -d/ -f4"
+    else:
+        tmp_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + local_db + " | cut -d/ -f4"
+
+    try:
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+        msg = msg + ' ERROR [5] get_version() retrieving version for database : %s' % (local_db)
+        # module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    oracle_version = output.strip()
+
+    if "12" in oracle_version:
+        return("12")
+    elif "11" in oracle_version:
+        return("11")
+    else:
+        return("unk")
+
+
 # ================================== Main ======================================
 def main(argv):
   global ora_home
   global err_msg
   global v_rec_count
+  global msg
 
   ansible_facts={ 'orafacts': {} }
 
@@ -405,17 +680,24 @@ def main(argv):
 
       # Run these functions for RAC:  <<< ============================== RAC
       if is_rac():
-        msg="RAC Environment"
+        msg = msg + "RAC Environment"
 
         # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
         all_homes = get_ora_homes()
         for (vkey, vvalue) in all_homes.items():
           ansible_facts['orafacts'][vkey] = vvalue
 
+        # define dictionary for all databases registered with srvctl
+        ansible_facts['orafacts']['all_dbs']={}
         # this returns running databases, their PID and the homes they're running out of
         run_homes = rac_running_homes()
+        # Loop through databases and make a list of dbs and status
         for (vkey, vvalue) in run_homes.items():
           ansible_facts['orafacts'][vkey] = vvalue
+          if "+ASM" not in vkey and "pmon" not in vkey and "MGMTDB" not in vkey:
+              tmpdb = vkey[:-1]
+              tmpver = get_version(tmpdb)
+              ansible_facts['orafacts']['all_dbs'].update({tmpdb: {'status': vvalue['status'], 'version': tmpver}})
 
         # vhuge = hugepages()
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
