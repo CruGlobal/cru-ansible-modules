@@ -403,6 +403,15 @@ def get_meta_data(local_db):
                 vkey, vvalue = item.split('=')
                 vkey = vkey.strip()
                 vvalue = vvalue.strip()
+                if "STATE=" in vvalue:
+                    vvalue=vvalue.split("=")[1].strip()
+                    if "ONLINE" in vvalue:
+                        vvalue = vvalue.strip().split(" ")[0].strip().rstrip()
+                elif "ONLINE" in vvalue:
+                    vvalue=vvalue.strip().split(" ")[0].strip().rstrip()
+                elif "OFFLINE" in vvalue:
+                    vvalue=vvalue.strip().rstrip()
+
                 if vkey in tokenstoget:
                     metadata[vkey] = vvalue
     except:
@@ -483,8 +492,9 @@ def rac_running_homes():
         else:
             dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'status': tmp_db_status }} ) #this should work with or without the error
 
-    local_cmd = ""
+
     # get a list of all databases registered with srvctl to find those offline
+    local_cmd = ""
     tmporahome = get_ora_homes2()
     local_cmd = "export ORACLE_HOME=" + tmporahome + "; " + tmporahome + "/bin/srvctl config"
     try:
@@ -507,6 +517,7 @@ def rac_running_homes():
     vnextdb = ""
     tmpdbhome = ""
     tmpdbstatus = ""
+    vmetadata={}
 
     for vdatabase in srvctl_dbs:
       vnextdb = vdatabase + str(node_number)
@@ -536,7 +547,10 @@ def rac_running_homes():
 
           tempdbstatus = get_db_status(vnextdb)
 
-          dbs.update({vnextdb: {'home': tmpdbhome, 'version': vversion, 'status': tempdbstatus}})
+          vmetadata = get_meta_data(vnextdb)
+
+          # dbs.update({vnextdb: {'home': tmpdbhome, 'version': vversion, 'status': tempdbstatus}})
+          dbs.update({vnextdb: {'home': tmpdbhome, 'version': vversion, 'state': meta_data['STATE'], 'target': meta_data['TARGET'], 'state_details': meta_data['STATE_DETAILS'], 'status': tmp_db_status }} ) #this should work with or without the error
 
     return(dbs)
 
