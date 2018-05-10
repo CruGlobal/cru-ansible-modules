@@ -43,23 +43,31 @@ author: "DBA Oracle module Team"
 EXAMPLES = '''
 
     # if cloning a database and source database information is desired
-    - local_action: sourcefacts
-        systempwd="{{ database_passwords[source_db_name].system }}"
-        source_db_name="{{ source_db_name }}"
-        source_host="{{ source_host }}"
+    - local_action:
+        module: sourcefacts
+        systempwd: "{{ database_passwords[source_db_name].system }}"
+        source_db_name: "{{ source_db_name }}"
+        source_host: "{{ source_host }}"
+        ignore: True (1)
       become_user: "{{ remote_user }}"
       register: src_facts
 
+      (1) ignore (connection errors) is optional. If you know the source
+          database may be down set ignore: True. If connection to the
+          source database fails the module will not throw a fatal error
+          and continue.
+
    NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced. Therefore
-         when running fact collecting modules, run them on both nodes.
-         Do not use the "when: master_node" clause.
+         However, their returned values cannot be referenced in
+         roles or tasks later. Therefore, when running fact collecting modules,
+         run them on both nodes. Do not use the "when: master_node" clause.
 
 '''
 
 # Parameters we're just retriveing from v$parameter table
 vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size"]
-
+msg = ""
+debugme = False
 
 def convert_size(size_bytes, vunit):
 
@@ -85,6 +93,7 @@ def convert_size(size_bytes, vunit):
 # ==============================================================================
 def main ():
   """ Return Oracle database parameters from a database not in the specified group"""
+  global msg
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
@@ -98,7 +107,8 @@ def main ():
       argument_spec = dict(
         systempwd       =dict(required=True),
         source_db_name  =dict(required=True),
-        source_host     =dict(required=True)
+        source_host     =dict(required=True),
+        ignore          =dict(required=False)
       ),
       supports_check_mode=True,
   )
@@ -107,6 +117,10 @@ def main ():
   vdbpass = module.params.get('systempwd')
   vdb = module.params.get('source_db_name') + '1'
   vdbhost = module.params.get('source_host') # + '.ccci.org'
+  vignore = module.params.get('ignore')
+
+  if vignore is None:
+      vignore = False
 
   if not cx_Oracle_found:
     module.fail_json(msg="cx_Oracle module not found")
@@ -123,8 +137,14 @@ def main ():
     try:
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
     except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
+      if vignore:
+          msg="DB CONNECTION FAILED"
+          if debugme:
+              msg = msg + " vignore: %s " % (vignore)
+          module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+      else:
+          error, = exc.args
+          module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
 
     cur = con.cursor()
 
@@ -281,6 +301,12 @@ def main ():
             ansible_facts[refname][vparams[idx]] = head
         else:
             ansible_facts[refname][vparams[idx]] = vtemp
+
+    try:
+        cur.close()
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     msg="Custom module sourcefacts succeeded"
 

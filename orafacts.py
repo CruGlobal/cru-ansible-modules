@@ -91,18 +91,22 @@ EXAMPLES = '''
       register: target_host
       tags: orafacts
 
-   NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced.
+   WARNING: These modules can be run with the when: master_node statement.
+            However, their returned values cannot be referenced later.
+
 '''
-debugme = False
+
+debugme = True
 ora_home = ''
 err_msg=''
 v_rec_count=0
 grid_home = ""
 err_msg = ""
 node_number = ""
+node_name = ""
 msg = ""
 grid_home = ""
+my_err_msg = ""
 
 
 def get_field(fieldnum, vstring):
@@ -120,6 +124,7 @@ def get_node_num():
     global grid_home
     global err_msg
     global node_number
+    global node_name
     global msg
     tmp_cmd = ""
 
@@ -357,6 +362,60 @@ def get_db_status(local_vdb):
     return(status_this_node)
 
 
+def get_meta_data(local_db):
+    """Return meta data for a database from crsctl status resource"""
+    tokenstoget = ['TARGET', 'STATE', 'STATE_DETAILS']
+    global grid_home
+    global my_err_msg
+    global msg
+    metadata = {}
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    tmp_cmd = "/bin/hostname | cut -d. -f1"
+
+    try:
+        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+       my_err_msg = my_err_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+       raise Exception (my_err_msg)
+
+    node_name = output.strip()
+
+    if local_db[-1].isdigit():
+        local_db = local_db[:-1]
+
+    tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+    try:
+        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+       my_err_msg = my_err_msg + ' Error [1]: srvctl module get_meta_data() output: %s' % (output)
+       my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+       raise Exception (my_err_msg)
+
+    try:
+        for item in output.split('\n'):
+            if item:
+                vkey, vvalue = item.split('=')
+                vkey = vkey.strip()
+                vvalue = vvalue.strip()
+                if vkey in tokenstoget:
+                    metadata[vkey] = vvalue
+    except:
+        my_err_msg = "ERROR: srvctl module get_meta_data() error - loading metadata dict: %s" % (str(metadata))
+        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+        raise Exception (my_err_msg)
+
+    if debugme:
+        msg = msg + "get_meta_data() metadata dictionary contents : %s" % (str(metadata))
+
+    return(metadata)
+
+
 def rac_running_homes():
     """Return running databases for RAC, their version, oracle_home, pid, status"""
     # This function will get all the running databases and the homes they're
@@ -371,6 +430,7 @@ def rac_running_homes():
     tempdb = ""
     local_cmd = ""
     dbs = {}
+    meta_data = {}
     srvctl_dbs = []
     tmp_db_status = ""
 
@@ -401,13 +461,27 @@ def rac_running_homes():
         ora_home = vhome[ vhome.find("/") : -3 ]
 
         if "MGMTDB" in vdbname:
-            vdbname = "MGMTDB"
+            vdbname = "mgmtdb"
 
         tmp_db_status = get_db_status(vdbname)
 
         tmpnodenum = int(node_number) - 1
 
-        dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'status': tmp_db_status}}) #this should work with or without the error
+        if vdbname[-1].isdigit():
+            tmpdbname = vdbname[:-1]
+        else:
+            tmpdbname =  vdbname
+
+        if tmpdbname.lower() not in ["mgmtdb", "+asm"] and vdbname != "grid":
+            try:
+                meta_data = get_meta_data(vdbname)
+                dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'state': meta_data['STATE'], 'target': meta_data['TARGET'], 'state_details': meta_data['STATE_DETAILS'], 'status': tmp_db_status }} ) #this should work with or without the error
+            except:
+                err_msg = err_msg + ' Error: loading dbs dict vdbname: %s' % (vdbname)
+                err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+                raise Exception (err_msg)
+        else:
+            dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'status': tmp_db_status }} ) #this should work with or without the error
 
     local_cmd = ""
     # get a list of all databases registered with srvctl to find those offline
@@ -425,7 +499,6 @@ def rac_running_homes():
     for i in output.strip().split("\n"):
         if i:
             srvctl_dbs.append(i)
-
 
     # if we find a db not in the dictionary of running dbs its registered with srvctl but not running and must be offline
     local_cmd = ""

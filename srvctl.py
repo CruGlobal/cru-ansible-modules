@@ -18,6 +18,10 @@ from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 # import datetime
 # from datetime import datetime, date, time, timedelta
 
+#  Notes: It's possible to get the database / instances into a screwed up state.
+#  It's possible to start an instance in nomount, but then it is impossible to alter instance mount.
+#  The database instances can be shutdown and then restarted in mount and open, but not altered, or modified.
+
 # Global variables
 debugme = True
 vcmd = ""
@@ -80,6 +84,12 @@ EXAMPLES = '''
       (1) local option only available for instance
       (2) when master_node else it may try to execute on all nodes
 
+   WARNING: It's possible to start instance nomount, mount etc. but not to
+            alter instance mount, or open. To do this using the srvctl module
+            you MUST stop the instance then start instance mount, or start instance (open).
+            It is possible to "sqlplus> alter database mount" on an instance.
+            The status change will then be reflected in crsstat.
+            
 '''
 
 def get_gihome():
@@ -335,7 +345,12 @@ def main ():
       if vcmd == "stop":
           vopt = "-" + vopt
       elif vcmd == "start" and vopt == "eval":
-          vopt = "-" + vopt
+          if vopt == "read only":
+              vopt = "-" + '"' + "read only" + '"'
+          elif vopt == "read write":
+              vopt = "-" + '"' + "read wite" + '"'
+          else:
+              vopt = "-" + vopt
       else:
           msg = msg + "NOTICE [3]: %s option invalid for %s. Option ignored." % (vopt, vcmd)
           vopt=""
@@ -366,7 +381,7 @@ def main ():
       node_num=int(get_node_num())
       tmp_status=get_db_status(vdb)
       curr_stat=str(tmp_status[node_num])
-      my_err_msg = my_err_msg + " parameters passed: vdb: %s vcmd: %s vobj: %s grid_home: %s node_number: %s oracle_home: %s get_db_status(): %s ttw: %s original status array: %s msg: %s" % (vdb, vcmd, vobj, grid_home, node_number, oracle_home, curr_stat, ttw, debugme_msg, msg)
+      my_err_msg = my_err_msg + " parameters passed: vdb: %s vcmd: %s vobj: %s grid_home: %s node_number: %s vopt: %s oracle_home: %s get_db_status(): %s ttw: %s original status array: %s msg: %s" % (vdb, vcmd, vobj, grid_home, node_number, vopt, oracle_home, curr_stat, ttw, debugme_msg, msg)
       msg = msg + my_err_msg
 
   # if all nodes are NOT already in the state we're looking for execute srvctl command
