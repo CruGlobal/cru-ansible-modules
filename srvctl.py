@@ -83,25 +83,27 @@ EXAMPLES = '''
 
       (1) local option only available for instance
       (2) when master_node else it may try to execute on all nodes
+      (3) be sure to use 'become_user: oracle' else errors due to access privileges will cause the module to fail.
 
    WARNING: It's possible to start instance nomount, mount etc. but not to
             alter instance mount, or open. To do this using the srvctl module
             you MUST stop the instance then start instance mount, or start instance (open).
             It is possible to "sqlplus> alter database mount" on an instance.
             The status change will then be reflected in crsstat.
-            
+
 '''
 
 def get_gihome():
     """Determine the Grid Home directory"""
+    global my_err_msg
     global grid_home
 
     try:
       process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-        err_msg = err_msg + ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
-        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+        my_err_msg = err_my_err_msgmsg + ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (my_err_msg), changed=False)
 
     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
@@ -125,8 +127,9 @@ def get_node_num():
     if not grid_home:
         grid_home = get_gihome()
 
+    tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+
     try:
-      tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
       process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
@@ -134,10 +137,11 @@ def get_node_num():
        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
        raise Exception (my_err_msg)
 
-    node_number = output.strip()
+    if output.strip()[-1].isdigit() :
+        node_number = int(output.strip()[-1])
 
     if debugme:
-        debugme_msg = debugme_msg + "get_node_num() this node #: %s " % (node_number)
+        debugme_msg = debugme_msg + "get_node_num() this node #: %s cmd: %s output: %s" % (node_number, tmp_cmd, output)
 
     return(node_number)
 
