@@ -47,10 +47,24 @@ import sys
 import os
 import os.path
 import subprocess
+import string
+from string import ascii_lowercase
 from subprocess import PIPE,Popen
 import re
 from datetime import datetime
 from datetime import timedelta
+
+class alphaseq:
+  def __init__(self):
+    self.allchars = list(string.ascii_lowercase)
+    self.charptr = 0
+    self.curchar = ''
+  def next(self):
+    self.curchar = self.allchars[self.charptr]
+    self.charptr += 1
+    if self.charptr == 26:
+        self.charptr = 0
+    return self.curchar
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -94,7 +108,7 @@ vsrcdb=''
 vbu_type=''
 vohome=''
 vstage=''
-
+myseq = alphaseq()
 
 def spfile_bu():
   """Return a list of spfile backups including Level (LV), Month, Day, Year and time of day"""
@@ -104,6 +118,7 @@ def spfile_bu():
   global vohome
   global vdbid
   global vrco
+  global myseq
 
   spfile_list = {}
   linecount = 0
@@ -177,8 +192,16 @@ def spfile_bu():
           # Put all the date time info together in the proper format to use in the RMAN restore script: DD-MON-YYYY HH24:MI:SS
           tmpdatestr = tmp_date_dict['day'] + "-" + tmp_date_dict['month'].upper() + "-" + tmp_date_dict['year'] + " " + newtime
           one_dict.update({'backup_date': tmpdatestr})
-          spfile_list.update({linecount: one_dict})
+          next_num = linecount
+          if next_num < 10:
+              next_num = "0" + str(next_num)
+          else:
+              next_num = str(next_num)
+          spfile_list.update({next_num: one_dict})   # original line
+          # tmpchar = myseq.next()
+          #spfile_list.update({tmpchar: one_dict})
   except:
+      err_msg = err_msg + "META: tmpchar: %s myseq.charptr: %s myseq.allchars: %s" % (tmpchar, myseq.charptr, myseq.allcars)
       err_msg = err_msg + ' Error: spfile_bu() parsing fields : (%s)' % (sys.exc_info()[0])
 
   return(spfile_list) #(spfile_list)

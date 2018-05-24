@@ -254,6 +254,25 @@ def main ():
     vtemp = vtemp[0][0]
     ansible_facts[refname]['bct_status'] = vtemp
 
+    # Does the ULNFSA02_DATAPUMP directory exist?
+    dirs={}
+    try:
+      cur.execute("select directory_name, directory_path from dba_directories order by directory_name")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
+
+    try:
+        vtemp = cur.fetchall()
+        for vdir,vpath in vtemp:
+            dirs.update({vdir: vpath})
+    except:
+        msg = msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        msg = msg + ' dir returned meta %s vdir: %s vpath: %s' % (vtemp,vdir,vpath)
+        module.fail_json(msg='ERROR: %s' % (msg), changed=False)
+
+    ansible_facts[refname]['dirs'] = dirs
+
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
