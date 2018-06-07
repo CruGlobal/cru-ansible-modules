@@ -826,7 +826,7 @@ def main(argv):
         # helpful in tasks or playbooks to iterate through databases of certain version or status (offline/online)
         for (vkey, vvalue) in run_homes.items():
           ansible_facts['orafacts'][vkey] = vvalue
-          if "+asm" not in vkey.lower() and "pmon" not in vkey.lower() and "mgmtdb" not in vkey.lower:
+          if "+asm" not in vkey.lower() and "pmon" not in vkey.lower() and "mgmtdb" not in vkey.lower():
               tmpdb = vkey[:-1]
               if not tmpdb[-1].isdigit():
                   tmpdb = tmpdb + str(node_number)
