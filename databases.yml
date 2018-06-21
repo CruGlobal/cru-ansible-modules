@@ -1,0 +1,460 @@
+---
+# Oracle database variables
+# database_parameters:  contains memory, disk and other information for each database instnace.
+# database_refresh_vars: lists any tables and/or schemas to save during database refresh
+# ps_owner : PeopleSoft owner: 'sysadm' (PS HR) or 'finadm' (PS FIN)
+
+database_parameters:
+  # restore_db.yml predefined databases used to recover a database
+  # predefined dev / test env db
+  tstdb:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA3
+    # ps_owner: finadm
+    log_mode: noarchivelog   # archivelog, noarchivelog
+  # predefined stage env db
+  stgdb:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: SBLCRMY
+    # ps_owner: finadm
+    log_mode: noarchivelog   # archivelog, noarchivelog
+
+  #Temporary/Refresh Instances ################################################
+  refresht:
+    sga_target: 6G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA3
+  refreshs:
+    sga_target: 6G
+    pga_aggregate_target: 1G
+    asm_dg_name: SBLCRMY
+
+  #Lab RAC ###################################################################
+  agile:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA
+  lab:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA
+  soccer:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA
+
+  #Test RAC ###################################################################
+  # tstdb is used by the recover_db.yml playbook to restore a db to the test env
+  tstdb:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA3
+    # ps_owner: finadm
+    log_mode: noarchivelog   # archivelog, noarchivelog
+  fintst:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA3
+    ps_owner: finadm
+    log_mode: archivelog   # archivelog, noarchivelog
+    db_recovery_file_dest_size: 40G
+    db_recovery_file_dest: FRA
+  pshrtst:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA3
+    ps_owner: sysadm
+  dssreplt:
+    sga_target: 2G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA2
+  #
+  # fscm9d:
+  # >>>>>>>> DO NOT DELETE OR REFRESH THIS DB ! <<<<<<<<<
+  # Last copy of PS FIN PROD before the upgrade.
+  # >>>>>>>> DO NOT DELETE RUNNING DB ON HOST tlorad01/02! <<<<<<<<<
+  # BEFORE REFRESH OR DELETE CONTACT one of the following:
+  #           Nick Kusiak, Alvin Siu, Jay Holt or Paul Smith
+  #
+  #   dnd: True
+  #   sga_target: 6G
+  #   pga_aggregate_target: 2G
+  #   asm_dg_name: DATA1
+  #
+  fintmpd:
+    sga_target: 6G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA1
+  fscm9xu:
+    sga_target: 6G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+    is_ps: true
+  idmd:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA2
+    log_mode: archivelog
+    is_ps: false
+  idmt:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA2
+    log_mode: archivelog
+    is_ps: false
+  jfpwdev:
+    sga_target: 2G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA2
+  jfpwtest:
+    sga_target: 2G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA2
+    log_mode: archivelog
+    is_ps: false
+  metad:
+    sga_target: 1G
+    pga_aggregate_target: 512M
+    asm_dg_name: DATA2
+  pshcmd:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+    is_ps: true
+  pshrupg:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+    is_ps: true
+  pshubd:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+  pstasd:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+  sblcrmd:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+  sblcrmx:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+  ucmd:
+    sga_target: 3G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA2
+
+  # Stage RAC ###################################################################
+  fscm9s:
+    sga_target: 18G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA1
+    log_mode: archivelog   # archivelog, noarchivelog
+  fscm9y:
+    sga_target: 6G
+    pga_aggregate_target: 4G
+    asm_dg_name: SBLCRMY
+    redolog_size_mb: 2048
+    db_recovery_file_dest_size: 1024G   # size of fra
+    log_mode: noarchivelog   # archivelog, noarchivelog
+  fscm9yu:
+    sga_target: 10G
+    pga_aggregate_target: 4G
+    asm_dg_name: DATA1
+    redolog_size_mb: 2048
+    db_recovery_file_dest_size: 1024G   # size of fra
+    log_mode: noarchivelog   # archivelog, noarchivelog
+  hcm9stg:
+    sga_target: 24G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA1
+  jfpwstg:
+    sga_target: 8G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA2
+    log_mode: archivelog
+    is_ps: false
+  metas:
+    sga_target: 4G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA2
+  sblcrms:
+    sga_target: 26G
+    pga_aggregate_target: 5G
+    asm_dg_name: DATA1
+    redo_size_mb: 256
+  pshcms:
+    sga_target: 24G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA1
+    is_ps: true
+  pshcmx:
+    sga_target: 6G
+    pga_aggregate_target: 1G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+    is_ps: true
+  fintmps:
+    sga_target: 10G
+    pga_aggregate_target: 6G
+    asm_dg_name: SBLCRMY
+  pshtst:
+    sga_target: 8G
+    pga_aggregate_target: 4G
+    asm_dg_name: SBLCRMY
+
+  # slorad60 #################################################################
+  sbldwt:
+    sga_target: 12G
+    pga_aggregate_target: 8G
+    redolog_size_mb: 2048
+    db_recovery_file_dest_size: 200G   # size of fra
+    log_mode: noarchivelog   # archivelog, noarchivelog
+  sbldws:
+    sga_target: 220G
+    pga_aggregate_target: 220G
+    redolog_size_mb: 4096
+    db_recovery_file_dest_size: 400G   # size of fra
+    log_mode: noarchivelog   # archivelog, noarchivelog
+
+  # Prod RAC ###################################################################
+  fscm9p:
+    sga_target: 32G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+  hcm9p:
+    sga_target: 32G
+    pga_aggregate_target: 10G
+    asm_dg_name: DATA1
+  idmp:
+    sga_target: 8G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA2
+  jfprod:
+    sga_target: 10G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA2
+  metap:
+    sga_target: 8G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA2
+  pshcmp:
+    sga_target: 24G
+    pga_aggregate_target: 8G
+    asm_dg_name: DATA1
+    log_mode: archivelog
+    is_ps: true
+  pssesp:
+    sga_target: 1G
+    pga_aggregate_target: 3G
+    asm_dg_name: DATA1
+  sblcrmp:
+    sga_target: 160G
+    pga_aggregate_target: 24G
+    asm_dg_name: DATA1
+  ucmp:
+    sga_target: 8G
+    pga_aggregate_target: 2G
+    asm_dg_name: DATA2
+
+  # plorad60 #################################################################
+  sbldwp:
+    sga_target: 220G
+    pga_aggregate_target: 220G
+    redolog_size_mb: 4096
+    db_recovery_file_dest_size: 1000G   # size of fra
+    log_mode: noarchivelog   # archivelog, noarchivelog
+
+#List schemas and tables to be saved during database refresh
+database_refresh_vars:
+
+  testdb:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - FINADM.PSOPTIONS
+      # - SYSADM.PSOPRDEFN        # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - FINADM.PSACCESSPROFILE    # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - FINADM.PS_CDM_DIST_NODE
+      - FINADM.PSGATEWAY
+      - FINADM.PSIBSVCSETUP
+      - FINADM.PSMSGNODEDEFN
+      - FINADM.PS_PTSF_SRCH_ENGN
+      - FINADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+  lab:
+    backup_schemas:
+      - DAVIDH
+      - SCOTT
+    backup_tables:
+      - SCOTT.DEPT
+      - SCOTT.EMP
+      - SCOTT.SALGRADE
+      - SCOTT.BONUS
+
+  sblcrmd:
+    backup_schemas:
+      - HRSDON
+      - CCP
+    backup_tables:
+      - SIEBEL.CX_GR_INTEG
+
+  pshcmd:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - SYSADM.PSOPTIONS
+      # - SYSADM.PSOPRDEFN        # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - SYSADM.PSACCESSPROFILE    # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - SYSADM.PS_CDM_DIST_NODE
+      - SYSADM.PSGATEWAY
+      - SYSADM.PSIBSVCSETUP
+      - SYSADM.PSMSGNODEDEFN
+      - SYSADM.PS_PTSF_SRCH_ENGN
+      - SYSADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+  fscm9d:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - FINADM.PSOPTIONS
+      # - FINADM.PSOPRDEFN         # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - FINADM.PSACCESSPROFILE     #                                             - save to Alvins schema then export / import
+      - FINADM.PS_CDM_DIST_NODE
+      - FINADM.PSGATEWAY
+      - FINADM.PSIBSVCSETUP
+      - FINADM.PSMSGNODEDEFN
+      - FINADM.PSURLDEFN
+      - FINADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+
+  sblcrms:
+    backup_schemas:
+      - HRSDON
+      - CCP
+      - BBUFORD
+      - GMUSER
+      - BIPUBS
+    backup_tables:
+      - SIEBEL.CX_GR_INTEG
+
+  pshcms:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - SYSADM.PSOPTIONS
+      # - SYSADM.PSOPRDEFN       # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - SYSADM.PSACCESSPROFILE   # - switch to PSACCESSPROFILE after tools upgrade to 8.55 - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import old name PSACCESSPRFL
+      - SYSADM.PS_CDM_DIST_NODE
+      - SYSADM.PSGATEWAY
+      - SYSADM.PSIBSVCSETUP
+      - SYSADM.PSMSGNODEDEFN
+      - SYSADM.PS_PTSF_SRCH_ENGN
+      - SYSADM.PSURLDEFN
+      - SYSADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+  pshcmx:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - SYSADM.PSOPTIONS
+      - SYSADM.PS_CDM_DIST_NODE
+      - SYSADM.PSGATEWAY
+      - SYSADM.PSIBSVCSETUP
+      - SYSADM.PSMSGNODEDEFN
+      - SYSADM.PS_PTSF_SRCH_ENGN
+      - SYSADM.PSURLDEFN
+      - SYSADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+  fscm9s:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - FINADM.PSOPTIONS
+      # - FINADM.PSOPRDEFN        - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - FINADM.PSACCESSPROFILE  # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - FINADM.PS_CDM_DIST_NODE
+      - FINADM.PSGATEWAY
+      - FINADM.PSIBSVCSETUP
+      - FINADM.PSMSGNODEDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PSURLDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PS_PTSF_SRCH_ENGN
+      - PS.PSDBOWNER
+
+  fscm9xu:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - FINADM.PSOPTIONS
+      # - FINADM.PSOPRDEFN      # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - FINADM.PSACCESSPROFILE  # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - FINADM.PS_CDM_DIST_NODE
+      - FINADM.PSGATEWAY
+      - FINADM.PSIBSVCSETUP
+      - FINADM.PSMSGNODEDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PSURLDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PS_PTSF_SRCH_ENGN
+      - PS.PSDBOWNER
+
+  fintst:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - FINADM.PSOPTIONS
+      # - FINADM.PSOPRDEFN      # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - FINADM.PSACCESSPROFILE  # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - FINADM.PS_CDM_DIST_NODE
+      - FINADM.PSGATEWAY
+      - FINADM.PSIBSVCSETUP
+      - FINADM.PSMSGNODEDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PSURLDEFN
+      - FINADM.PSNODEURITEXT
+      - FINADM.PS_PTSF_SRCH_ENGN
+      - PS.PSDBOWNER
+
+  pshrtst:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - SYSADM.PSOPTIONS
+      # - SYSADM.PSOPRDEFN        # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      # - SYSADM.PSACCESSPROFILE    # - removed as per Alvin HipChat May 16, 2017 - save to Alvins schema then export / import
+      - SYSADM.PS_CDM_DIST_NODE
+      - SYSADM.PSGATEWAY
+      - SYSADM.PSIBSVCSETUP
+      - SYSADM.PSMSGNODEDEFN
+      - SYSADM.PS_PTSF_SRCH_ENGN
+      - SYSADM.PSNODEURITEXT
+      - PS.PSDBOWNER
+
+  pshrupg:
+    backup_schemas:
+      - ASIU
+    backup_tables:
+      - SYSADM.PSOPTIONS
+      - SYSADM.PS_CDM_DIST_NODE
+      - SYSADM.PSGATEWAY
+      - SYSADM.PSIBSVCSETUP
+      - SYSADM.PSMSGNODEDEFN
+      - SYSADM.PS_PTSF_SRCH_ENGN
+      - SYSADM.PSNODEURITEXT
+      - PS.PSDBOWNER

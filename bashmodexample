@@ -1,0 +1,111 @@
+#!/bin/bash
+  2
+  3 function create_file
+  4     {
+  5     if [ -f "$dest" ]; then
+  6         changed="false"
+  7         msg="file already exists"
+  8     else
+  9         echo 'Hello, "world!"' >> $dest
+ 10         changed="true"
+ 11         msg="file created"
+ 12     fi
+ 13     contents=$(cat "$dest" 2>&1 | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 14     }
+ 15
+ 16 function prep_file
+ 17     {
+ 18     if [ -f "$dest" ]; then
+ 19         changed="true"
+ 20         msg="file deleted"
+ 21         contents=$(cat "$dest" 2>&1 | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 22         output=$(rm -f $dest 2>&1 | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 23         if [ $? -ne 0 ]; then
+ 24             printf '{"failed": true, "msg": "error deleting file", "output": %s}' "$output"
+ 25             exit 1
+ 26         fi
+ 27     else
+ 28         changed="false"
+ 29         msg="file not present"
+ 30         contents='""'
+ 31     fi
+ 32     }
+ 33
+ 34 function read_file
+ 35     {
+ 36     if [ ! -f "$dest" ]; then
+ 37         create_file
+ 38         msg="$msg, "
+ 39     fi
+ 40     current=$(cat $dest)
+ 41     new=$(echo "$current" | tr '[:lower:]' '[:upper:]')
+ 42     if [ "$current" = "$new" ]; then
+ 43         changed="false"
+ 44         msg="${msg}file not changed"
+ 45         contents=$(printf "$current" | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 46     else
+ 47         echo "$new" > $dest
+ 48         changed="true"
+ 49         msg="${msg}file converted to upper case"
+ 50         contents=$(printf "$new" | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 51     fi
+ 52     }
+ 53
+ 54 function convert_to_lower
+ 55     {
+ 56     if [ ! -f "$dest" ]; then
+ 57         create_file
+ 58         msg="$msg, "
+ 59     fi
+ 60     contents=$(ls -l "$dest" 2>&1 | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 61     current=$(cat $dest)
+ 62     new=$(echo "$current" | tr '[:upper:]' '[:lower:]')
+ 63     if [ "$current" = "$new" ]; then
+ 64         changed="false"
+ 65         msg="${msg}file not changed"
+ 66         contents=$(printf "$current" | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 67     else
+ 68         echo "$new" > $dest
+ 69         changed="true"
+ 70         msg="${msg}file converted to lower case"
+ 71         contents=$(printf "$new" | python -c 'import json,sys; print json.dumps(sys.stdin.read())')
+ 72     fi
+ 73     }
+ 74
+ 75 source $1
+ 76
+ 77 if [ -z "$dest" ]; then
+ 78     printf '{"failed": true, "msg": "missing required arguments: dest"}'
+ 79     exit 1
+ 80 fi
+ 81 if [ -z "$state" ]; then
+ 82     printf '{"failed": true, "msg": "missing required arguments: state"}'
+ 83     exit 1
+ 84 fi
+ 85
+ 86 changed="false"
+ 87 msg=""
+ 88 contents=""
+ 89
+ 90 case $state in
+ 91     present)
+ 92         create_file
+ 93         ;;
+ 94     absent)
+ 95         delete_file
+ 96         ;;
+ 97     upper)
+ 98         convert_to_upper
+ 99         ;;
+100     lower)
+101         convert_to_lower
+102         ;;
+103     *)
+104         printf '{"failed": true, "msg": "invalid state: %s"}' "$state"
+105         exit 1
+106         ;;
+107 esac
+108
+109 printf '{"changed": %s, "msg": "%s", "contents": %s}' "$changed" "$msg" "$contents"
+110
+111 exit 0

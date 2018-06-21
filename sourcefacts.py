@@ -43,21 +43,31 @@ author: "DBA Oracle module Team"
 EXAMPLES = '''
 
     # if cloning a database and source database information is desired
-    - local_action: sourcefacts
-        systempwd="{{ database_passwords[source_db_name].system }}"
-        source_db_name="{{ source_db_name }}"
-        source_host="{{ source_host }}"
+    - local_action:
+        module: sourcefacts
+        systempwd: "{{ database_passwords[source_db_name].system }}"
+        source_db_name: "{{ source_db_name }}"
+        source_host: "{{ source_host }}"
+        ignore: True (1)
       become_user: "{{ remote_user }}"
       register: src_facts
 
+      (1) ignore (connection errors) is optional. If you know the source
+          database may be down set ignore: True. If connection to the
+          source database fails the module will not throw a fatal error
+          and continue.
+
    NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced.
+         However, their returned values cannot be referenced in
+         roles or tasks later. Therefore, when running fact collecting modules,
+         run them on both nodes. Do not use the "when: master_node" clause.
 
 '''
 
-# Parameters we're just retriveing from v$parameter table
-vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size"]
-
+# Parameters to retrieve from v$parameter table can be added here.
+vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size", "remote_login_passwordfile", "spfile" ]
+msg = ""
+debugme = False
 
 def convert_size(size_bytes, vunit):
 
@@ -83,6 +93,7 @@ def convert_size(size_bytes, vunit):
 # ==============================================================================
 def main ():
   """ Return Oracle database parameters from a database not in the specified group"""
+  global msg
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
@@ -96,7 +107,8 @@ def main ():
       argument_spec = dict(
         systempwd       =dict(required=True),
         source_db_name  =dict(required=True),
-        source_host     =dict(required=True)
+        source_host     =dict(required=True),
+        ignore          =dict(required=False)
       ),
       supports_check_mode=True,
   )
@@ -105,6 +117,10 @@ def main ():
   vdbpass = module.params.get('systempwd')
   vdb = module.params.get('source_db_name') + '1'
   vdbhost = module.params.get('source_host') # + '.ccci.org'
+  vignore = module.params.get('ignore')
+
+  if vignore is None:
+      vignore = False
 
   if not cx_Oracle_found:
     module.fail_json(msg="cx_Oracle module not found")
@@ -114,23 +130,29 @@ def main ():
 
     try:
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
-      module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
+    except cx_Oracle.DatabaseError as exc:
+      if vignore:
+          msg="DB CONNECTION FAILED"
+          if debugme:
+              msg = msg + " vignore: %s " % (vignore)
+          module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+      else:
+          error, = exc.args
+          module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
 
     cur = con.cursor()
 
     # select source db version
     try:
       cur.execute('select version from v$instance')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
 
     dbver =  cur.fetchall()
@@ -141,8 +163,8 @@ def main ():
     # select host_name
     try:
       cur.execute('select host_name from v$instance')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -152,8 +174,8 @@ def main ():
     # Find archivelog mode.
     try:
       cur.execute('select log_mode from v$database')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -168,8 +190,8 @@ def main ():
     # Get dbid for active db duplication without target, backup only
     try:
       cur.execute('select dbid from v$database')
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
 
     vtemp = cur.fetchall()
@@ -179,8 +201,8 @@ def main ():
     # Find ASM diskgroups used by the database
     try:
       cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -191,8 +213,8 @@ def main ():
     # Open cursors - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'open_cursors'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -202,8 +224,8 @@ def main ():
     # pga_aggregate_target - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'pga_aggregate_target'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value pga_aggregate_target, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -213,8 +235,8 @@ def main ():
     # use_large_pages - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'use_large_pages'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error selecting value use_large_pages, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -224,19 +246,38 @@ def main ():
     # Is Block Change Tracking (BCT) enabled or disabled?
     try:
       cur.execute("select status from v$block_change_tracking")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
     ansible_facts[refname]['bct_status'] = vtemp
 
+    # Does the ULNFSA02_DATAPUMP directory exist?
+    dirs={}
+    try:
+      cur.execute("select directory_name, directory_path from dba_directories order by directory_name")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
+
+    try:
+        vtemp = cur.fetchall()
+        for vdir,vpath in vtemp:
+            dirs.update({vdir: vpath})
+    except:
+        msg = msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        msg = msg + ' dir returned meta %s vdir: %s vpath: %s' % (vtemp,vdir,vpath)
+        module.fail_json(msg='ERROR: %s' % (msg), changed=False)
+
+    ansible_facts[refname]['dirs'] = dirs
+
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
@@ -263,8 +304,8 @@ def main ():
         try:
           v_sel = "select value from v$parameter where name = '" + vparams[idx] + "'"
           cur.execute(v_sel)
-        except cx_Oracle.DatabaseError, exception:
-          error, = exception.args
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
           module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
         vtemp = cur.fetchall()
@@ -279,6 +320,12 @@ def main ():
             ansible_facts[refname][vparams[idx]] = head
         else:
             ansible_facts[refname][vparams[idx]] = vtemp
+
+    try:
+        cur.close()
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     msg="Custom module sourcefacts succeeded"
 
