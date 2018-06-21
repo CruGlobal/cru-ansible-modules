@@ -833,6 +833,47 @@ def listener_info():
   else:
     return({"lsnrctl": "No listener running"})
 
+def rac_dblist():
+  """Return database information from srvctl"""
+  global ora_home
+  global err_msg
+  dblist = []
+  database_info = { 'database_details':{} }
+
+  try:
+    srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
+  except:
+    err_msg = err_msg + ' Error: rac_dblist() - db_home: (%s)' % (sys.exc_info()[0])
+  if srvctl_verbose:
+    for line in srvctl_verbose.split("\n"):
+      split = line.split()
+      dblist.append(split[0])
+      database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2] }})
+
+  database_info['databases'] = dblist
+  return(database_info)
+
+def si_dblist():
+  """Return database information from /etc/oratab"""
+  global err_msg
+  dblist = []
+  database_info = { 'database_details':{} }
+
+  try:
+    oratab = str(commands.getstatusoutput("cat /etc/oratab | grep -v '^#\|^\s*$' | cut -d: -f 1")[1])
+  except:
+    err_msg = err_msg + ' Error: si_dblist() - oratab: (%s)' % (sys.exc_info()[0])
+
+  if oratab:
+    for dbname in oratab.split("\n"):
+      dblist.append(dbname)
+
+      oracle_home = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab |cut -d: -f2 -s")[1])
+      version = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab | grep -o '[0-9][0-9]\.[0-9].[0-9].[0-9]'")[1])
+      database_info['database_details'].update({dbname: {'oracle_home': oracle_home, 'version': version }})
+
+  database_info['databases'] = dblist
+  return(database_info)
 
 def get_version(local_db):
     """Return the general Oracle version for a given database"""
@@ -930,6 +971,9 @@ def main(argv):
               tmpver = get_version(tmpdb)
               ansible_facts['orafacts']['all_dbs'].update({tmpdb: {'status': vvalue['status'], 'version': tmpver, 'metadata': ansible_facts['orafacts'][tmpdb]['state_details']}})
 
+        # Get list of all databases configured in SRVCTL
+        ansible_facts.update(rac_dblist())
+
         # vhuge = hugepages()
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
 
@@ -943,6 +987,9 @@ def main(argv):
             ansible_facts['orafacts'][vkey] = vvalue
         else:
           msg = msg + ".\n It appears No Oracle database is running."
+
+        # Get list of all databases in /etc/oratab
+        ansible_facts.update(si_dblist())
 
       # Run the following functions for both RAC and SI
       # Get tnsnames info
