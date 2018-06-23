@@ -65,7 +65,7 @@ EXAMPLES = '''
 '''
 
 # Parameters we're just retriveing from v$parameter table
-vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size"]
+vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size", "remote_login_passwordfile", "spfile" ]
 msg = ""
 debugme = False
 
