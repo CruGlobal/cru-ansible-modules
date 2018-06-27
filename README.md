@@ -142,3 +142,13 @@ Notes: sourcefacts must run prior to rmanfacts or the user
     "04-JAN-2018 04:34:04"
 
 ```
+
+You also need to edit your ansible.cfg file and make the following entry:
+```
+local_user=myusername
+```
+note: local_user found by going to a terminal and typing 'whoami'
+this value can also be passed via command line:
+```
+--extra-vars="local_user=myusername"
+```
