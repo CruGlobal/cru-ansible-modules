@@ -282,7 +282,7 @@ def get_db_status_meta(local_db):
 
 def get_db_status(local_vdb):
     """
-    Return the status of the database on the node it runs onself.
+    Return the status of the database on the node it runs on.
     The db name can be passed with, or without the instance number attached
     """
     global grid_home
