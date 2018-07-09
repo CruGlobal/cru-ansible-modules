@@ -83,10 +83,14 @@ vinst    = -1
 vstopt   = ""
 vparam   = ""
 default_ttw = 5
+vdomain  = ".ccci.org"
 # environmentals
 grid_home = ""
 oracle_home = ""
+oracle_sid = ""
 node_number = ""
+thishost = ""
+vall_hosts = []
 # info
 msg = ""
 custom_err_msg = ""
@@ -102,6 +106,23 @@ def debugging_info(new_msg):
         debug_msg = debug_msg + new_msg
     else:
         debug_msg = new_msg
+
+
+def get_hostname():
+    """Return the hostame"""
+    global host_name
+    global vdomain
+
+    try:
+      process = subprocess.Popen(["/bin/hostname | /bin/sed 's/" + vdomain + "//'"], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error [get_hostname()]: retrieving hostname : (%s,%s)' % (sys.exc_info()[0],code)
+        module.fail_json(msg='ERROR: %s' % (custom_err_msg), changed=False)
+
+    tmp_hostname = output.strip()
+
+    return(tmp_hostname)
 
 
 def get_gihome():
@@ -129,17 +150,17 @@ def get_gihome():
 
 
 def get_node_num():
-    """Return current node number (int)"""
+    """Return current node number, single digit (int)"""
     global grid_home
     global debugme
 
     if not grid_home:
         grid_home = get_gihome()
 
-    tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+    cmd_str = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
 
     try:
-      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
        custom_err_msg = ' Error[get_node_num()]: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
@@ -209,7 +230,7 @@ def get_orahome_procid(vdb):
     return(ora_home)
 
 
-def get_db_status(db_name):
+def get_db_state(db_name):
     """
     Return the status of the database on all nodes.
     list of strings with the status of the db on each node['INTERMEDIATE','ONLINE','OFFLINE']
@@ -225,7 +246,7 @@ def get_db_status(db_name):
         grid_home = get_gihome()
 
     if not grid_home:
-        custom_err_msg = ' Error[ get_db_status() ]: error determining grid_home from get_gihome() call. grid_home returned value: [%s]' % (grid_home)
+        custom_err_msg = ' Error[ get_db_state() ]: error determining grid_home from get_gihome() call. grid_home returned value: [%s]' % (grid_home)
         raise Exception (custom_err_msg)
 
     # check for special cases ASM and MGMTDB and see if db_name has digit (instance number), if so delete it. If not use it.
@@ -242,13 +263,13 @@ def get_db_status(db_name):
       process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-       custom_err_msg = ' Error[ get_db_status() ]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       custom_err_msg = ' Error[ get_db_state() ]: srvctl module get_db_state() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
        custom_err_msg = custom_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
        raise Exception (custom_err_msg)
 
     #  possible outputs:
     # ['STATE=OFFLINE', ' OFFLINE']   ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']  ['ONLINE on tlorad01', 'OFFLINE']\r\n",
-    node_status=output.strip().split(",")
+    node_status = output.strip().split(",")
 
     i = 0
     for item in node_status:
@@ -259,11 +280,11 @@ def get_db_status(db_name):
       elif "ONLINE" in item:
           node_status[i]=item.strip().split(" ")[0].strip().rstrip()
       elif "OFFLINE" in item:
-          node_status[i]=item.strip().rstrip()
+          node_status[i] = item.strip().rstrip()
       i += 1
 
     if debugme:
-        tmp_info = " get_db_status() exit. status %s" % (str(node_status))
+        tmp_info = " get_db_state() exit. status %s" % (str(node_status))
         debugg_info(tmp_info)
 
     # this function returns a list of strings
@@ -272,7 +293,7 @@ def get_db_status(db_name):
     return(node_status)
 
 
-def wait_for_it(vdb, vexp_status, vexp_status_meta, vttw, vinst):
+def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     """Compare current database (vdb) status of all nodes
        to expected state (vstatus) looping in 2 second intervals
        until state is reached or until time runs out (ttw min)"""
@@ -283,57 +304,50 @@ def wait_for_it(vdb, vexp_status, vexp_status_meta, vttw, vinst):
     # this will be time to stop if database state isn't reached.
     timeout =  time.time() + (60 * int(vttw))
     current_status = []
-    vmeta = {}
-
-    if vinst == 0:
-        vobj = "database"
-    else:
-        vobj = "instance"
 
     # If vinst is 0 we're shutting down / starting up the whole db, not an instance ** different comparison.
-    if vinst == 0:
+    if vobj.lower() == "database":
 
         try:
-          current_status = get_db_status(vdb)
-          while (not all(item == vexp_status for item in current_status) and (time.time() < timeout)):
+          current_status = get_db_state(vdb_name)
+          while (not all(item == vexp_state['exp_state'] for item in current_status) and (time.time() < timeout)):
             time.sleep(2)
-            current_status = get_db_status(vdb)
+            current_status = get_db_state(vdb_name)
         except:
-            custom_err_msg = 'Error[ wait_for_it() ]: error vinst = 0 - waiting for database status to reach: %s current status: %s excpetion: %s' % (vexp_status, current_status, sys.exc_info()[0])
+            custom_err_msg = 'Error[ wait_for_it() ]: waiting for database status to reach: %s current status: %s excpetion: %s' % (vexp_state['exp_state'], str(current_status), sys.exc_info()[0])
             custom_err_msg = custom_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
             raise Exception (custom_err_msg)
 
     # else shutting down or starting an instance
-    else:
+    elif vobj.lower() == "instance":
 
-      # Get the instances index number by subtracting 1 <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+      # Get the current instances list index by subtracting 1
       vindex = int(vinst) - 1
 
       try:
 
-        current_status = get_db_status(vdb)
-        while (vexp_status != current_status[vindex]) and (time.time() < timeout):
+        current_status = get_db_state(vdb_name)
+        while (vexp_state['exp_state'] != current_status[vindex]) and (time.time() < timeout):
           time.sleep(2)
-          current_status = get_db_status(vdb)
+          current_status = get_db_state(vdb_name)
 
       except:
-          custom_err_msg = 'Error[ wait_for_it() ]: error - waiting for instance state to change to %s last checked state: %s' % (vexp_status, str(current_status))
+          custom_err_msg = 'Error[ wait_for_it() ]: error - waiting for instance state to change to %s last checked state: %s' % (str(vexp_state), str(current_status))
           custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
           raise Exception (custom_err_msg)
 
-      # once instance state is reached, check state meta info is reached. (it's a little slower)
-      # if vexp_status_meta state was passed in check for it.
-      if vexp_status_meta:
+      # once instance state is reached, check vexp_state['meta'] state is reached. (it's a little slower)
+      if vexp_state['meta']:
 
           if debugme:
-              msg = "wait_for_it(%s, %s, %s, %s, %s) vexp_status_meta loop " % (vdb, vstatus, vstat_meta, vttw, vinst)
+              msg = "wait_for_it(%s, %s, %s, %s, %s) vexp_status_meta loop " % (vdb, vexp_state['exp_state'], vexp_state['meta'], vttw, vinst)
               debug_info(msg)
 
           try:
-              current_status = get_db_status_meta(vdb)
-              while (vexp_status_meta != current_status) and (time.time() < timeout):
+              current_status = get_db_state_meta(vdb_name)
+              while (vexp_state['meta'] != current_status[vindex]) and (time.time() < timeout):
                   time.sleep(2)
-                  current_status = get_db_status_meta(vdb)
+                  current_status = get_db_state_meta(vdb_name)
           except:
               custom_err_msg = 'Error[ wait_for_it() ]: waiting for instance vexp_status_meta to change to %s last seen: %s' % (vexp_status_meta, str(current_status[vindex]))
               custom_err_msg = custom_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
@@ -341,7 +355,7 @@ def wait_for_it(vdb, vexp_status, vexp_status_meta, vttw, vinst):
 
     # Did it stop because it timed out or because it succeeded? Pass timeout info back to user, else continue
     if time.time() > timeout:
-      custom_err_msg = " Error[ wait_for_it() ]: timed out waiting for %s %s status to change executing: %s. Time to wait (ttw): %s. Additional info expected status: %s and vstatus: %s status_meta: %s exp_status_meta: %s actual current status: %s vinst: %s custom_err_msg: %s" % ( vobj, vdb, vcmd, vttw, vexp_status, vexp_status_meta, current_status, vinst, custom_err_msg )
+      custom_err_msg = " Error[ wait_for_it() ]: timed out waiting for %s %s status to change executing: %s. Time to wait (ttw): %s. Additional info expected status: %s and vexp_status: %s actual current status: %s vinst: %s custom_err_msg: %s" % ( vobj, vdb, vcmd, vttw, str(vexp_status), str(current_status), vinst, custom_err_msg )
       custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
       raise Exception (custom_err_msg)
     else:
@@ -355,26 +369,199 @@ def is_opt_valid(vopt,vcmd):
     valid_start=('open','mount') # 'nomount','force','restrict'
 
     if vcmd.lower() == "start":
-        for item in valid_start:
-            if item == vopt:
-                return 0
+        if vopt in vlid_start:
+            return 0
     elif vcmd.lower() == "stop":
-        for item in valid_stop:
-            if item == vopt:
-                return 0
+        if vopt in valid_stop:
+            return 0
 
     return 1
 
 
-def mod_fail(vmsg,vchange):
+def mod_fail(vmsg,vchange=""):
     """Fail the module if called and pass out the error message"""
-    ansible_facts={}
+    tmp_ansible_facts={}
 
-    if not vchange:
-        vchange="False"
+    if not vchanged:
+        vchanged = "Unknown"
 
     if msg:
-        module.fail_json(msg=vmsg,ansible_facts,changed=vchange)
+        module.fail_json(msg=vmsg,ansible_facts=tmp_ansible_facts,changed=vchange)
+
+
+def exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
+    """Execute srvctl command against an instance"""
+    global grid_home
+    global oracle_home
+    global node_number
+    global oracle_sid
+
+    set_environmentals(vdb_name)
+
+    if not vparam:
+      cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -i " + vdb_name + str(vinst)
+    else:
+      cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -i " + vdb_name + str(vinst) + " -" + vparam
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except: # Exception as e:
+        my_err_msg = my_err_msg + ' Error: srvctl module executing srvctl command error - executing srvctl command %s on %s with option %s %s meta sysinfo: %s' % (vcmd, vobj, vopt1, vopt2, sys.exc_info()[0])
+        my_err_msg = my_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_err_msg, sys.exc_info()[2])
+        raise Exception (my_err_msg)
+
+    return 0
+
+
+def exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
+    """Execute srvctl command against a database """
+    global grid_home
+    global oracle_home
+    global node_number
+
+    set_environmentals(vdb_name)
+
+    # if eval, force or verbose passed in:
+    if vparam:
+        # srvctl stop database -d tstdb -stopoption immediate -force   (-force for database stop parameter stops the database, its instances, its services, and any resources that depend on those services)
+        vcmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " -" + vcmd + "option " + vstopt + " " + vparam
+    else:
+        vcmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " -" + vcmd + "option " + vstopt
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        process = subprocess.Popen([vcmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = "Error: srvctl module executing srvctl command against database. vcmd: [%s]" % (vcmd)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    return 0
+
+
+def set_environmentals(db_name):
+    """Set grid_home, node_number and oracle_home program global variables"""
+    global grid_home
+    global node_number
+    global oracle_home
+    global oracle_sid
+    global thishost
+    global vall_hosts
+
+    # collect environmental information needed to proceed.
+    if not grid_home:
+        grid_home = get_gihome()
+    if not node_number:
+        node_number = get_node_num()
+    if not oracle_home:
+        oracle_home = get_orahome_procid(db_name)
+    if not thishost:
+        thishost = get_hostname()
+    if not vall_hosts:
+        vall_hosts = list_all_hosts()
+    if not oracle_sid:
+        oracle_sid = db_name + node_number
+
+    return 0
+
+
+def get_expected_state(vcmd,vobj,vorig):
+    """Return dictionary object with the expected state based on object : ( instance / database ) and
+       command ( start / stop ). meta ( mount, nomount etc. )."""
+    tmp_exp_state = {}
+
+    if vcmd.lower() == "stop":
+        tmp_exp_state = {'exp_state': 'OFFLINE', 'meta': 'Instance Shutdown'}
+    elif vcmd.lower() == "start":
+      if orig_vstopt.lower() == "nomount":
+          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Dismounted'}
+      elif orig_vstopt.lower() ==  "mount":         # crsstat output : ora.tstdb.db   database   C ONLINE     INTERMEDIATE tlorad01     0  0 Mounted (Closed)
+          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Mounted (Closed)'}
+      elif orig_vstopt.lower() == "open":
+          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
+      elif orig_vstopt.lower() == "read only":
+          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open,Readonly'}
+      elif orig_vstopt == "read write":
+          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
+      elif orig_vstopt == "restrict":
+          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Restricted Access'}
+
+      # Return dictionary with {state: value, meta: value}
+      return (tmp_exp_state)
+
+
+def get_db_meta_state(vdb_name):
+    """return list of strings for all nodes with meta state
+       Possible meta states: 'Open', 'Instance Shutdown', 'Mounted (Closed)'', 'Dismounted', 'Open,Readonly', 'Restricted Access' """
+
+    global grid_home
+    global debugme
+    global thishost
+    global vall_hosts
+
+    tmp_meta_state = {}
+
+    if not thishost:
+        vhostname = get_hostname()
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    if vdb_name[-1].isdigit() :
+        vdb_name = local_db[:-1]
+
+    if not vall_hosts:
+        vall_hosts = list_all_hosts()
+
+    for vhost in vall_hosts:
+
+        cmd_str = grid_home + "/bin/crsctl status resource ora." + vdb_name + ".db -v -n " + vhost + " | grep STATE_DETAILS | cut -d '=' -f 2"
+
+        try:
+            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+        except:
+            err_msg = err_msg + ' Error[7]: srvctl module get_db_status_meta() error - retrieving STATE_DETAILS local_db: %s' % (local_db, sys.exc_info()[0])
+            err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+            raise Exception (err_msg)
+
+        meta_state = output.strip()
+
+        tmp_meta_state[vhost] = meta_state
+
+    return(meta_state)
+
+
+def list_all_hosts():
+    """Return a list of strings containing all nodes in the cluster with domain stripped off.
+       [tlorad01,tlorad02]"""
+
+    global all_nodes
+    global grid_home
+
+    if not grid_home:
+        grid_home = get_gihome()
+
+    cmd_str = grid_home + "/bin/olsnodes -i | /bin/awk '{ print $1}'"
+
+    try:
+      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+       err_msg = err_msg + ' Error[ list_all_hosts() ]: srvctl module list_all_hosts() error - retrieving a list of all hosts in the RAC'
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    tmp_list = output.strip().split('\n')
+
+    return(tmp_list)
 
 
 # ===================================================================================================
@@ -406,10 +593,13 @@ def main ():
         param     = dict(required=False),       # extra parameter for stop (last running instance etc.): -force
         ttw       = dict(required=False)        # Time To Wait (ttw) for srvctl command to change database state
       ),
-      supports_check_mode = False
+      supports_check_mode = False               # srvctl has '-eval' parameter. Use it to implement ???
   )
 
-  # ===================== Start getting and checking module parameters ===========================
+  # at this point there's been no change to anything by the module
+  vchanged=False
+
+  # =============================== Start getting and checking module parameters ===================================
   # Get first 3 arguements passed from Ansible playbook
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
@@ -449,14 +639,12 @@ def main ():
   except:
       vparam = ""
 
-  # check if vparam is valid if passed in:
+  # check if vparam given ck if its valid:
   if vparam and not vparam.lower() in ["eval","force","verbose"]:
       mod_fail("vparam not valid")
   else:
       vparam = "-" + vparam
 
-  # Get time to Wait parameter (ttw)
-  # If no ttw parameter passed use default.
   try:
       vttw = module.params["ttw"]
   except:
@@ -468,45 +656,51 @@ def main ():
       if result != 0:
           module.fail_json(msg='The stopt parameter passed was not part of the limited set of valid startoption/stopoptions this module handles.','Error: invalid stopt parameter.',changed=False)
 
-  # at this point there's been no change to anything by the module
-  vchanged=False
-
-  # collect environmental information needed to proceed.
-  if not grid_home:
-      grid_home = get_gihome()        # if grid_home varaible isn't set get it.
-  if not node_number:
-      node_number = get_node_num()    # if the node number isn't set get it.
-  if not oracle_home:
-      oracle_home = get_orahome_procid(vdb)  # if oracle_home isn't set get it for this database.
-
   # If debugging save current state of all variables:
   if debugme:
       tmp = "vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home)
       debug_info(tmp)
 
   # set the expected object state given command and object
-  expected_status = set_exp_status(vcmd,vobj)
+  expected_state = get_expected_state(vcmd,vobj)
 
   # get the actual current state of the database
-  current_status = get_db_status(vdb_name)
+  current_state = get_db_state(vdb_name)
 
-  # If running srvctl against a database ( comparison is different than instance )
-  # check if all database instances are currently in the furture state:
-  # ie. all instances already OFFLINE if stopping database. If not execute srvctl command.
-  if vobj.lower() == "database" and not all(item == exp_status for item in current_status):
+  # get the list index for this instance
+  this_inst_indx = vinst - 1
+# =========================================== END PARAMETERS ===========================================
 
-      # srvctl stop database -d tstdb -stopoption immediate -force   (-force for database stop parameter stops the database, its instances, its services, and any resources that depend on those services)
-      vcmd = "export ORACLE_SID=" + vdb + str(node_number) + "; export ORACLE_HOME=" + oracle_home + "; " + oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb + " -" + vcmd + "option " + vstopt + " " + vparam
+# ========================================= START SRVCTL COMMAND =======================================
+  # If db not in future state already run srvctl command.
+  if vobj.lower() == "database" and not all(item == expected_state['exp_state'] for item in current_status)::
 
-      try:
-          process = subprocess.Popen([cmd_strng], stdout=PIPE, stderr=PIPE, shell=True)
-          output, code = process.communicate()
-      except:
-              custom_err_msg = "Error: srvctl module executing srvctl command against database. vcmd: [%s]" % (vcmd)
-              custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-              raise Exception (custom_err_msg)
+          exe_results = exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam) # exec_db_srvctl(vdb_name)
 
-      #Once the command is executed wait for the database to reach the expected state
-      whatstatus = wait_for_it(vdb, exp_status, exp_status_meta, ttw, vinst) # exp_status_meta - not sure this is really needed. Added the code get_meta_data but not implemented. Gets db status: "Mounted (Closed)", "Open,Readonly", "Instance Shutdown", etc..
-                                                                                     # target, state, state details = OFFLINE, OFFLINE, Instance Shutdown or ONLINE, ONLINE, Open,Readonly, etc.
-      vchanged = "True"
+          if exe_results == 0:
+              vchanged = "True"
+
+  # Else dealing with instance. Check current_state vs expected state. Run srvctl cmd if needed.
+  elif vobj.lower() == "instance" and current_state[this_inst_indx] != expected_state['exp_state']:
+
+          exe_results = exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
+
+          if exe_results == 0:
+              vchanged = "True"
+
+  else:
+          # The instance or database was already started or stopped.
+          if vcmd.lower() == "start":
+              vphrase = "started"
+          elif vcmd.lower() == "stop":
+              vphrase = "stopped"
+          msg = "srvctl module complete. %s %s already %s. No action taken. %s current state: [%s]" % (vdb, vobj, vphrase, vdb, str(current_state))
+
+
+if vchanged == "True":
+    wait_results = wait_for_it(vdb_name, vobj, exp_status, exp_status_meta, ttw, vinst)
+
+module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
+
+if __name__ == '__main__':
+    main()
