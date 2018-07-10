@@ -76,11 +76,11 @@ EXAMPLES = '''
 
 # Global variables
 # module parameters
-debugme  = True
+debugme  = False
 vdb_name = ""
 vcmd     = ""
 vobj     = ""
-vinst    = -1
+vinst    = ""
 vstopt   = ""
 vparam   = ""
 default_ttw = 5
@@ -291,20 +291,19 @@ def get_db_state(db_name):
         raise Exception (custom_err_msg)
 
     #  possible outputs:
-    # ['STATE=OFFLINE', ' OFFLINE']   ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']  ['ONLINE on tlorad01', 'OFFLINE']\r\n",
+    # STATE=INTERMEDIATE on tlorad01, INTERMEDIATE on tlorad02 ['STATE=OFFLINE', ' OFFLINE']   ['STATE=ONLINE on tlorad01', ' ONLINE on tlorad02']  ['ONLINE on tlorad01', 'OFFLINE']  ['INTERMEDIATE', ' INTERMEDIATE on tlorad02']
     node_status = output.strip().split(",")
 
     i = 0
     for item in node_status:
-      if "STATE=" in item:
-          node_status[i]=item.split("=")[1].strip()            # splits STATE and OFFLINE and returns status 'OFFLINE'
-          if "ONLINE" in node_status[i] or "INTERMEDIATE" in node_status[i]:
-              node_status[i] = node_status[i].strip().split(" ")[0].strip().rstrip()
-      elif "ONLINE" in item:
-          node_status[i]=item.strip().split(" ")[0].strip().rstrip()
-      elif "OFFLINE" in item:
-          node_status[i] = item.strip().rstrip()
-      i += 1
+        if "=" in item:
+            node_status[i]=item.split("=")[1].strip()
+        if " on " in node_status[i]:
+            host_name = node_status[i].split(" on ")[1].strip()
+            node_status[i] = node_status[i].split(" on ")[0].strip()
+        else:
+            node_status[i] = node_status[i].strip()
+        i += 1
 
     if debugme:
         tmp_info = " get_db_state() exit. status %s" % (str(node_status))
@@ -334,21 +333,23 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     if vobj.lower() == "database":
 
         try:
+
           current_state = get_db_state(vdb_name)
+          # custom_exit_msg = "wait_for_it() with current_state: %s vexp_state: %s " % (str(current_state), str(vexp_state))
+          # sys.exit(custom_exit_msg)
           while (not all(item == vexp_state['exp_state'] for item in current_state) and (time.time() < timeout)):
             time.sleep(2)
             current_state = get_db_state(vdb_name)
         except:
             custom_err_msg = 'Error[ wait_for_it() ]: waiting for database state to reach: %s current state: %s excpetion: %s' % (vexp_state['exp_state'], str(current_state), sys.exc_info()[0])
-            custom_err_msg = custom_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+            custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
             raise Exception (custom_err_msg)
 
         if vexp_state['meta']:
 
-            current_meta_state = {}
-
             current_meta_state = get_db_meta_state(vdb_name)
-
+            # custom_exit_msg = "wait_for_it() with current_state: %s vexp_state: %s current_meta_state: %s" % (str(current_state), str(vexp_state), str(current_meta_state))
+            # sys.exit(custom_exit_msg)
             try:
                 while (not all(item == vexp_state['meta'] for item in current_meta_state.values()) and (time.time() < timeout)):
                     time.sleep(2)
@@ -421,7 +422,7 @@ def is_opt_valid(vopt,vcmd):
     """Check that a given -stopoption / -startoption is valid. 0 valid 1 invalid."""
     # This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
     valid_stop=('normal','immediate','abort') # 'local','transactional'
-    valid_start=('open','mount') # 'nomount','force','restrict'
+    valid_start=('open','mount','restrict','nomount') # ,'force',
 
     if vcmd.lower() == "start":
         if vopt in valid_start:
@@ -457,10 +458,17 @@ def exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
 
     set_environmentals(vdb_name)
 
-    if vparam:
-        cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -i " + vdb_name + str(vinst) + " " + vparam
+    if vparam and vstopt:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%soption %s %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vstopt,vparam)
+    elif vstopt and not vparam:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%soption %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vstopt)
+    elif vparam and not vstopt:
+        cmd_str = cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vparam)
     else:
-        cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -i " + vdb_name + str(vinst)
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s "  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
+
+    # custom_exit_msg = "cmd_str: %s  vstopt: %s, vparam: %s" % (cmd_str, vstopt, vparam)
+    # sys.exit(custom_exit_msg)
 
     try:
         os.environ['USER'] = 'oracle'
@@ -485,11 +493,14 @@ def exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
     set_environmentals(vdb_name)
 
     # if eval, force or verbose passed in:
-    if vparam:
-        # srvctl stop database -d tstdb -stopoption immediate -force   (-force for database stop parameter stops the database, its instances, its services, and any resources that depend on those services)
-        cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -" + vcmd + "option " + vstopt + " " + vparam
+    if vstopt and vparam:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -%soption %s %s"  % (oracle_home,vcmd,vobj,vdb_name,vcmd,vstopt,vparam)
+    elif vstopt and not vparam:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -%soption %s"  % (oracle_home,vcmd,vobj,vdb_name,vcmd,vstopt)
+    elif vparam and not vstopt:
+        cmd_str = "%s/bin/srvctl %s %s -d %s %s"  % (oracle_home,vcmd,vobj,vdb_name,vparam)
     else:
-        cmd_str = oracle_home + "/bin/srvctl " + vcmd + " " + vobj + " -d " + vdb_name + " -" + vcmd + "option " + vstopt
+        cmd_str = "%s/bin/srvctl %s %s -d %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name)
 
     try:
         os.environ['USER'] = 'oracle'
@@ -643,7 +654,8 @@ def main ():
 
   # local vars
   custom_err_msg = ""
-  vchanged = "False"
+  vchanged = False
+  no_action = False
 
   module = AnsibleModule(
       argument_spec = dict(
@@ -659,26 +671,29 @@ def main ():
   )
 
   # =============================== Start getting and checking module parameters ===================================
+  # ** Note: parameters are passed as strings, even number parameters.
   # Get first 3 arguements passed from Ansible playbook
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
 
-  # See if instance # was defined.
-  try:
-      vinst = str(module.params["inst"])
-      custom_err_msg = "type(vinst): %s curent value: [%s]" % (type(vinst), vinst)
-      raise Exception (custom_err_msg)
-  except:
-      vinst = "" # -1 means no instance number specified.
-
   # Ensure if object is an instance and instance number wasn't defined raise exception
-  if vobj == "instance" and not vinst:
-      custom_err_msg = "ERROR: operation against an %s but no %s number defined." % (vobj, vobj)
-      raise Exception (custom_err_msg)
+  if vobj.lower() == "instance":
+        # See if instance number was defined.
+        try:
+            vinst = str(module.params["inst"])
+            if vinst:
+                inst_to_ck_indx = int(vinst) - 1
+            else:
+                sys.exit("Instance number needed for operations against an instance.")
+        except:
+            vinst = "" # -1 means no instance number specified.
+            custom_err_msg = "ERROR: operation against an %s but no %s number defined." % (vobj, vobj)
+            raise Exception (custom_err_msg)
 
   # Else if object is a database and instance number passed ignore the instance number and tell user.
   elif vobj == "database" and vinst:
+
       if not msg:
           msg = " Passing an instance number when doing database operations is invalid. Instance number ignored."
       else:
@@ -690,7 +705,7 @@ def main ():
   except:
       vstopt = ""
 
-  # parameter for stop instance / database to cause failover or stop if no other instance running: -force
+  # parameter for stop instance | database to cause failover or stop if no other instance running: -force
   # -force - This parameter fails the running services over to another instance. Services dont failover if -force not specified!
   try:
       vparam = module.params["param"]
@@ -729,13 +744,6 @@ def main ():
   # get the actual current state of the database
   current_state = get_db_state(vdb_name)
 
-  # instance to check
-  if vinst is not None:
-      try:
-          inst_to_ck_indx = int(vinst) - 1
-      except ValueError:
-          pass
-
   # ==========================================  END PARAMETERS  ===========================================
 
   # =========================================  START SRVCTL COMMAND  =======================================
@@ -757,18 +765,24 @@ def main ():
           vchanged = "True"
 
   else:
+      no_action = True
           # The instance or database was already started or stopped.
       if vcmd.lower() == "start":
-          vphrase = "started"
+          vwording = "started"
       elif vcmd.lower() == "stop":
-          vphrase = "stopped"
-      msg = "srvctl module complete. %s %s already %s. No action taken. %s current state: [%s] and expected was: %s" % (vdb_name, vobj, vphrase, vdb_name, str(current_state), str(vexpected_state))
+          vwording = "stopped"
+      msg = "srvctl module complete. %s %s already %s. No action taken. %s current state: [%s] and expected was: %s" % (vdb_name, vobj, vwording, vdb_name, str(current_state), str(vexpected_state))
 
 
   if vchanged == "True":
       wait_results = wait_for_it(vdb_name, vobj, vexpected_state, vttw, vinst)
 
-  msg = msg + "srvctl module complete. %s %s %s. Expected state: %s reached." % (vdb, vobj, vcmd, vexpected_state['exp_state'])
+  if not no_action:
+      if vcmd.lower() == "start":
+          vwording = "started"
+      elif vcmd.lower() == "stop":
+          vwording = "stopped"
+      msg = msg + "srvctl module complete. %s %s %s. Expected state: %s reached." % (vdb_name, vobj, vwording, vexpected_state['exp_state'])
 
   module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
