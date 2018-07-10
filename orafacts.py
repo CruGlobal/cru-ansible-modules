@@ -352,7 +352,7 @@ def get_ora_homes():
 def get_db_status(local_vdb):
     """
     Return the status of the database on the node it runs on.
-    The db name can be passed with, or without the instance number attachedself.
+    The db name can be passed with, or without the instance number attached.
     The return value is only the status of the instance it runs on so the instance numbers is obtained and
     is used as an index on this list: ['ONLINE', 'ONLINE'] and that value is returned.
     """
@@ -461,6 +461,7 @@ def get_meta_data(local_db):
         local_db = local_db[:-1]
 
     tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+
     try:
         process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
@@ -471,7 +472,7 @@ def get_meta_data(local_db):
 
     if not output:
         try:
-            local_ora_home = get_dbhome(local_db)
+            local_ora_home = get_orahome_procid(local_db)
             spcl_state = get_more_db_info(local_db, local_ora_home)
         except:
             err_msg = ' Error: get_meta_data(): call to get_more_db_info(): local_db: %s local_ora_home: %s spcl_state: %s' % (local_db, local_ora_home, spcl_state)
@@ -921,6 +922,35 @@ def host_name():
     tmphost = output.strip()
 
     return(tmphost)
+
+
+def get_orahome_procid(vdb):
+    """Get database Oracle Home from the running process."""
+
+    # get the pmon process id for the running database.
+    # 10189  tstdb1
+    try:
+      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_" + vdb + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed")[1])
+    except:
+      err_cust_err_msg = 'Error: get_orahome_procid() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
+      err_cust_err_msg = cust_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+      raise Exception (err_msg)
+
+    # ['10189', 'tstdb1']
+    vprocid = vproc.split()[0]
+
+    # get Oracle home the db process is running out of
+    # (0, ' /app/oracle/12.1.0.2/dbhome_1/')
+    try:
+      vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/\/bin\/oracle$//' ")[1])
+    except:
+      custom_err_msg = 'Error[ get_orahome_procid() ]:  (%s)' % (sys.exc_info()[0])
+      err_cust_err_msg = cust_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+      raise Exception (err_msg)
+
+    ora_home = vhome.strip()
+
+    return(ora_home)
 
 
 # ================================== Main ======================================
