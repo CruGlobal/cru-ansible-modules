@@ -54,7 +54,7 @@ EXAMPLES = '''
      inst: [ valid instance number ]
     stopt: (stop options): [ normal | immediate | abort ]
            (start options): [ open | mount | nomount | restrict | read only | read write | write ]
-      opt: [ eval | force | verbose ]
+    param: [ eval | force | verbose ]
       ttw: time to wait (in min) for status change after executing the command. Default 5.
 
     Notes:
