@@ -124,9 +124,10 @@ def get_dbhome(local_vdb):
     """Return database home as recorded in /etc/oratab"""
     global my_msg
 
-    tmp_cmd = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
+    cmd_str = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
+
     try:
-        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
        my_msg = my_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
@@ -257,6 +258,18 @@ def get_installed_ora_homes2():
         return (home11g)
 
 
+def strip_version(vorahome):
+    """Strip the oracle version from an oracle_home entry"""
+
+    all_items = vorahome.split("/").strip()
+
+    for item in all_items:
+        if item and item[0].isdigit():
+            return(item)
+
+    return 1
+
+
 def get_db_home_n_vers(local_db):
     """Using /etc/oratab return the Oracle Home for the database"""
     global err_msg
@@ -275,7 +288,20 @@ def get_db_home_n_vers(local_db):
 
     vhome = output.strip()
 
-    vversion = get_nth_item("/", 3, vhome) #  get_nth_item(vchar, vfieldnum, vstring)
+    if vhome:
+        try:
+            vversion = get_nth_item("/", 3, vhome) #  get_nth_item(vchar, vfieldnum, vstring)
+        except:
+            custom_err_msg = " Error[ get_db_home_n_vers() ]: getting oracle_home for database: %s" % (local_db)
+            custom_err_msg = custom_err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+            raise Exception (custom_err_msg)
+    else:
+        vhome = get_orahome_procid(local_db)
+        if vhome:
+            vversion = strip_version(vhome)
+        else:
+            exit_msg = "no process running for : %s" % (local_db)
+            sys.exit(exit_msg)
 
     return_info = { local_db: {'home':vhome, 'version': vversion}}
 
@@ -910,10 +936,10 @@ def host_name():
     """Return the hostname"""
     global msg
 
-    tmp_cmd = "/bin/hostname"
+    cmd_str = "/bin/hostname"
 
     try:
-        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
         msg = msg + ' ERROR [33] host_name() error obtaining hostname on linux : %s' % (local_db)
@@ -935,6 +961,16 @@ def get_orahome_procid(vdb):
       err_cust_err_msg = 'Error: get_orahome_procid() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
       err_cust_err_msg = cust_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
       raise Exception (err_msg)
+
+    # if the database isnt running (no process id)
+    # try getting oracle_home from /etc/oratab
+    if not vproc:
+        tmp_home = get_dbhome(vdb)
+        if tmp_home:
+            return tmp_home
+        else:
+            exit_msg = "Error determining oracle_home for database: %s all attempts failed! (proc id, srvctl, /etc/oratab)"
+            sys.exit(exit_msg)
 
     # ['10189', 'tstdb1']
     vprocid = vproc.split()[0]

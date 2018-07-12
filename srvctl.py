@@ -438,8 +438,44 @@ def mod_fail(vmsg,vchange=""):
         module.fail_json(msg=vmsg,ansible_facts=tmp_ansible_facts,changed=vchange)
 
 
-def exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
-    """Execute srvctl command against an instance"""
+def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
+    """Execute 11g srvctl command against an instance"""
+    global module
+    global grid_home
+    global oracle_home
+    global node_number
+    global oracle_sid
+    global debugme
+    global msg
+
+    set_environmentals(vdb_name)
+
+    if msg and vparam:
+        msg = msg + "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+    elif vparam:
+        msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+
+    if vparam:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vparam)
+    else:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s "  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except: # Exception as e:
+        custom_err_msg = 'Error[ exec_inst_srvctl_12_cmd() ]: executing srvctl command %s on %s %s with -%soption %s ' % (cmd_str, vobj, vdb_name, vcmd, vstopt)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (my_err_msg)
+
+    return 0
+
+
+def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
+    """Execute 12c srvctl command against an instance"""
     global module
     global grid_home
     global oracle_home
@@ -465,15 +501,15 @@ def exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except: # Exception as e:
-        custom_err_msg = 'Error[ exec_inst_srvctl_cmd() ]: executing srvctl command %s on %s %s with -%soption %s ' % (cmd_str, vobj, vdb_name, vcmd, vstopt)
+        custom_err_msg = 'Error[ exec_inst_srvctl_12_cmd() ]: executing srvctl command %s on %s %s with -%soption %s ' % (cmd_str, vobj, vdb_name, vcmd, vstopt)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (my_err_msg)
 
     return 0
 
 
-def exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
-    """Execute srvctl command against a database """
+def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
+    """Execute 12c srvctl command against a database """
     global grid_home
     global oracle_home
     global node_number
@@ -496,7 +532,40 @@ def exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-        custom_err_msg = "Error[ exec_db_srvctl_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
+        custom_err_msg = "Error[ exec_db_srvctl_12_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    return 0
+
+
+def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
+    """Execute 11g srvctl command against a database """
+    global grid_home
+    global oracle_home
+    global node_number
+    global msg
+
+    set_environmentals(vdb_name)
+
+    if msg and vparam:
+        msg = msg + "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+    elif vparam:
+        msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+
+    if vparam:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vparam)
+    else:
+        cmd_str = "%s/bin/srvctl %s %s -d %s "  % (oracle_home,vcmd,vobj,vdb_name)
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = "Error[ exec_db_srvctl_12_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
@@ -535,6 +604,11 @@ def get_expected_state(vcmd, vstopt):
     global debugme
 
     tmp_exp_state = {}
+
+    if not vstopt and vcmd == "stop":
+        vstopt = "immediate"
+    elif vcmd == "start":
+        vstopt = "open"
 
     if vcmd.lower() == "stop":
         tmp_exp_state = {'exp_state': 'OFFLINE', 'meta': 'Instance Shutdown'}
@@ -623,6 +697,20 @@ def list_all_hosts():
     return(tmp_list)
 
 
+def extract_maj_version(ora_home):
+    """Given an oracle_home string extract the major version number (i.e. 11, 12)"""
+
+    all_items = ora_home.split("/")
+
+    for item in all_items:
+        item.strip()
+        if item and item[0].isdigit():
+            major_ver = item.split(".")[0]
+            return(major_ver)
+
+    return 1
+
+
 # ===================================================================================================
 #                                          MAIN
 # ===================================================================================================
@@ -688,7 +776,7 @@ def main ():
       else:
           msg = msg + " Passing an instance number when doing database operations is invalid. Instance number ignored."
 
-  # srvctl start/stop options (-startoption/-stopoption)
+  # srvctl start | stop options (-startoption | -stopoption)
   try:
       vstopt = module.params["stopt"]
       if vstopt and vstopt in ['read only','read write']:
@@ -711,6 +799,13 @@ def main ():
       if vparam:
           msg = "invalid parameter ignored: [%s] " % (vparam)
 
+  # 0 valid, 1 invalid. checked against a list of valid startoptions | stopoptions
+  if vstopt:
+      vresult = is_opt_valid(vstopt,vcmd)
+      if vresult != 0:
+          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj)
+          module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
+
   try:
       vttw = module.params["ttw"]
       if not vttw:
@@ -718,23 +813,21 @@ def main ():
   except:
       vttw = default_ttw
 
-  # # 0 valid, 1 invalid. checked against a list of valid startoptions | stopoptions
-  if vstopt:
-      vresult = is_opt_valid(vstopt,vcmd)
-      if vresult != 0:
-          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj)
-          module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
-
   # If debugging save current state of all variables:
   if debugme:
       tmp = "vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home)
       debugging_info(tmp)
+
 
   # set the expected object state given command and object
   vexpected_state = get_expected_state(vcmd,vstopt)
 
   # get the actual current state of the database
   current_state = get_db_state(vdb_name)
+
+  # see if it's 11g database (no stopt) in 11g srvctl Commands
+  tmp_str = get_orahome_procid(vdb_name)
+  maj_ver = extract_maj_version(tmp_str)
 
   # ==========================================  END PARAMETERS  ===========================================
 
@@ -743,7 +836,10 @@ def main ():
   # If db not in future state already run srvctl command.
   if vobj.lower() == "database" and not all(item == vexpected_state['exp_state'] for item in current_state):
 
-      exe_results = exec_db_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam) # exec_db_srvctl(vdb_name)
+      if maj_ver == "12":
+          exe_results = exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam)
+      elif maj_ver == "11":
+          exe_results = exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam)
 
       if exe_results == 0:
           vchanged = "True"
@@ -751,7 +847,10 @@ def main ():
   # Else dealing with instance. Check current_state vs expected state. Run srvctl cmd if needed.
   elif vobj.lower() == "instance" and current_state[inst_to_ck_indx] != vexpected_state['exp_state']:
 
-      exe_results = exec_inst_srvctl_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
+      if maj_ver == "12":
+          exe_results = exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
+      elif maj_ver == "11":
+          exe_results = exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
 
       if exe_results == 0:
           vchanged = "True"
