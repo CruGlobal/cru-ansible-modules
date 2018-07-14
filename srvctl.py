@@ -96,12 +96,22 @@ custom_err_msg = ""
 debug_msg = ""
 
 
-def debugging_info(new_msg):
+def add_to_msg(vmsg):
+    """Add some info to the ansible_facts output message"""
+    global msg
+
+    if msg:
+        msg = msg + " " + vmsg
+    else:
+        msg = vmsg
+
+
+def debug_info(new_msg):
     """Compiles debugging messages into one string."""
     global debug_msg
 
     if debug_msg:
-        debug_msg = debug_msg + new_msg
+        debug_msg = debug_msg + " " + new_msg
     else:
         debug_msg = new_msg
 
@@ -177,7 +187,7 @@ def get_node_num():
 
     if debugme:
         tmp_msg = "get_node_num() executed this cmd: %s and determined node #: %s full output: %s" % (cmd_str, node_number, output)
-        debugging_info(tmp_msg)
+        debug_info(tmp_msg)
 
     return(node_number)
 
@@ -309,7 +319,7 @@ def get_db_state(db_name):
 
     if debugme:
         tmp_info = " get_db_state() exit. status %s" % (str(node_status))
-        debugging_info(tmp_info)
+        debug_info(tmp_info)
 
     # this function returns a list of strings with host by index : index 0 = node 1, index 1 = node 2
     #                                              node1         node2
@@ -329,6 +339,10 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     # take current time and add 5 (vttw) minutes (60 * 5)
     # this will be time to stop if database expected state isn't reached.
     timeout =  time.time() + (60 * int(vttw))
+
+    if debugme:
+        debug_msg = "wait_for_it() called with vdb_name: [%s], vobj: [%s], vexp_state: [%s], vttw: [%s], vinst: [%s]"
+        debug_info()
 
     if vobj.lower() == "database":
 
@@ -379,8 +393,8 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
           current_meta_state = {}
 
           if debugme:
-              msg = "debug message: wait_for_it(%s, %s, %s, %s) vexp_state[meta] loop." % (vdb_name, str(vexp_state), vttw, str(vinst))
-              debugging_info(msg)
+              debug_msg = "debug message: wait_for_it(%s, %s, %s, %s) vexp_state[meta] loop." % (vdb_name, str(vexp_state), vttw, str(vinst))
+              debug_info(debug_msg)
 
           host_name_key = vall_hosts[vindex]
 
@@ -450,10 +464,9 @@ def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
 
     set_environmentals(vdb_name)
 
-    if msg and vparam:
-        msg = msg + "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
-    elif vparam:
-        msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+    if vparam:
+        tmp_msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+        add_to_msg(tmp_msg)
 
     if vparam:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vparam)
@@ -548,10 +561,9 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
 
     set_environmentals(vdb_name)
 
-    if msg and vparam:
-        msg = msg + "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
-    elif vparam:
-        msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+    if vparam:
+        tmp_msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+        add_to_msg(tmp_msg)
 
     if vparam:
         cmd_str = "%s/bin/srvctl %s %s -d %s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vparam)
@@ -598,16 +610,19 @@ def set_environmentals(db_name):
     return 0
 
 
-def get_expected_state(vcmd, vstopt):
+def get_expected_state(vcmd, vstopt, majver):
     """Return dictionary object with the expected state based on object : ( instance | database ) and
        command ( start | stop ). meta ( mount, nomount etc. )."""
     global debugme
 
     tmp_exp_state = {}
 
-    if not vstopt and vcmd == "stop":
+    # only
+    if not vstopt and vcmd == "stop" and majver = "11":
+        add_to_msg("no option specified for stop of 11g database, or instance. immediate assumed.")
         vstopt = "immediate"
-    elif vcmd == "start":
+    elif majver = "11" and vcmd == "start":
+        add_to_msg("no option specified for start of 11g database, or instance. open assumed.")
         vstopt = "open"
 
     if vcmd.lower() == "stop":
@@ -771,10 +786,8 @@ def main ():
   # Else if object is a database and instance number passed ignore the instance number and tell user.
   elif vobj == "database" and vinst:
 
-      if not msg:
-          msg = " Passing an instance number when doing database operations is invalid. Instance number ignored."
-      else:
-          msg = msg + " Passing an instance number when doing database operations is invalid. Instance number ignored."
+      add_to_msg("Passing an instance number when doing database operations is invalid. Instance number ignored.")
+
 
   # srvctl start | stop options (-startoption | -stopoption)
   try:
@@ -797,7 +810,8 @@ def main ():
       vparam = "-" + vparam
   else:
       if vparam:
-          msg = "invalid parameter ignored: [%s] " % (vparam)
+          tmp_msg = "invalid parameter ignored: [%s] " % (vparam)
+          add_to_msg(tmp_msg)
 
   # 0 valid, 1 invalid. checked against a list of valid startoptions | stopoptions
   if vstopt:
@@ -816,18 +830,17 @@ def main ():
   # If debugging save current state of all variables:
   if debugme:
       tmp = "vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home)
-      debugging_info(tmp)
-
-
-  # set the expected object state given command and object
-  vexpected_state = get_expected_state(vcmd,vstopt)
-
-  # get the actual current state of the database
-  current_state = get_db_state(vdb_name)
+      debug_info(tmp)
 
   # see if it's 11g database (no stopt) in 11g srvctl Commands
   tmp_str = get_orahome_procid(vdb_name)
   maj_ver = extract_maj_version(tmp_str)
+
+  # set the expected object state given command and object
+  vexpected_state = get_expected_state(vcmd,vstopt,maj_ver)
+
+  # get the actual current state of the database
+  current_state = get_db_state(vdb_name)
 
   # ==========================================  END PARAMETERS  ===========================================
 
@@ -862,7 +875,8 @@ def main ():
           vwording = "started"
       elif vcmd.lower() == "stop":
           vwording = "stopped"
-      msg = "srvctl module complete. %s %s already %s. No action taken. %s current state: [%s] and expected was: %s" % (vdb_name, vobj, vwording, vdb_name, str(current_state), str(vexpected_state))
+      tmp_msg = "srvctl module complete. %s %s already %s. No action taken. %s current state: [%s] and expected was: %s" % (vdb_name, vobj, vwording, vdb_name, str(current_state), str(vexpected_state))
+      add_to_msg(tmp_msg)
 
 
   if vchanged == "True":
@@ -873,10 +887,11 @@ def main ():
           vwording = "started"
       elif vcmd.lower() == "stop":
           vwording = "stopped"
-      msg = msg + "srvctl module complete. %s %s %s. Expected state: %s reached." % (vdb_name, vobj, vwording, vexpected_state['exp_state'])
+      tmp_msg = "srvctl module complete. %s %s %s. Expected state: %s reached." % (vdb_name, vobj, vwording, vexpected_state['exp_state'])
+      add_to_msg(tmp_msg)
 
   if debugme:
-      msg = msg + debug_msg
+      add_to_msg(debug_msg)
 
   module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
