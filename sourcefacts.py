@@ -254,6 +254,25 @@ def main ():
     vtemp = vtemp[0][0]
     ansible_facts[refname]['bct_status'] = vtemp
 
+    # db_create_online_log_dest_# that aren't null. Needed for utils restore.
+    # they will need to be changed in the new database.
+    log_dests={}
+    try:
+      cur.execute("select name,value from v$parameter where replace(value,'+','') in (select name from  v$asm_diskgroup where state = 'CONNECTED' and name not like '%FRA%')")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
+
+    try:
+      online_logs =  cur.fetchall()
+      for create_item,item_value in online_logs:
+        log_dests.update({create_item: item_value})
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
+
+    ansible_facts[refname]['online_logs_dest'] = log_dests
+
     # Does the ULNFSA02_DATAPUMP directory exist?
     dirs={}
     try:

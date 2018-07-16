@@ -618,10 +618,10 @@ def get_expected_state(vcmd, vstopt, majver):
     tmp_exp_state = {}
 
     # only
-    if not vstopt and vcmd == "stop" and majver = "11":
+    if not vstopt and vcmd == "stop" and majver == "11":
         add_to_msg("no option specified for stop of 11g database, or instance. immediate assumed.")
         vstopt = "immediate"
-    elif majver = "11" and vcmd == "start":
+    elif majver == "11" and vcmd == "start":
         add_to_msg("no option specified for start of 11g database, or instance. open assumed.")
         vstopt = "open"
 
