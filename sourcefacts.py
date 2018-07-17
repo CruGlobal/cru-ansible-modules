@@ -271,7 +271,7 @@ def main ():
       error, = exc.args
       module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
 
-    ansible_facts[refname]['online_logs_dest'] = log_dests
+    ansible_facts[refname]['log_dest'] = log_dests
 
     # Does the ULNFSA02_DATAPUMP directory exist?
     dirs={}
