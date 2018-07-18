@@ -410,7 +410,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
 
     # Did it stop because it timed out or because it succeeded? Pass timeout info back to user, else continue
     if time.time() > timeout:
-      custom_err_msg = " Error[ wait_for_it() ]: timed out occurred waiting for %s %s state to change executing: %s. Time to wait (ttw): %s. Additional info vexp_state: %s and actual current_state: %s vinst: %s current_meta_state: %s" % ( vobj, vdb_name, vcmd, str(vttw), str(vexp_state), str(current_state), str(vinst), str(current_meta_state) )
+      custom_err_msg = " Error[ wait_for_it() ]: time out occurred waiting for %s %s state to change executing: %s. Time to wait (ttw): %s. Additional info vexp_state: %s and actual current_state: %s vinst: %s current_meta_state: %s" % ( vobj, vdb_name, vcmd, str(vttw), str(vexp_state), str(current_state), str(vinst), str(current_meta_state) )
       custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
       raise Exception (custom_err_msg)
     else:
