@@ -70,7 +70,7 @@ EXAMPLES = '''
 
 
 # Global variables
-debugme  = False
+debugme  = True
 # module parameters
 vdb_name = ""
 vcmd     = ""
@@ -93,27 +93,39 @@ ansible_facts = {}
 msg = ""
 custom_err_msg = ""
 # debugging
-debug_msg = ""
+global_debug_msg = ""
 
-
-def add_to_msg(vmsg):
-    """Add some info to the ansible_facts output message"""
+def add_debug_info():
+    """If debugging add the global_debug_msg to the msg for json exit"""
     global msg
+    global global_debug_msg
 
     if msg:
-        msg = msg + " " + vmsg
+        msg = msg + global_debug_msg
     else:
-        msg = vmsg
+        msg = global_debug_msg
+
+
+def add_to_msg(tmpmsg):
+    """Add some info to the ansible_facts output message"""
+    global msg
+    global debug_msg
+
+    if msg:
+        msg = msg + tmpmsg
+    else:
+        msg = tmpmsg
 
 
 def debug_info(new_msg):
     """Compiles debugging messages into one string."""
-    global debug_msg
+    global debugme
+    global global_debug_msg
 
-    if debug_msg:
-        debug_msg = debug_msg + " " + new_msg
+    if global_debug_msg:
+        global_debug_msg = global_debug_msg + " " + new_msg
     else:
-        debug_msg = new_msg
+        global_debug_msg = new_msg
 
 
 def get_hostname():
@@ -336,13 +348,14 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     global debugme
     global vall_hosts
     global ansible_facts
+    global global_debug_msg
     # take current time and add 5 (vttw) minutes (60 * 5)
     # this will be time to stop if database expected state isn't reached.
     timeout =  time.time() + (60 * int(vttw))
 
     if debugme:
         debug_msg = "wait_for_it() called with vdb_name: [%s], vobj: [%s], vexp_state: [%s], vttw: [%s], vinst: [%s]"
-        debug_info()
+        debug_info(debug_msg)
 
     if vobj.lower() == "database":
 
@@ -411,6 +424,8 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     # Did it stop because it timed out or because it succeeded? Pass timeout info back to user, else continue
     if time.time() > timeout:
       custom_err_msg = " Error[ wait_for_it() ]: time out occurred waiting for %s %s state to change executing: %s. Time to wait (ttw): %s. Additional info vexp_state: %s and actual current_state: %s vinst: %s current_meta_state: %s" % ( vobj, vdb_name, vcmd, str(vttw), str(vexp_state), str(current_state), str(vinst), str(current_meta_state) )
+      if debugme:
+          custom_err_msg = custom_err_msg + global_debug_msg
       custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
       raise Exception (custom_err_msg)
     else:
@@ -422,19 +437,33 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
         return(0)
 
 
-def is_opt_valid(vopt,vcmd):
+def is_opt_valid(vopt,vcmd,majver):
     """Check that a given -stopoption | -startoption is valid. return 0 valid, 1 invalid."""
     # 0 valid, 1 invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
     # This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
-    valid_stop=('normal','immediate','abort','local','transactional')
-    valid_start=('open','mount','restrict','nomount','"read only"','write','"read write"') # ,'force',
+    valid_stop_12c = ('normal','immediate','abort','local','transactional')
+    valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"') # ,'force'
+    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
+    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
+    valid_stop_11g = ('normal','immediate',,'abort','transactional')
+    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
+    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
+    valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force') # ,'force'
 
-    if vcmd.lower() == "start":
-        if vopt in valid_start:
-            return 0
-    elif vcmd.lower() == "stop":
-        if vopt in valid_stop:
-            return 0
+    if majver == 12:
+        if vcmd.lower() == "start":
+            if vopt in valid_start_12c:
+                return 0
+        elif vcmd.lower() == "stop":
+            if vopt in valid_stop_12c:
+                return 0
+    elif majver == 11:
+        if vcmd.lower() == "start":
+            if vopt in valid_start_11g:
+                return 0
+        elif vcmd.lower() == "stop":
+            if vopt in valid_stop_11g:
+                return 0
 
     return 1
 
@@ -526,6 +555,8 @@ def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
     global grid_home
     global oracle_home
     global node_number
+    global debugme
+    global oracle_sid
 
     set_environmentals(vdb_name)
 
@@ -558,17 +589,31 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
     global oracle_home
     global node_number
     global msg
+    global debugme
+    global oracle_sid
 
     set_environmentals(vdb_name)
 
     if vparam:
-        tmp_msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
+        tmp_msg = "parameter: %s passed. srvctl 11g does not use parameters. %s ignored." % (vparam,vparam)
         add_to_msg(tmp_msg)
 
-    if vparam:
-        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vparam)
+    if vparam == "force":
+        vforce = "-f"
     else:
-        cmd_str = "%s/bin/srvctl %s %s -d %s "  % (oracle_home,vcmd,vobj,vdb_name)
+        vforce = ""
+
+    if vstopt and vforce:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s %s"  % (oracle_home,vcmd,vobj,vdb_name,stopt,vforce)
+    elif vstopt and not vforce:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,stopt)
+    else:
+        cmd_str = "%s/bin/srvctl %s %s -d %s"  % (oracle_home,vcmd,vobj,vdb_name)
+
+    if debugme:
+        dbug_msg = "def exec_db_srvctl_11_cmd(vdb_name=%s, vcmd=%s, vobj=%s, vstopt=%s, vparam=%s)" % (vdb_name,vcmd,vobj,vstopt,vparam)
+        debug_msg = dbug_msg + " cmd_str: " + cmd_str
+        debug_info(dbug_msg)
 
     try:
         os.environ['USER'] = 'oracle'
@@ -580,6 +625,10 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
         custom_err_msg = "Error[ exec_db_srvctl_12_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
+
+    if debugme:
+        dbug_msg = "code %s output %s" % (code,output)
+        debug_info(dbug_msg)
 
     return 0
 
@@ -813,13 +862,6 @@ def main ():
           tmp_msg = "invalid parameter ignored: [%s] " % (vparam)
           add_to_msg(tmp_msg)
 
-  # 0 valid, 1 invalid. checked against a list of valid startoptions | stopoptions
-  if vstopt:
-      vresult = is_opt_valid(vstopt,vcmd)
-      if vresult != 0:
-          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj)
-          module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
-
   try:
       vttw = module.params["ttw"]
       if not vttw:
@@ -836,6 +878,16 @@ def main ():
   tmp_str = get_orahome_procid(vdb_name)
   maj_ver = extract_maj_version(tmp_str)
 
+  # 0 valid, 1 invalid. checked against a list of valid star and stop options per major version
+  if vstopt:
+      vresult = is_opt_valid(vstopt,vcmd,maj_ver)
+      if vresult != 0 and maj_ver == "12":
+          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s on a %s database. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj,maj_ver)
+          module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
+      elif vresult != 0 and maj_ver == "11":
+          cust_msg = "The option parameter passed (%s) was not valid for %s %s on an %s database. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj,maj_ver)
+          module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
+
   # set the expected object state given command and object
   vexpected_state = get_expected_state(vcmd,vstopt,maj_ver)
 
@@ -848,6 +900,10 @@ def main ():
 
   # If db not in future state already run srvctl command.
   if vobj.lower() == "database" and not all(item == vexpected_state['exp_state'] for item in current_state):
+
+      if debugme:
+          dbg_msg = "maj_ver: %s vobj: %s expected_state: %s" % (maj_ver,vobj,str(vexpected_state))
+          debug_info(dbg_msg)
 
       if maj_ver == "12":
           exe_results = exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam)
@@ -891,7 +947,7 @@ def main ():
       add_to_msg(tmp_msg)
 
   if debugme:
-      add_to_msg(debug_msg)
+      add_debug_info()
 
   module.exit_json(msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
