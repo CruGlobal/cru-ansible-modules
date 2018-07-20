@@ -425,8 +425,8 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     if time.time() > timeout:
       custom_err_msg = " Error[ wait_for_it() ]: time out occurred waiting for %s %s state to change executing: %s. Time to wait (ttw): %s. Additional info vexp_state: %s and actual current_state: %s vinst: %s current_meta_state: %s" % ( vobj, vdb_name, vcmd, str(vttw), str(vexp_state), str(current_state), str(vinst), str(current_meta_state) )
       if debugme:
-          custom_err_msg = custom_err_msg + global_debug_msg
-      custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+          add_debug_info()
+      custom_err_msg = custom_err_msg + msg + " %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
       raise Exception (custom_err_msg)
     else:
         i = 0
@@ -445,19 +445,19 @@ def is_opt_valid(vopt,vcmd,majver):
     valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"') # ,'force'
     # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
     # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
-    valid_stop_11g = ('normal','immediate',,'abort','transactional')
+    valid_stop_11g = ('normal','immediate','abort','transactional')
     # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
     # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
     valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force') # ,'force'
 
-    if majver == 12:
+    if majver == "12":
         if vcmd.lower() == "start":
             if vopt in valid_start_12c:
                 return 0
         elif vcmd.lower() == "stop":
             if vopt in valid_stop_12c:
                 return 0
-    elif majver == 11:
+    elif majver == "11":
         if vcmd.lower() == "start":
             if vopt in valid_start_11g:
                 return 0
@@ -481,6 +481,55 @@ def mod_fail(vmsg,vchange=""):
         module.fail_json(msg=vmsg,ansible_facts=tmp_ansible_facts,changed=vchange)
 
 
+def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
+    """Execute 11g srvctl command against a database """
+    global grid_home
+    global oracle_home
+    global node_number
+    global msg
+    global debugme
+    global oracle_sid
+    vforce = ""
+
+    set_environmentals(vdb_name)
+
+    if vparam and "force" in vparam:
+        vforce = "-f"
+    elif vparam and "force" not in vparam:
+        tmpmsg = " Unknown parameter for 11g database: %s . Parameter ignored." % (vparam)
+        add_to_msg(tmpmsg)
+
+    if vstopt and vforce:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s %s" % (oracle_home,vcmd,vobj,vdb_name,vstopt,vforce)
+    elif vstopt and not vforce:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s" % (oracle_home,vcmd,vobj,vdb_name,vstopt)
+    else:
+        cmd_str = "%s/bin/srvctl %s %s -d %s" % (oracle_home,vcmd,vobj,vdb_name)
+
+    if debugme:
+        dbug_msg = "def exec_db_srvctl_11_cmd(vdb_name=%s, vcmd=%s, vobj=%s, vstopt=%s, vparam=%s)" % (vdb_name,vcmd,vobj,vstopt,vparam)
+        debug_msg = dbug_msg + " cmd_str: " + cmd_str
+        debug_info(dbug_msg)
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = "Error[ exec_db_srvctl_12_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
+        custom_err_msg = custom_err_msg + cmd_str
+        custom_err_msg = custom_err_msg + " %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    if debugme:
+        dbug_msg = "code %s output %s" % (code,output)
+        debug_info(dbug_msg)
+
+    return 0
+
+
 def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
     """Execute 11g srvctl command against an instance"""
     global module
@@ -493,14 +542,17 @@ def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
 
     set_environmentals(vdb_name)
 
-    if vparam:
-        tmp_msg = "parameter: %s passed. srvctl 11 does not use parameters. %s ignored." % (vparam,vparam)
-        add_to_msg(tmp_msg)
-
-    if vparam:
-        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vparam)
+    if vstopt and vparam:
+        if vparam and "force" in vparam:
+            vforce = "-f"
+        elif vparam and "force" not in vparam:
+            tmpmsg = " Unknown parameter for 11g database: %s . Parameter ignored." % (vparam)
+            add_to_msg(tmpmsg)
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -o %s %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vstopt,vforce)
+    elif vstopt:
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vstopt)
     else:
-        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s "  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
+        cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
 
     try:
         os.environ['USER'] = 'oracle'
@@ -510,8 +562,14 @@ def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
         output, code = process.communicate()
     except: # Exception as e:
         custom_err_msg = 'Error[ exec_inst_srvctl_12_cmd() ]: executing srvctl command %s on %s %s with -%soption %s ' % (cmd_str, vobj, vdb_name, vcmd, vstopt)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        custom_err_msg = custom_err_msg + " " + cmd_str
+        custom_err_msg = custom_err_msg + " %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (my_err_msg)
+
+    if debugme:
+        dbug_msg = cmd_str
+        dbug_msg = dbug_msg + "code %s output %s" % (code,output)
+        debug_info(dbug_msg)
 
     return 0
 
@@ -583,56 +641,6 @@ def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
     return 0
 
 
-def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
-    """Execute 11g srvctl command against a database """
-    global grid_home
-    global oracle_home
-    global node_number
-    global msg
-    global debugme
-    global oracle_sid
-
-    set_environmentals(vdb_name)
-
-    if vparam:
-        tmp_msg = "parameter: %s passed. srvctl 11g does not use parameters. %s ignored." % (vparam,vparam)
-        add_to_msg(tmp_msg)
-
-    if vparam == "force":
-        vforce = "-f"
-    else:
-        vforce = ""
-
-    if vstopt and vforce:
-        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s %s"  % (oracle_home,vcmd,vobj,vdb_name,stopt,vforce)
-    elif vstopt and not vforce:
-        cmd_str = "%s/bin/srvctl %s %s -d %s -o %s"  % (oracle_home,vcmd,vobj,vdb_name,stopt)
-    else:
-        cmd_str = "%s/bin/srvctl %s %s -d %s"  % (oracle_home,vcmd,vobj,vdb_name)
-
-    if debugme:
-        dbug_msg = "def exec_db_srvctl_11_cmd(vdb_name=%s, vcmd=%s, vobj=%s, vstopt=%s, vparam=%s)" % (vdb_name,vcmd,vobj,vstopt,vparam)
-        debug_msg = dbug_msg + " cmd_str: " + cmd_str
-        debug_info(dbug_msg)
-
-    try:
-        os.environ['USER'] = 'oracle'
-        os.environ['ORACLE_HOME'] = oracle_home
-        os.environ['ORACLE_SID'] = oracle_sid
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = "Error[ exec_db_srvctl_12_cmd() ]: executing srvctl command against %s %s. cmd_str: [%s] oracle_home: %s oracle_sid: %s" % (vobj,vdb_name,vcmd,oracle_home,oracle_sid)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    if debugme:
-        dbug_msg = "code %s output %s" % (code,output)
-        debug_info(dbug_msg)
-
-    return 0
-
-
 def set_environmentals(db_name):
     """Set program global variables grid_home, node_number, oracle_home, thishost (hostname), a list of all hosts (vall_hosts) and oracle_sid"""
     global grid_home
@@ -666,13 +674,13 @@ def get_expected_state(vcmd, vstopt, majver):
 
     tmp_exp_state = {}
 
-    # only
-    if not vstopt and vcmd == "stop" and majver == "11":
-        add_to_msg("no option specified for stop of 11g database, or instance. immediate assumed.")
-        vstopt = "immediate"
-    elif majver == "11" and vcmd == "start":
-        add_to_msg("no option specified for start of 11g database, or instance. open assumed.")
-        vstopt = "open"
+    # # only
+    # if not vstopt and vcmd == "stop" and majver == "11":
+    #     add_to_msg("no option specified for stop of 11g database, or instance. immediate assumed.")
+    #     vstopt = "immediate"
+    # elif majver == "11" and vcmd == "start" and vstopt != "open":
+    #     add_to_msg("no option specified for start of 11g database, or instance. open assumed.")
+    #     vstopt = "open"
 
     if vcmd.lower() == "stop":
         tmp_exp_state = {'exp_state': 'OFFLINE', 'meta': 'Instance Shutdown'}
@@ -680,7 +688,7 @@ def get_expected_state(vcmd, vstopt, majver):
       if vstopt.lower() == "nomount":
           tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Dismounted'}
       elif vstopt.lower() ==  "mount":         # crsstat output : ora.tstdb.db   database   C ONLINE     INTERMEDIATE tlorad01     0  0 Mounted (Closed)
-          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Mounted (Closed)'}
+          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Mounted (Closed)'} # INTERMEDIATE
       elif vstopt.lower() == "open":
           tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
       elif vstopt.lower() == '"read only"':
@@ -854,14 +862,6 @@ def main ():
   except:
       vparam = ""
 
-  # check if vparam given ck if its valid:
-  if vparam and vparam in ["eval","force","verbose"]:
-      vparam = "-" + vparam
-  else:
-      if vparam:
-          tmp_msg = "invalid parameter ignored: [%s] " % (vparam)
-          add_to_msg(tmp_msg)
-
   try:
       vttw = module.params["ttw"]
       if not vttw:
@@ -885,8 +885,21 @@ def main ():
           cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s on a %s database. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj,maj_ver)
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
       elif vresult != 0 and maj_ver == "11":
-          cust_msg = "The option parameter passed (%s) was not valid for %s %s on an %s database. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj,maj_ver)
+          cust_msg = "The option parameter passed (%s) was not valid for %s %s on an %s database. Error: invalid stopt parameter." % (vstopt,vcmd,vobj,maj_ver)
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
+
+  # check if vparam given ck if its valid:
+  if vparam and maj_ver == "12":
+      if vparam in ["eval","force","verbose"]:
+          vparam = "-" + vparam
+      else:
+          if vparam:
+              tmp_msg = "invalid parameter for %s database ignored: [%s] " % (maj_ver, vparam)
+              add_to_msg(tmp_msg)
+  elif vparam and maj_ver == "11":
+      if vparam != "force":
+          tmp_msg = "invalid parameter for %s database ignored: [%s] " % (maj_ver, vparam)
+          add_to_msg(tmp_msg)
 
   # set the expected object state given command and object
   vexpected_state = get_expected_state(vcmd,vstopt,maj_ver)
@@ -894,6 +907,8 @@ def main ():
   # get the actual current state of the database
   current_state = get_db_state(vdb_name)
 
+  if debugme:
+      dbg_msg = "END PARAMETERS: db: %s cmd: %s obj: %s inst: %s stopt: %s param: %s ttw: %s" % (vdb_name, vcmd, vobj, vinst, vstopt, vparam, vttw)
   # ==========================================  END PARAMETERS  ===========================================
 
   # =========================================  START SRVCTL COMMAND  =======================================
