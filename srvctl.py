@@ -79,6 +79,8 @@ vinst    = ""
 vstopt   = ""
 vparam   = ""
 default_ttw = 5
+# Time to wait in seconds beteen db state checks
+loop_sleep_time = 4
 # domain pattern used to strip off hostname
 vdomain  = ".ccci.org"
 # environmentals
@@ -362,7 +364,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
         try:
           current_state = get_db_state(vdb_name)
           while (not all(item == vexp_state['exp_state'] for item in current_state) and (time.time() < timeout)):
-            time.sleep(2)
+            time.sleep(int(loop_sleep_time))
             current_state = get_db_state(vdb_name)
         except:
             custom_err_msg = 'Error[ wait_for_it() ]: waiting for %s state to reach: %s current state: %s ' % (vobj,vexp_state['exp_state'], str(current_state) )
@@ -375,7 +377,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
 
             try:
                 while (not all(item == vexp_state['meta'] for item in current_meta_state.values()) and (time.time() < timeout)):
-                    time.sleep(2)
+                    time.sleep(int(loop_sleep_time))
                     current_meta_state = get_db_meta_state(vdb_name)
             except:
                 custom_err_msg = 'Error[ wait_for_it() ]: waiting for %s current_meta_state: %s to change to expected: %s last current_meta_state: %s host_name_key: %s current time: %s time.out: %s' % (vobj,str(current_meta_state[host_name_key]), str(vexp_state['meta']), str(current_meta_state[host_name_key]), host_name_key, str(time.time()), str(timeout))
@@ -393,7 +395,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
       try:
         current_state = get_db_state(vdb_name)
         while (vexp_state['exp_state'] != current_state[vindex]) and (time.time() < timeout):
-          time.sleep(2)
+          time.sleep(int(loop_sleep_time))
           current_state = get_db_state(vdb_name)
       except:
           custom_err_msg = 'Error[ wait_for_it() ]: error - waiting for %s state to change to %s last checked state: %s' % (vobj, vexp_state['exp_state'], current_state[vindex])
@@ -414,7 +416,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
           try:
               current_meta_state = get_db_meta_state(vdb_name)
               while (vexp_state['meta'] != current_meta_state[host_name_key]) and (time.time() < timeout):
-                  time.sleep(2)
+                  time.sleep(int(loop_sleep_time))
                   current_meta_state = get_db_meta_state(vdb_name)
           except:
               custom_err_msg = 'Error[ wait_for_it() ]: waiting for %s current_meta_state: %s to change to expected: %s last current_meta_state: %s host_name_key: %s current time: %s time.out: %s' % (vobj, current_meta_state[host_name_key], vexp_state['meta'], current_meta_state[host_name_key], host_name_key, str(time.time()), str(timeout))
