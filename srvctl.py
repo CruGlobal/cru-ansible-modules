@@ -884,10 +884,10 @@ def main ():
   if vstopt:
       vresult = is_opt_valid(vstopt,vcmd,maj_ver)
       if vresult != 0 and maj_ver == "12":
-          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s on a %s database. Error: invalid stopt parameter." % (vcmd,vstopt,vcmd,vobj,maj_ver)
+          cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s on a %s database. Error: invalid stopt option." % (vcmd,vstopt,vcmd,vobj,maj_ver)
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
       elif vresult != 0 and maj_ver == "11":
-          cust_msg = "The option parameter passed (%s) was not valid for %s %s on an %s database. Error: invalid stopt parameter." % (vstopt,vcmd,vobj,maj_ver)
+          cust_msg = "The option parameter passed (%s) was not valid for %s %s on an %s database. Error: invalid stopt option." % (vstopt,vcmd,vobj,maj_ver)
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
 
   # check if vparam given ck if its valid:
