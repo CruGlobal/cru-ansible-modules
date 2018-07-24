@@ -144,7 +144,7 @@ def get_dbhome(local_vdb):
     return(ora_home)
 
 
-def get_nth_item(vchar, vfieldnum, vstring):
+def get_nth_item(vchar, vfieldnum, vstring): # This can be done with python string.split('<char>')[3]
     """given a character vchar to deliniate a field return field number n from string vstring"""
     # ex /app/oracle/12.1.0.2/dbhome_1 return field 4 (12.1.0.2) assume EOL a vchar
     letter_counter = 0
