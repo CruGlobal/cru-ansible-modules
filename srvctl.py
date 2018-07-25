@@ -43,8 +43,8 @@ EXAMPLES = '''
         obj: instance
         inst: 2
         stopt: immediate
-        ttw: 7
         param: force
+        ttw: 7
       when: master_node                 Note: (1)
 
     values:
@@ -58,11 +58,11 @@ EXAMPLES = '''
       ttw: time to wait (in min) for status change after executing the command. Default 5.
 
     Notes:
-        (1) When master_node else it will try to execute on all nodes simultaneously.
+        (1) Use when master_node else it may try to execute on all nodes simultaneously.
 
         (2) It's possible to start instance nomount, mount etc. but not to
             alter instance mount, or open. To open the instance using the srvctl module
-            you MUST stop the instance then start instance mount, or start instance open.
+            you must stop the instance then start instance mount, or start instance open.
             It is possible to "sqlplus> alter database mount" or "alter database open".
             The status change will then be reflected in crsstat.
 
