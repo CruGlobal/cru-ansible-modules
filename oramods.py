@@ -228,6 +228,7 @@ def get_orahome_procid(vdb):
 
     return(ora_home)
 
+
 class alphaseq:
   def __init__(self):
     self.allchars = map(chr, range(97, 123))
@@ -266,3 +267,22 @@ def get_nth_item(vchar, vfieldnum, vstring): # This can be done with python stri
         letter_counter += 1
 
     return(vreturn_item)
+
+class alphaseq:
+  def __init__(self):
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+  def reset(self):
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+  def next(self):
+    # print "character pointer : %s" % (self.charptr)
+    if self.charptr < 26:
+      self.curchar = self.allchars[self.charptr]
+      self.charptr += 1
+      return self.curchar
+    else:
+      print('End of alphabet reached. Counter reset.')
+      self.reset()
