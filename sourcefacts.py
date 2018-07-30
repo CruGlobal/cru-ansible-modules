@@ -115,7 +115,7 @@ def main ():
 
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
-  vdb = module.params.get('source_db_name') + '1'
+  vdb = module.params.get('source_db_name')
   vdbhost = module.params.get('source_host') # + '.ccci.org'
   vignore = module.params.get('ignore')
 
@@ -127,6 +127,8 @@ def main ():
 
   # check vars passed in are not NULL. All are needed to connect to source db
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
+
+    vdb = vdb + vdbhost[-1:]
 
     try:
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
