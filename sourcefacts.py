@@ -115,7 +115,7 @@ def main ():
 
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
-  vdb = module.params.get('source_db_name') + '1'
+  vdb = module.params.get('source_db_name')
   vdbhost = module.params.get('source_host') # + '.ccci.org'
   vignore = module.params.get('ignore')
 
@@ -129,6 +129,7 @@ def main ():
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
 
     try:
+      vdb = vdb + vdbhost[-1:]
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
