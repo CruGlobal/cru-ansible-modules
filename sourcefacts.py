@@ -64,8 +64,21 @@ EXAMPLES = '''
 
 '''
 
-# Parameters to retrieve from v$parameter table can be added here.
-vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size", "remote_login_passwordfile", "spfile" ]
+# Add anything from v$parameter table to retrieve in sourcefacts here.
+vparams=[ "compatible",
+          "sga_target",
+          "db_recovery_file_dest",
+          "db_recovery_file_dest_size",
+          "diagnostic_dest",
+          "remote_listener",
+          "db_unique_name",
+          "db_block_size",
+          "remote_login_passwordfile",
+          "spfile",
+          "user_dump_dest",
+          "core_dump_dest",
+          "background_dump_dest",
+          "audit_file_dest" ]
 msg = ""
 debugme = False
 
