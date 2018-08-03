@@ -98,6 +98,7 @@ EXAMPLES = '''
 
 debugme = False
 ora_home = ""
+global_ora_home = ""
 err_msg = ""
 v_rec_count = 0
 grid_home = ""
@@ -123,6 +124,7 @@ def get_field(fieldnum, vstring):
 def get_dbhome(local_vdb):
     """Return database home as recorded in /etc/oratab"""
     global my_msg
+    global ora_home
 
     cmd_str = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
 
@@ -313,6 +315,7 @@ def get_ora_homes():
    global ora_home
    global err_msg
    global v_rec_count
+   global global_ora_home
 
    has_changed = False
    tempHomes = {}
@@ -347,8 +350,11 @@ def get_ora_homes():
          except:
            err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s)' % (sys.exc_info()[0])
 
+         tempHomes.update({'nodes': clu_names})
+
          for (vkey, vvalue) in clu_names.items():
            tempHomes.update({vkey: vvalue})
+
 
       elif "home" in newhome.lower():
          homenum = str(re.search("\d.",newhome).group())
@@ -860,6 +866,7 @@ def listener_info():
   else:
     return({"lsnrctl": "No listener running"})
 
+
 def rac_dblist():
   """Return database information from srvctl"""
   global ora_home
@@ -879,6 +886,7 @@ def rac_dblist():
 
   database_info['databases'] = dblist
   return(database_info)
+
 
 def si_dblist():
   """Return database information from /etc/oratab"""
@@ -901,6 +909,7 @@ def si_dblist():
 
   database_info['databases'] = dblist
   return(database_info)
+
 
 def get_version(local_db):
     """Return the general Oracle version for a given database"""
@@ -952,6 +961,7 @@ def host_name():
 
 def get_orahome_procid(vdb):
     """Get database Oracle Home from the running process."""
+    global global_ora_home
 
     # get the pmon process id for the running database.
     # 10189  tstdb1
@@ -986,7 +996,79 @@ def get_orahome_procid(vdb):
 
     ora_home = vhome.strip()
 
+    if not global_ora_home:
+        global_ora_home = ora_home
+    else:
+        if ora_home > global_ora_home:
+            global_ora_home = ora_home
+
     return(ora_home)
+
+
+def get_scan(ora_home):
+    """Get scan listener info"""
+
+    if not ora_home:
+        ora_home = "none specified"
+    else:
+        ora_home = ora_home.strip()
+
+    scan_info = {}
+
+    # Get the scan listner name first test-scan.ccci.org
+    try:
+       # command to create a manual AWS RDS snapshot
+       tmp_cmd = "%s/bin/srvctl config scan | /bin/grep name | /bin/awk '{ print $3 }'" % (ora_home)
+    except:
+       err_msg = 'orafacts get_scan() Error trying to concatenate the following: tmp_cmd: [ %s ] in orafacts' % (vdb_inst_id,vdb_snap_id)
+       err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    try:
+      os.environ['USER'] = 'oracle'
+      os.environ['ORACLE_HOME'] = ora_home
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+      err_msg = ' Error [1]: orafacts module get_meta_data() output: %s' % (output)
+      err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+      raise Exception (err_msg)
+
+    tmp_scan_listener = output.strip()[:-1]
+
+    scan_info.update({'scan_listener': tmp_scan_listener })
+
+    # get ip addresses next
+    try:
+       # command to create a manual AWS RDS snapshot
+       tmp_cmd = "%s/bin/srvctl config scan -all | /bin/grep VIP | grep '[0-9]' | /bin/awk '{ print $5 }'" % (ora_home)
+    except:
+       err_msg = 'orafacts get_scan() Error trying to concatenate the following: tmp_cmd: [ %s ] in orafacts' % (vdb_inst_id,vdb_snap_id)
+       err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    try:
+      os.environ['USER'] = 'oracle'
+      os.environ['ORACLE_HOME'] = ora_home
+      process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+      err_msg = ' Error [1]: orafacts module get_meta_data() output: %s' % (output)
+      err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+      raise Exception (err_msg)
+
+    tmp_ips = output.strip()
+
+    idx = 1
+    for item in tmp_ips.splitlines():
+        vip = "ip%s" % (idx)
+        scan_info.update({vip: item})
+        idx += 1
+
+    if not scan_info:
+        scan_info.update({'Error': 'Unable to get scan info. srvctl may be down' })
+
+    return (scan_info)
 
 
 # ================================== Main ======================================
@@ -995,6 +1077,7 @@ def main(argv):
   global err_msg
   global v_rec_count
   global msg
+  global global_ora_home
 
   ansible_facts={ 'orafacts': {} }
 
@@ -1020,7 +1103,7 @@ def main(argv):
         # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
         all_homes = get_ora_homes()
         for (vkey, vvalue) in all_homes.items():
-          ansible_facts['orafacts'][vkey] = vvalue
+            ansible_facts['orafacts'][vkey] = vvalue
 
         # define dictionary to hold all databases registered with srvctl
         ansible_facts['orafacts']['all_dbs']={}
@@ -1039,6 +1122,11 @@ def main(argv):
 
         # Get list of all databases configured in SRVCTL
         ansible_facts.update(rac_dblist())
+
+        # Add scan info
+        vorahome = ansible_facts['orafacts']['12g']['home']
+        tmpscan = get_scan(vorahome)
+        ansible_facts['orafacts']['scan'] = tmpscan
 
         # vhuge = hugepages()
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']

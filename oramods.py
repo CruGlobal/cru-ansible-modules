@@ -227,3 +227,62 @@ def get_orahome_procid(vdb):
     ora_home = vhome.strip()
 
     return(ora_home)
+
+
+class alphaseq:
+  def __init__(self):
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+
+  @property 
+  def reset(self):
+    """Letter sequencer. Small chars a thru z. Prints message and resets at z. Instantiate with d = alphaseq()"""
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+  def next(self):
+    # print "character pointer : %s" % (self.charptr)
+    if self.charptr < 26:
+      self.curchar = self.allchars[self.charptr]
+      self.charptr += 1
+      return self.curchar
+    else:
+      print('End of alphabet reached. Counter reset.')
+      self.reset()
+
+
+def get_nth_item(vchar, vfieldnum, vstring): # This can be done with python string.split('<char>')[3]
+    """given a character vchar to deliniate a field return field number n from string vstring"""
+    # ex /app/oracle/12.1.0.2/dbhome_1 return field 4 (12.1.0.2) assume EOL a vchar
+    letter_counter = 0
+    vfield_counter = 0
+    vreturn_item = ""
+
+    while vfield_counter < (vfieldnum + 1):
+        if vstring[letter_counter] == vchar:
+            vfield_counter += 1
+        elif vfield_counter >= vfieldnum:
+            vreturn_item = vreturn_item + vstring[letter_counter]
+        letter_counter += 1
+
+    return(vreturn_item)
+
+class alphaseq:
+  def __init__(self):
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+  def reset(self):
+    self.allchars = map(chr, range(97, 123))
+    self.charptr = 0
+    self.curchar = ''
+  def next(self):
+    # print "character pointer : %s" % (self.charptr)
+    if self.charptr < 26:
+      self.curchar = self.allchars[self.charptr]
+      self.charptr += 1
+      return self.curchar
+    else:
+      print('End of alphabet reached. Counter reset.')
+      self.reset()
