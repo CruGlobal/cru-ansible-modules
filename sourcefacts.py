@@ -315,7 +315,7 @@ def main ():
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
-    ansible_facts[refname]['bct_path'] = vtemp
+    ansible_facts[refname]['bct_file'] = vtemp
 
     meta_msg = ''
 
