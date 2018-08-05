@@ -129,7 +129,7 @@ def main ():
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
   vdb = module.params.get('source_db_name')
-  vdbhost = module.params.get('source_host') # + '.ccci.org'
+  vdbhost = module.params.get('source_host')
   vignore = module.params.get('ignore')
 
   if vignore is None:
@@ -140,8 +140,6 @@ def main ():
 
   # check vars passed in are not NULL. All are needed to connect to source db
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
-
-    vdb = vdb + vdbhost[-1:]
 
     try:
       vdb = vdb + vdbhost[-1:]
