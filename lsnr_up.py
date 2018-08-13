@@ -23,13 +23,15 @@ err_msg = ""
 msg = ""
 DebugMe = False
 sleep_time = 2
-default_ttw = 5
+default_ttw = 2
+expected_num_reg_lsnrs = 2
+grid_home = ""
+node_number = ""
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
 # [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
 # Service "tstdb.ccci.org" has 2 instance(s).
 #   Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
 #   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
-num_regs = 2
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -68,12 +70,60 @@ EXAMPLES = '''
 '''
 
 
-def get_dbhome(local_vdb):
+def get_grid_home():
+    """Determine the Grid Home directory
+       using ps -eo args
+       returns string."""
+
+    global grid_home
+    # global module
+
+    try:
+        cmd_str = "/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error [ get_gihome() ]: retrieving GRID_HOME. Error running cmd: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + " %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
+
+    if not grid_home:
+         custom_err_msg = ' Error[ get_gihome() ]: No output returned after running cmd : %s' % (cmd_str)
+         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+         raise Exception (custom_err_msg)
+
+    return(grid_home)
+
+
+def get_node_num():
+    """Return current node number to ensure that srvctl is only executed on one node (1)"""
+    global grid_home
+    global node_number
+
+    if not grid_home:
+        grid_home = get_grid_home()
+
+    try:
+      cmd_str = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+    except:
+       err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    node_number = int(output.strip())
+
+    return(node_number)
+
+
+def get_dbhome(vdb):
     """Return database home as recorded in /etc/oratab"""
-    global my_msg
     global ora_home
 
-    cmd_str = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
+    cmd_str = "cat /etc/oratab | grep -m 1 %s | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'" % (vdb)
 
     try:
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
@@ -95,7 +145,7 @@ def get_dbhome(local_vdb):
 
 def get_orahome_procid(vdb):
     """Get database Oracle Home from the running process."""
-    global oracle_home
+    global msg
 
     # get the pmon process id for the running database.
     # 10189  tstdb1
@@ -130,27 +180,37 @@ def get_orahome_procid(vdb):
 
     ora_home = vhome.strip()
 
-    return(oracle_home)
+    # msg = msg + "exiting get_orahome_procid(%s) returning: ora_home: %s" % (vdb,ora_home)
+
+    return(ora_home)
 
 
 def num_listeners(vdb):
     """Return the number of listeners"""
     global oracle_home
-
-    if not oracle_home:
-      oracle_home = get_orahome_procid(vdb)
+    global msg
 
     if vdb[-1].isdigit():
         vdb = vdb[:-1]
 
-    try:
-      tmp_cmd = "%s/bin/lsnrctl status | grep %s | grep Instance | wc -l" % (oracle_home,vdb)
-    except:
-      err_msg = ' Error trying to concatenate the following: vdb_inst_id: [ %s ] and vdb_snap_id: [ %s ]' % (vdb_inst_id,vdb_snap_id)
-      err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-      raise Exception (err_msg)
+    if not oracle_home:
+        oracle_home = get_orahome_procid(vdb)
+
+    node_number = get_node_num()
+
+    oracle_sid = vdb + str(node_number)
 
     try:
+        tmp_cmd = "%s/bin/lsnrctl status | /bin/grep %s | /bin/grep Instance | /usr/bin/wc -l" % (oracle_home,vdb)
+    except:
+        err_msg = ' Error trying to concatenate the following: vdb_inst_id: [ %s ] and vdb_snap_id: [ %s ]' % (vdb_inst_id,vdb_snap_id)
+        err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
+
+    try:
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = oracle_home
+        os.environ['ORACLE_SID'] = oracle_sid
         process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
@@ -159,6 +219,8 @@ def num_listeners(vdb):
         raise Exception (err_msg)
 
     num_listeners = output.strip()
+
+    # msg = msg + "exiting num_listeners(%s) number of listeners: %s" % (vdb,num_listeners)
 
     return (num_listeners)
 
@@ -172,7 +234,7 @@ def main ():
     global oracle_home
     global sleep_time
     global default_ttw
-    global num_regs
+    global expected_num_reg_lsnrs
 
     ansible_facts={}
 
@@ -199,22 +261,24 @@ def main ():
         ttw = vttw
 
     timeout =  time.time() + (60 * int(ttw))
-
+    current_count = 0
+    current_count = num_listeners(vdb)
     try:
-        current_count = num_listeners(vdb)
-        while (current_count < num_regs ) and (time.time() < timeout):
+        # msg = msg + " Entered try: block current_count: %s expected_num_reg_lsnrs: %s time.time(): %s timeout: %s" % (current_count,expected_num_reg_lsnrs,time.time(),timeout)
+        while (int(current_count) < int(expected_num_reg_lsnrs)) and (time.time() < timeout):
             time.sleep(int(sleep_time))
             current_count = num_listeners(vdb)
+            msg = msg + " current_count: %s time.time() %s < timeout: %s diff %s" % (current_count,time.time(),timeout,(timeout - time.time()))
     except:
-        custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl.' % (vdb)
+        custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl. current_count %s < expected_num_reg_lsnrs %s and time.time() %s < timeout %s oracle_home %s msg: %s' % (vdb,current_count,expected_num_reg_lsnrs,time.time(),timeout,oracle_home,msg)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    msg = "lsnr_up exiting. %s is up and %s listeners registered with lsnrctl. ttw %s timeout %s" % (vdb,current_count,ttw,timeout)
+    msg = msg + "module lsnr_up exiting. For %s current_count %s < expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,expected_num_reg_lsnrs,ttw,time.time(),timeout)
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
-   main()
+    main()
