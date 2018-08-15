@@ -319,18 +319,18 @@ def main ():
 
     meta_msg = ''
 
-    # See if master_notes table exists
-    # try:
-    #   cur.execute("select 1 from all_objects where object_name like 'MASTER_NOTE%'")
-    # except cx_Oracle.DatabaseError, exception:
-    #   error, = exception.args
-    #   module.fail_json(msg='Error selecting master_notes from v$instance, Error: %s' % (error.message), changed=False)
-    #
-    # vtemp = cur.fetchall()
-    # if cur.rowcount == 0:
-    #     ansible_facts[refname]['master_notes'] = "False"
-    # else:
-    #     ansible_facts[refname]['master_notes'] = "True"
+    # See if dbainfo user/schema exists
+    try:
+      cur.execute("select 1 from dba_users where username = 'dbainfo'")
+    except cx_Oracle.DatabaseError, exception:
+      error, = exception.args
+      module.fail_json(msg='Error selecting master_notes from v$instance, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    if cur.rowcount == 0:
+        ansible_facts[refname]['dbainfo'] = "False"
+    else:
+        ansible_facts[refname]['dbainfo'] = "True"
 
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
