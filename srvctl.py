@@ -356,7 +356,7 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     timeout =  time.time() + (60 * int(vttw))
 
     if debugme:
-        debug_msg = "wait_for_it() called with vdb_name: [%s], vobj: [%s], vexp_state: [%s], vttw: [%s], vinst: [%s]"
+        debug_msg = "wait_for_it() called with vdb_name: [%s], vobj: [%s], vexp_state: [%s], vttw: [%s], vinst: [%s]" % (vdb_name,vobj,vexp_state,vttw,vinst)
         debug_info(debug_msg)
 
     if vobj.lower() == "database":
