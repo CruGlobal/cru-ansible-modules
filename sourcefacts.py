@@ -287,6 +287,7 @@ def main ():
 
     ansible_facts[refname]['log_dest'] = log_dests
 
+
     # Does the ULNFSA02_DATAPUMP directory exist?
     dirs={}
     try:
@@ -306,6 +307,7 @@ def main ():
 
     ansible_facts[refname]['dirs'] = dirs
 
+
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
@@ -319,18 +321,49 @@ def main ():
 
     meta_msg = ''
 
+
+    # Get default_temp_tablespace and default_permanet_tablespace
+    try:
+      cur.execute("select property_name,property_value from database_properties where property_name like 'DEFAULT%TABLESPACE'")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    if cur.rowcount > 0:
+        ansible_facts[refname][vtemp[0][0]] = vtemp[0][1]
+        ansible_facts[refname][vtemp[1][0]] = vtemp[1][1]
+
+
     # See if dbainfo user/schema exists
     try:
-      cur.execute("select 1 from dba_users where username = 'dbainfo'")
-    except cx_Oracle.DatabaseError, exception:
-      error, = exception.args
-      module.fail_json(msg='Error selecting master_notes from v$instance, Error: %s' % (error.message), changed=False)
+      cur.execute("select 1 from dba_users where username = 'DBAINFO'")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
     if cur.rowcount == 0:
-        ansible_facts[refname]['dbainfo'] = "False"
+        ansible_facts[refname].update({'dbainfo': {'exists': 'False' }} )
+        ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' })
     else:
-        ansible_facts[refname]['dbainfo'] = "True"
+        ansible_facts[refname].update({'dbainfo': {'exists': 'True'}} )
+
+    # if dbainfo exists see if dba_work table exists
+    if cur.rowcount == 1:
+
+        try:
+            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBA_WORK'")
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+        vtemp = cur.fetchall()
+        if cur.rowcount == 0:
+            ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' } )
+        else:
+            ansible_facts[refname]['dbainfo'].update({'dba_work': 'True' } )
+
 
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
