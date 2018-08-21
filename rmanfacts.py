@@ -54,18 +54,6 @@ import re
 from datetime import datetime
 from datetime import timedelta
 
-class alphaseq:
-  def __init__(self):
-    self.allchars = list(string.ascii_lowercase)
-    self.charptr = 0
-    self.curchar = ''
-  def next(self):
-    self.curchar = self.allchars[self.charptr]
-    self.charptr += 1
-    if self.charptr == 26:
-        self.charptr = 0
-    return self.curchar
-
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
@@ -75,7 +63,8 @@ DOCUMENTATION = '''
 ---
 module: rmanfacts
 short_description: Collect Oracle RMAN metadata on a remote host for a given db.
-notes: Returned values are then available to use in Ansible.
+notes: Returned values are then available to use in Ansible. Currently specifically
+used in the utils rst (restore) function to get a list of spfile backups.
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
