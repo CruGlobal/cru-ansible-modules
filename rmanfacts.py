@@ -97,7 +97,6 @@ vsrcdb=''
 vbu_type=''
 vohome=''
 vstage=''
-myseq = alphaseq()
 
 def spfile_bu():
   """Return a list of spfile backups including Level (LV), Month, Day, Year and time of day"""
