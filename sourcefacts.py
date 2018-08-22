@@ -172,7 +172,7 @@ def main ():
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
-    ansible_facts[refname] = {'oracle_version': usable_ver, 'oracle_version_full': retver}
+    ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
 
     # select host_name
     try:
