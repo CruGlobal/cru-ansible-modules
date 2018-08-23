@@ -13,6 +13,7 @@ import json
 import re                           # regular expression
 import math
 import time
+import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
 from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
@@ -40,36 +41,22 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 
 DOCUMENTATION = '''
 ---
-module: lsnr_up.py
-short_description: Manually create an AWS RDS Snapshot.
+module: mkalias
+short_description: Given ASM diskgroup and database name it looks for the most
+   recent spfile in ASM, drops the old alias and maps a new alias to this latest
+   spfile.
 
 '''
 
 EXAMPLES = '''
 
-    # if cloning a database and source database information is desired
-    - name: wait for database to register with local listener
-      lsnr_up:
+    # when standing up a new database using restore, or clone etc.
+    # this will look in asm for a new spfile and create an alias to it.
+    - name: Map new alias to spfile
+      mkalias:
         db_name: "{{ db_name }}"
-        lsnr_entries: 2 **
-        ttw: 5
+        asm_dg: "{{ asm_db_name }}"
       when: master_node
-
-    Notes:
-        ** Default number of entries is 1
-
-        The example above checks for two instances (lsnr_entries) of the database to register with
-        the local listener and then returns.
-
-        It uses the following test:
-            lsnrctl status | grep %s | grep Instance | wc -l
-
-            looking for : (default 1, listener.ora entry and database entry when it comes up.)
-
-                Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
-                Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
-
-                One entry is the database registering with lsnrctl and the other is the listener.ora entry's registering.
 
 '''
 
@@ -154,11 +141,12 @@ def get_orahome_procid(vdb):
     # get the pmon process id for the running database.
     # 10189  tstdb1
     try:
-      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_" + vdb + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed")[1])
+        cmd_str = "pgrep -lf _pmon_%s | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed" % (vdb)
+        vproc = str(commands.getstatusoutput(cmd_str)[1])
     except:
-      err_cust_err_msg = 'Error: get_orahome_procid() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
-      err_cust_err_msg = cust_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-      raise Exception (err_msg)
+        err_cust_err_msg = 'Error: get_orahome_procid() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
+        err_cust_err_msg = cust_err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
 
     # if the database isnt running (no process id)
     # try getting oracle_home from /etc/oratab
@@ -189,45 +177,6 @@ def get_orahome_procid(vdb):
     return(ora_home)
 
 
-def num_listeners(vdb):
-    """Return the number of listeners"""
-    global oracle_home
-    global msg
-
-    if vdb[-1].isdigit():
-        vdb = vdb[:-1]
-
-    if not oracle_home:
-        oracle_home = get_orahome_procid(vdb)
-
-    node_number = get_node_num()
-
-    oracle_sid = vdb + str(node_number)
-
-    try:
-        tmp_cmd = "%s/bin/lsnrctl status | /bin/grep %s | /bin/grep Instance | /usr/bin/wc -l" % (oracle_home,vdb)
-    except:
-        err_msg = ' Error trying to concatenate the following: vdb_inst_id: [ %s ] and vdb_snap_id: [ %s ]' % (vdb_inst_id,vdb_snap_id)
-        err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-        raise Exception (err_msg)
-
-    try:
-        os.environ['USER'] = 'oracle'
-        os.environ['ORACLE_HOME'] = oracle_home
-        os.environ['ORACLE_SID'] = oracle_sid
-        process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        err_msg = ' Error [1]: orafacts module get_meta_data() output: %s' % (output)
-        err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-        raise Exception (err_msg)
-
-    num_listeners = output.strip()
-
-    # msg = msg + "exiting num_listeners(%s) number of listeners: %s" % (vdb,num_listeners)
-
-    return (num_listeners)
-
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -235,51 +184,37 @@ def main ():
     """ Check the lsnrctl state using command line """
     global msg
     global err_msg
-    global oracle_home
-    global sleep_time
-    global default_ttw
-    global expected_num_reg_lsnrs
+    global grid_home
 
     ansible_facts={}
 
     module = AnsibleModule(
       argument_spec = dict(
         db_name         = dict(required=True),
-        lsnr_entries    = dict(required=False),
-        ttw             = dict(required=False)
+        asm_dg          = dict(required=True)
       ),
       supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
-    vdb         = module.params["db_name"]
-    num_entries = module.params["lsnr_entries"]
-    vttw        = module.params["ttw"]
+    vdb          = module.params["db_name"]
+    vasm_dg      = module.params["asm_dg"]
 
-    if not num_entries:
-        v_entries = default_expected_num_reg_lsnrs
+    if not grid_home:
+        grid_home = get_grid_home()
+
+    node_num = get_node_num()
+
+    if not db_name[-1].isdigit():
+        oracle_sid = db_name + node_num
     else:
-        v_entries = num_entries
+        oracle_sid = db_name
 
-    # See if a snapshot name was passed in
-    # if not get the timestamp to create one
-    if vdb[-1].isdigit():
-        vdb = vdb[:-1]
-
-    if not vttw:
-        ttw = default_ttw
-    else:
-        ttw = vttw
-
-    timeout =  time.time() + (60 * int(ttw))
-    current_count = 0
-    current_count = num_listeners(vdb)
     try:
-        # msg = msg + " Entered try: block current_count: %s expected_num_reg_lsnrs: %s time.time(): %s timeout: %s" % (current_count,expected_num_reg_lsnrs,time.time(),timeout)
-        while (int(current_count) < int(v_entries)) and (time.time() < timeout):
-            time.sleep(int(sleep_time))
-            current_count = num_listeners(vdb)
-            msg = msg + " current_count: %s time.time() %s < timeout: %s diff %s" % (current_count,time.time(),timeout,(timeout - time.time()))
+        os.environ['USER'] = 'oracle'
+        os.environ['ORACLE_HOME'] = grid_home
+        os.environ['ORACLE_SID'] = oracle_sid
+        cmd_str = "ls -l %s/%s/parameterfile/" % (vasm_dg,vdb)
     except:
         custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl. current_count %s < expected_num_reg_lsnrs %s and time.time() %s < timeout %s oracle_home %s msg: %s' % (vdb,current_count,expected_num_reg_lsnrs,time.time(),timeout,oracle_home,msg)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
