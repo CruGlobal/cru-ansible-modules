@@ -24,7 +24,7 @@ msg = ""
 DebugMe = False
 sleep_time = 2
 default_ttw = 2
-expected_num_reg_lsnrs = 2
+default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
@@ -51,22 +51,26 @@ EXAMPLES = '''
     - name wait for database to register with local listener
       lsnr_up:
         db_name: "{{ db_name }}"
+        lsnr_entries: 2 **
         ttw: 5
       when: master_node
 
     Notes:
-        This module checks for two instances of the database to register with
+        ** Default number of entries is 1
+
+        The example above checks for two instances (lsnr_entries) of the database to register with
         the local listener and then returns.
 
         It uses the following test:
             snrctl status | grep %s | grep Instance | wc -l
 
-            looking for :
+            looking for : (default 1, listener.ora entry and database entry when it comes up.)
 
                 Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
                 Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
 
-                one is the database registering with lsnrctl and the other is the listener.ora entry's registering.
+                One entry is the database registering with lsnrctl and the other is the listener.ora entry's registering.
+
 '''
 
 
@@ -241,14 +245,21 @@ def main ():
     module = AnsibleModule(
       argument_spec = dict(
         db_name         = dict(required=True),
+        lsnr_entries    = dict(required=False),
         ttw             = dict(required=False)
       ),
       supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
-    vdb  = module.params["db_name"]
-    vttw = module.params["ttw"]
+    vdb         = module.params["db_name"]
+    num_entries = module.params["lsnr_entries"]
+    vttw        = module.params["ttw"]
+
+    if not num_entries:
+        v_entries = default_expected_num_reg_lsnrs
+    else:
+        v_entries = num_entries
 
     # See if a snapshot name was passed in
     # if not get the timestamp to create one
@@ -265,7 +276,7 @@ def main ():
     current_count = num_listeners(vdb)
     try:
         # msg = msg + " Entered try: block current_count: %s expected_num_reg_lsnrs: %s time.time(): %s timeout: %s" % (current_count,expected_num_reg_lsnrs,time.time(),timeout)
-        while (int(current_count) < int(expected_num_reg_lsnrs)) and (time.time() < timeout):
+        while (int(current_count) < int(v_entries)) and (time.time() < timeout):
             time.sleep(int(sleep_time))
             current_count = num_listeners(vdb)
             msg = msg + " current_count: %s time.time() %s < timeout: %s diff %s" % (current_count,time.time(),timeout,(timeout - time.time()))
@@ -274,7 +285,7 @@ def main ():
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    msg = msg + "module lsnr_up exiting. For %s current_count %s < expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,expected_num_reg_lsnrs,ttw,time.time(),timeout)
+    msg = msg + "module lsnr_up exiting. For %s current_count %s < expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,v_entries,ttw,time.time(),timeout)
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)
