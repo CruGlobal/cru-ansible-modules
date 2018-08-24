@@ -11,9 +11,9 @@ import sys
 import os
 import json
 import re                           # regular expression
-import math
-import time
-import pexpect
+# import math
+# import time
+# import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
 from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
@@ -28,6 +28,7 @@ default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
+env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/12.1.0.2/grid/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/app/12.1.0.2/grid/tfa/tlorad01/tfa_home/bin"
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
 # [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
 # Service "tstdb.ccci.org" has 2 instance(s).
@@ -42,9 +43,8 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 DOCUMENTATION = '''
 ---
 module: mkalias
-short_description: Given ASM diskgroup and database name it looks for the most
-   recent spfile in ASM, drops the old alias and maps a new alias to this latest
-   spfile.
+short_description: Given ASM diskgroup and database name it looks for an spfile in ASM,
+                   and creates an alias.
 
 '''
 
@@ -55,8 +55,13 @@ EXAMPLES = '''
     - name: Map new alias to spfile
       mkalias:
         db_name: "{{ db_name }}"
-        asm_dg: "{{ asm_db_name }}"
+        asm_dg: "{{ asm_dg_name }}"
       when: master_node
+
+    Notes:
+        The ASM diskgroup ( asm_dg_name ) the database is in can be entered with or without the + ( +DATA3 or DATA3 )
+
+        The database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
 
 '''
 
@@ -105,7 +110,7 @@ def get_node_num():
        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
        raise Exception (err_msg)
 
-    node_number = int(output.strip())
+    node_number = output.strip()
 
     return(node_number)
 
@@ -185,6 +190,9 @@ def main ():
     global msg
     global err_msg
     global grid_home
+    debugme = "false"
+    vasm_sid = "+ASM1"
+    voracle_user = "oracle"
 
     ansible_facts={}
 
@@ -200,27 +208,95 @@ def main ():
     vdb          = module.params["db_name"]
     vasm_dg      = module.params["asm_dg"]
 
+    if vasm_dg[0] != "+":
+        vasm_dg = "+%s" % (vasm_dg)
+
     if not grid_home:
-        grid_home = get_grid_home()
+        vgrid_home = get_grid_home()
 
-    node_num = get_node_num()
+    vnode_num = get_node_num()
 
-    if not db_name[-1].isdigit():
-        oracle_sid = db_name + node_num
+    if not vdb[-1].isdigit():
+        voracle_sid = vdb + vnode_num
     else:
-        oracle_sid = db_name
+        if vdb[-1] != "1":
+            voracle_sid = vdb[:-1] + vnode_num
+        vdb = vdb[:-1]
 
+    # Make sure an alias doesn't already exist
     try:
-        os.environ['USER'] = 'oracle'
-        os.environ['ORACLE_HOME'] = grid_home
-        os.environ['ORACLE_SID'] = oracle_sid
-        cmd_str = "ls -l %s/%s/parameterfile/" % (vasm_dg,vdb)
+        os.environ['ORACLE_HOME'] = vgrid_home
+        os.environ['ORACLE_SID'] = vasm_sid
+        cmd_str = "echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vgrid_home)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
     except:
-        custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl. current_count %s < expected_num_reg_lsnrs %s and time.time() %s < timeout %s oracle_home %s msg: %s' % (vdb,current_count,expected_num_reg_lsnrs,time.time(),timeout,oracle_home,msg)
+        custom_err_msg = 'Error[ checking if alias already exists ]'
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    msg = msg + "module lsnr_up exiting. For %s current_count %s < expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,v_entries,ttw,time.time(),timeout)
+    spfile = [ item for item in output.split() if "spfile" in item ]
+
+    if debugme:
+        msg = "[1] make sure alias doesnt already exist with cmd: %s and results: %s " % (cmd_str,spfile)
+
+    if len(spfile) > 1:
+        msg = "spfile already exists: %s/%s/%s => %s" % (vasm_dg,vdb,spfile[0],spfile[1])
+        module.exit_json( msg=msg, ansible_facts={} , changed=False)
+
+    # Else get the name of the parameterfile.
+    try:
+        # os.environ['USER'] = voracle_user
+        os.environ['ORACLE_HOME'] = vgrid_home
+        os.environ['ORACLE_SID'] = vasm_sid
+        cmd_str = "echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vgrid_home)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error [ getting parameter file name]'
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    spfile_orig = [ item for item in output.split() if "spfile" in item][0]
+
+    if debugme:
+        msg = msg + "[2] use this command: %s to get the parameterfile name: %s" % (cmd_str, spfile_orig)
+
+    # Create the alias
+    try:
+        # os.environ['USER'] = voracle_user
+        os.environ['ORACLE_HOME'] = vgrid_home
+        os.environ['ORACLE_SID'] = vasm_sid
+        cmd_str = "echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg,vdb,spfile_orig,vasm_dg,vdb,vdb,vgrid_home)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error [ getting parameter file name]'
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    if debugme:
+        msg = msg + "[3] Alias created ? with this command: %s" % (cmd_str)
+
+    # Check the alias and return the results
+    try:
+        # os.environ['USER'] = voracle_user
+        os.environ['ORACLE_HOME'] = vgrid_home
+        os.environ['ORACLE_SID'] = vasm_sid
+        cmd_str = "echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vgrid_home)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ checking if alias already exists ]'
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    spfile = [ item for item in output.split() if "spfile" in item]
+
+    if debugme:
+        msg = msg + "[4] Check Alias with this command: %s and output: %s with final result (spfile): %s" % (cmd_str,output,spfile)
+
+    msg = "Module mkalias exiting successfully. Created alias: %s/%s/%s => %s " % (vasm_dg,vdb,spfile[0],spfile[1])
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)
