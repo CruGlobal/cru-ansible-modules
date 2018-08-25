@@ -10,11 +10,7 @@ import subprocess
 import sys
 import os
 import json
-import re                           # regular expression
-# import math
-# import time
-# import pexpect
-# from datetime import datetime, date, time, timedelta
+import re
 from subprocess import (PIPE, Popen)
 from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 
@@ -22,19 +18,12 @@ from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 oracle_home=""
 err_msg = ""
 msg = ""
-DebugMe = False
+DebugMe = True
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
-env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/12.1.0.2/grid/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/app/12.1.0.2/grid/tfa/tlorad01/tfa_home/bin"
-# number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
-# [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
-# Service "tstdb.ccci.org" has 2 instance(s).
-#   Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
-#   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
-
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
@@ -264,31 +253,35 @@ def main ():
     if DebugMe:
         msg = msg + "[2] This command: %s used to get control file name: %s from: %s " % (cmd_str,vcntr_file_fra,vasm_fra)
 
-    # # Startup nomount the database
-    # try:
-    #     os.environ['ORACLE_HOME'] = voracle_home
-    #     os.environ['ORACLE_SID'] = voracle_sid
-    #     cmd_str = "echo startup nomount | %s/bin/sqlplus / as sysdba" % (voracle_home)
-    #     process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-    #     output, code = process.communicate()
-    # except:
-    #     custom_err_msg = 'Error [ startup nomount of database %s ] oracle_home: %s db_sid: %s cmd_str: %s' % (vdb,voracle_home,voracle_sid,cmd_str)
-    #     custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-    #     raise Exception (custom_err_msg)
-    #
-    # if DebugMe:
-    #     msg = msg + "[3] Startup nomount: %s" % (cmd_str)
+    time.sleep(2)
+
+    # Startup nomount the database
+    try:
+        os.environ['ORACLE_HOME'] = voracle_home
+        os.environ['ORACLE_SID'] = voracle_sid
+        cmd_str = "%s/bin/sqlplus / as sysdba" % (voracle_home)
+        cmd_str1 = "startup nomount"
+        process = subprocess.Popen(cmd_str, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, code = process.communicate(cmd_str1)
+    except:
+        custom_err_msg = 'Error [ startup nomount of database %s ] oracle_home: %s db_sid: %s cmd_str: %s' % (vdb,voracle_home,voracle_sid,cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    if DebugMe:
+        msg = msg + "[3] Startup nomount: %s" % (cmd_str)
+
+    time.sleep(3)
 
     # Run the alter system command and set the controlfile parameter
     try:
-        cmd_str1 = '/app/oracle/11.2.0.4/dbhome_1/bin/sqlplus / as sysdba'
-        cmd_str2 = "startup nomount\n"
+        cmd_str1 = '%s/bin/sqlplus / as sysdba' % (voracle_home)
+        # cmd_str2 = "startup nomount\n"
         cmd_str3 = "alter system set control_files='%s/%s/controlfile/%s','%s/%s/controlfile/%s' scope=spfile;\n" % (vasm_dg,vdb,vcntr_file_data,vasm_fra,vdb,vcntr_file_fra)
-        cmd_str4 = "shutdown immediate\n"
         os.environ['ORACLE_HOME'] = voracle_home
         os.environ['ORACLE_SID'] = voracle_sid
         process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        output, code = process.communicate(os.linesep.join([cmd_str2, cmd_str3, cmd_str4]))
+        output, code = process.communicate(cmd_str3)
     except:
         custom_err_msg = 'Error[ setting control files in database %s ] oracle_home: %s oracle_sid: %s asm_dg: %s asm_fra: %s database: %s command: %s' % (vdb,voracle_home,voracle_sid,vasm_dg,vasm_fra,vdb,cmd_str)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
@@ -297,18 +290,20 @@ def main ():
     if DebugMe:
         msg = msg + "[3] Alter system set controlfile with this command: %s oracle_home: %s oracle_sid: %s output: %s" % (cmd_str,voracle_home,voracle_sid,output)
 
-    # # Shut the database back down
-    # try:
-    #     os.environ['ORACLE_HOME'] = voracle_home
-    #     os.environ['ORACLE_SID'] = voracle_sid
-    #     cmd_str1 = '/app/oracle/11.2.0.4/dbhome_1/bin/sqlplus / as sysdba'
-    #     cmd_str2 = "shutdown immediate\n"
-    #     process = subprocess.Popen([cmd_str1], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    #     output, code = process.communicate(cmd_str2)
-    # except:
-    #     custom_err_msg = 'Error[ shutting down the database %s after setting control files ] oracle_home: %s oracle_sid: %s asm_dg: %s asm_fra: %s database: %s command: %s' % (vdb,voracle_home,voracle_sid,vasm_dg,vasm_fra,vdb,cmd_str)
-    #     custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-    #     raise Exception (custom_err_msg)
+    time.sleep(2)
+
+    # Shut the database back down
+    try:
+        os.environ['ORACLE_HOME'] = voracle_home
+        os.environ['ORACLE_SID'] = voracle_sid
+        cmd_str1 = '/app/oracle/11.2.0.4/dbhome_1/bin/sqlplus / as sysdba'
+        cmd_str2 = "shutdown immediate\n"
+        process = subprocess.Popen([cmd_str1], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, code = process.communicate(cmd_str2)
+    except:
+        custom_err_msg = 'Error[ shutting down the database %s after setting control files ] oracle_home: %s oracle_sid: %s asm_dg: %s asm_fra: %s database: %s command: %s' % (vdb,voracle_home,voracle_sid,vasm_dg,vasm_fra,vdb,cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
 
     if DebugMe:
         msg = msg + "[4] Alter system set controlfile with this command: %s and output: %s " % (cmd_str,output)
