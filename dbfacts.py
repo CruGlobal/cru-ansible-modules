@@ -70,6 +70,7 @@ EXAMPLES = '''
 # Add anything from v$parameter table to retrieve in here.
 vparams=[ "compatible",
           "sga_target",
+          "sga_max_size",
           "db_recovery_file_dest",
           "db_recovery_file_dest_size",
           "diagnostic_dest",
@@ -182,7 +183,7 @@ def main ():
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
-    ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
+    ansible_facts[refname] = {'oracle_version': usable_ver, 'oracle_version_full': retver}
 
     # select host_name
     try:

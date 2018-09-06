@@ -10,11 +10,6 @@ import json
 import re
 import math
 
-try:
-    import cx_Oracle
-    cx_Oracle_found = True
-except ImportError:
-    cx_Oracle_found = False
 
 # Reference links
 # http://www.oracle.com/technetwork/articles/dsl/prez-python-queries-101587.html
@@ -31,55 +26,24 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 
 DOCUMENTATION = '''
 ---
-module: sourcefacts
-short_description: Get Oracle Database facts from a remote database.
-(remote database = a database not in the group being operated on)
+module: rdssnap
+short_description: Manually create an AWS RDS Snapshot.
 
-notes: Returned values are then available to use in Ansible.
-requirements: [ python2.* ]
-author: "DBA Oracle module Team"
 '''
 
 EXAMPLES = '''
 
     # if cloning a database and source database information is desired
     - local_action:
-        module: sourcefacts
-        systempwd: "{{ database_passwords[source_db_name].system }}"
-        source_db_name: "{{ source_db_name }}"
-        source_host: "{{ source_host }}"
-        ignore: True (1)
-      become_user: "{{ remote_user }}"
-      register: src_facts
+        module: rdssnap
+        db_instance_identifier: "{{ db_name }}"
+        db_snapshot_identifier: "{{ snapshot_name }}"
 
-      (1) ignore (connection errors) is optional. If you know the source
-          database may be down set ignore: True. If connection to the
-          source database fails the module will not throw a fatal error
-          and continue.
-
-   NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced in
-         roles or tasks later. Therefore, when running fact collecting modules,
-         run them on both nodes. Do not use the "when: master_node" clause.
 
 '''
 
-# Add anything from v$parameter table to retrieve in sourcefacts here.
-vparams=[ "compatible",
-          "sga_target",
-          "sga_max_size",
-          "db_recovery_file_dest",
-          "db_recovery_file_dest_size",
-          "diagnostic_dest",
-          "remote_listener",
-          "db_unique_name",
-          "db_block_size",
-          "remote_login_passwordfile",
-          "spfile",
-          "user_dump_dest",
-          "core_dump_dest",
-          "background_dump_dest",
-          "audit_file_dest" ]
+# Parameters we're just retriveing from v$parameter table
+vparams=[ "compatible", "sga_target", "db_recovery_file_dest", "db_recovery_file_dest_size", "diagnostic_dest", "remote_listener", "db_unique_name", "db_block_size", "remote_login_passwordfile", "spfile" ]
 msg = ""
 debugme = False
 
@@ -129,8 +93,8 @@ def main ():
 
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
-  vdb = module.params.get('source_db_name')
-  vdbhost = module.params.get('source_host')
+  vdb = module.params.get('source_db_name') + '1'
+  vdbhost = module.params.get('source_host') # + '.ccci.org'
   vignore = module.params.get('ignore')
 
   if vignore is None:
@@ -143,7 +107,6 @@ def main ():
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
 
     try:
-      vdb = vdb + vdbhost[-1:]
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
@@ -173,7 +136,7 @@ def main ():
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
-    ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
+    ansible_facts[refname] = {'oracle_version': usable_ver, 'oracle_version_full': retver}
 
     # select host_name
     try:
@@ -269,26 +232,6 @@ def main ():
     vtemp = vtemp[0][0]
     ansible_facts[refname]['bct_status'] = vtemp
 
-    # db_create_online_log_dest_# that aren't null. Needed for utils restore.
-    # they will need to be changed in the new database.
-    log_dests={}
-    try:
-      cur.execute("select name,value from v$parameter where replace(value,'+','') in (select name from  v$asm_diskgroup where state = 'CONNECTED' and name not like '%FRA%')")
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
-
-    try:
-      online_logs =  cur.fetchall()
-      for create_item,item_value in online_logs:
-        log_dests.update({create_item: item_value})
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
-
-    ansible_facts[refname]['log_dest'] = log_dests
-
-
     # Does the ULNFSA02_DATAPUMP directory exist?
     dirs={}
     try:
@@ -308,7 +251,6 @@ def main ():
 
     ansible_facts[refname]['dirs'] = dirs
 
-
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
@@ -318,53 +260,22 @@ def main ():
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
-    ansible_facts[refname]['bct_file'] = vtemp
+    ansible_facts[refname]['bct_path'] = vtemp
 
     meta_msg = ''
 
-
-    # Get default_temp_tablespace and default_permanet_tablespace
-    try:
-      cur.execute("select property_name,property_value from database_properties where property_name like 'DEFAULT%TABLESPACE'")
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
-
-    vtemp = cur.fetchall()
-    if cur.rowcount > 0:
-        ansible_facts[refname][vtemp[0][0]] = vtemp[0][1]
-        ansible_facts[refname][vtemp[1][0]] = vtemp[1][1]
-
-
-    # See if dbainfo user/schema exists
-    try:
-      cur.execute("select 1 from dba_users where username = 'DBAINFO'")
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
-
-    vtemp = cur.fetchall()
-    if cur.rowcount == 0:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'False' }} )
-        ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' })
-    else:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'True'}} )
-
-    # if dbainfo exists see if dba_work table exists
-    if cur.rowcount == 1:
-
-        try:
-            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBA_WORK'")
-        except cx_Oracle.DatabaseError as exc:
-            error, = exc.args
-            module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
-
-        vtemp = cur.fetchall()
-        if cur.rowcount == 0:
-            ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' } )
-        else:
-            ansible_facts[refname]['dbainfo'].update({'dba_work': 'True' } )
-
+    # See if master_notes table exists
+    # try:
+    #   cur.execute("select 1 from all_objects where object_name like 'MASTER_NOTE%'")
+    # except cx_Oracle.DatabaseError, exception:
+    #   error, = exception.args
+    #   module.fail_json(msg='Error selecting master_notes from v$instance, Error: %s' % (error.message), changed=False)
+    #
+    # vtemp = cur.fetchall()
+    # if cur.rowcount == 0:
+    #     ansible_facts[refname]['master_notes'] = "False"
+    # else:
+    #     ansible_facts[refname]['master_notes'] = "True"
 
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):

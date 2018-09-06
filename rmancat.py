@@ -214,11 +214,6 @@ def main ():
     else:
         ansible_facts['system_pwd'] = 'ok'
 
-    if module.params['db_name'] is None:
-        ansible_facts['db_name'] = 'missing'
-    else:
-        ansible_facts['db_name'] = 'ok'
-
     if module.params['cdb'] is None:
         ansible_facts['cdb'] = 'missing'
     else:
