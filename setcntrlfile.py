@@ -296,7 +296,7 @@ def main ():
     try:
         os.environ['ORACLE_HOME'] = voracle_home
         os.environ['ORACLE_SID'] = voracle_sid
-        cmd_str1 = '/app/oracle/11.2.0.4/dbhome_1/bin/sqlplus / as sysdba'
+        cmd_str1 = '%s/bin/sqlplus / as sysdba' % (voracle_home)
         cmd_str2 = "shutdown immediate\n"
         process = subprocess.Popen([cmd_str1], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         output, code = process.communicate(cmd_str2)
