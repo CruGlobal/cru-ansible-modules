@@ -26,7 +26,7 @@
 #  [ ]      if ASM diskgroup names
 #  [X]  6) tnsnames file location
 #  [X]  7) database information
-#  [ ]  8) hugepages information <<== cannot be done with the sudo error we have
+#  [X]  8) hugepages information
 #  [ ]  9) crsctl version
 #  [X]  10) srvctl version for each home : srvctl -V
 #  [ ]  11) log location
@@ -62,6 +62,7 @@ import sys
 import os
 import os.path
 import subprocess
+import pdb
 from subprocess import PIPE, Popen
 import re
 
@@ -97,12 +98,12 @@ EXAMPLES = '''
 '''
 
 debugme = False
+debug_msg = ""
 ora_home = ""
 global_ora_home = ""
 err_msg = ""
 v_rec_count = 0
 grid_home = ""
-err_msg = ""
 node_number = ""
 node_name = ""
 msg = ""
@@ -407,7 +408,7 @@ def get_db_status(local_vdb):
     node_number = int(get_node_num())
 
     if node_number is None:
-        err_msg = err_msg + ' Error [2]: orafacts module get_db_status() error - retrieving node_number: %s' % (node_number)
+        err_msg = err_msg + ' Error [2]: orafacts module get_db_status() error - retrieving node_number4: %s' % (str(node_number))
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
@@ -1071,6 +1072,248 @@ def get_scan(ora_home):
     return (scan_info)
 
 
+def hugepages(running_dbs):
+    """Gather Hugepage information from the host including database parameters for all running databases."""
+    global grid_home
+    global node_number
+    global debugme
+    global debug_msg
+    sga_target_running_tot = 0
+    pga_agg_running_tot = 0
+    parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','use_large_pages']
+    hg_info = {}
+
+    # get system hugepage size using: grep Hugepagesize /proc/meminfo
+    try:
+        cmd_str = "/bin/grep Hugepagesize /proc/meminfo | awk '{ print $2 \" \" $3}'"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    os_huge_page_size,os_huge_page_units = output.split()
+
+    # # most db sga sizes are in GB, os huge pages are KB, so convert to GB for easier math later.
+    # os_huge_page_size,os_huge_page_units = convert_2G(os_huge_page_size,os_huge_page_units)
+
+    hg_info = {'hugepages': {'os_hugepagesize' : os_huge_page_size, 'os_hugepage_units': os_huge_page_units } }
+
+    if debugme:
+        debug_msg = "'os_hugepagesize' : %s, 'os_hugepage_units': %s" % (os_huge_page_size,os_huge_page_units)
+
+    # Get system pysical memory (actual installed memory)
+    try:
+        cmd_str = "/bin/grep MemTotal /proc/meminfo | awk '{ print $2 \" \" $3}'"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s ' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    physical_mem,physical_mem_units = output.strip().split()
+
+    hg_info['hugepages'].update( {'physical_memory' : str(physical_mem), 'physical_memory_units': physical_mem_units } )
+
+    # server configuration setting for number of hugepages in Huge Pages pool
+    try:
+        cmd_str = "/bin/cat /etc/sysctl.conf | /bin/grep huge | cut -d '=' -f2"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    os_cnf_num_hugepages = output.strip()
+
+    if not os_cnf_num_hugepages:
+        # If the first method didn't work and os_num_hugepages is null try this method
+        # server configuration for number of hugepages in Huge Pages pool
+        try:
+            cmd_str = "/bin/cat /proc/sys/vm/nr_hugepages"
+            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+        except:
+            custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
+            custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+            raise Exception (custom_err_msg)
+
+        os_cnf_num_hugepages = output.strip()
+
+    hg_info['hugepages'].update( {'os_nr_hugepages_conf' : os_cnf_num_hugepages } )
+
+    # number of kernel allocated hugepages vs configured
+    # If HugePages_Total is lower than what was requested with nr_hugepages,
+    # then the system does either not have enough memory or there are not enough physically contiguous free pages.
+    # In the latter case the system needs to be rebooted which should give you a better chance of getting the memory.
+    try:
+        cmd_str = "/bin/grep HugePages_Total /proc/meminfo"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ getting HugePages_Total ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    setting_title, krnl_allocated_hugepages = output.split()
+    setting_title = setting_title.replace(":","")
+
+    hg_info['hugepages'].update( { setting_title : krnl_allocated_hugepages } )
+
+    # Free hugepages as per the system
+    try:
+        cmd_str = "/bin/grep HugePages_Free /proc/meminfo"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    setting_title, free_hugepages = output.split()
+    setting_title = setting_title.replace(":","")
+
+    hg_info['hugepages'].update( { setting_title : krnl_allocated_hugepages } )
+
+    # soft and hard memlock
+    try:
+        cmd_str = "/bin/cat /etc/security/limits.conf | grep memlock | grep -v '#'"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    memlock1, memlock2 = output.strip().split("\n")
+
+    memlock1 = memlock1.split()
+    memlock2 = memlock2.split()
+
+    title1 = "%s_memlock" % (memlock1[1])
+    title2 = "%s_memlock" % (memlock2[1])
+
+    hg_info['hugepages']['memlock'] = { memlock1[1] : memlock1[3], memlock2[1]: memlock2[3] }
+
+    # /proc/meminfo hugepage info
+    try:
+        cmd_str = "/bin/cat /proc/meminfo | grep Huge"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    hg_info['hugepages']['meminfo'] = {}
+
+    for line in output.strip().split("\n"):
+        tmp = line.split()
+        if len(tmp) == 2:
+           hg_info['hugepages']['meminfo'].update({ tmp[0][:-1] : tmp[1] })
+        else:
+           unit_title = "%s_units" % (tmp[0][:-1])
+           hg_info['hugepages']['meminfo'].update({ tmp[0][:-1] : tmp[1], unit_title: tmp[2] })
+
+    if debugme:
+        debug_msg = debug_msg + "'physical_memory' : %s, 'physical_memory_units': %s " % (str(physical_mem),physical_mem_units)
+
+    if not node_number:
+        node_number = int(get_node_num())
+
+    # For each running database get its sga_target
+    for vdb in running_dbs:
+
+        # set ORACLE_SID
+        if not vdb[-1].isdigit():
+            oracle_sid = vdb + str(node_number)
+        else:
+            oracle_sid = vdb
+            vdb = vdb[:-1] # do this because set oracle_home below requires db name only, not a sid
+
+        # make a new entry in the dictionary for the next db
+        hg_info['hugepages'][vdb] = {}
+
+        # set oracle_home
+        oracle_home = running_dbs[vdb]['oracle_home']
+
+        if debugme:
+            debug_msg = debug_msg + "vdb: %s oracle_sid: %s node_number3: %s " % (vdb,oracle_sid,str(node_number))
+
+        # get the parameter settings for the list in:  parameters_to_get
+        for db_param in parameters_to_get:
+
+            try:
+                cmd_str1 = 'export ORACLE_HOME=%s; export ORACLE_SID=%s; %s/bin/sqlplus / as sysdba' % (oracle_home,oracle_sid,oracle_home)
+                cmd_str2 = "select value from v$parameter where name = '%s';" % (db_param)
+                process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                output, code = process.communicate(cmd_str2)
+            except:
+                custom_err_msg = 'Error[ retrieving hugepage parameters ] oracle_home: %s oracle_sid: %s parameter: %s cmd_str1: %s cmd_str2: %s debug_msg: %s' % (oracle_home,oracle_sid,db_param,cmd_str1,cmd_str2,debug_msg)
+                custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+                raise Exception (custom_err_msg)
+
+            # get parameter value from output
+            for item in output.split("\n"):
+                if item.isdigit() or item in ('TRUE','FALSE','ONLY'):
+                    param_value = item
+                    hg_info['hugepages'][vdb].update( { db_param: param_value } )
+                    # parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','use_large_pages']
+                    if db_param == "sga_target":
+                        sga_target_running_tot = float(sga_target_running_tot) + float(param_value)
+                    if db_param == "pga_aggregate_target":
+                        pga_agg_running_tot = float(sga_target_running_tot) + float(param_value)
+
+    hg_info['hugepages'].update( {'sga_target_totals' : str(sga_target_running_tot), 'pga_aggregte_target_totals': pga_agg_running_tot  } )
+
+    return(hg_info)
+
+
+def convert_units(vamt1,vunit1,unit2):
+    """Convert input amount (vamt1) and units (vunit1) to the same units as the second parameter (vunit2)"""
+    global debug_msg
+
+    debug_msg = debug_msg + "convert_units() called with : vamt1: %s vunit1: %s vunits2: %s " % (vamt1,vunit1,unit2)
+    if vunit1.lower() in "kb" and unit2.lower() in "gb":
+        tmp_amt = float(vamt1) / 2048
+        tmp_unit = "G"
+    elif vunit1.lower() in "kb" and unit2.lower() in "mb":
+        tmp_amt = float(vamt1) / 1024
+        tmp_unit = "M"
+    elif vunit1.lower() in "mb" and unit2.lower() in "gb":
+        tmp_amt = float(vamt1) / 1024
+        tmp_unit = "G"
+    elif vunit1.lower() in "mb" and unit2.lower() in "kb":
+        tmp_amt = float(vamt1) * 1024
+        tmp_unit = "K"
+    elif vunit1.lower() in "gb" and unit2.lower() in "mb":
+        tmp_amt = int(vamt1) * 1024
+        tmp_unit = "M"
+    elif vunit1.lower() in "gb" and unit2.lower() in "kb":
+        tmp_amt = int(vamt1) * 2048
+        tmp_unit = "K"
+
+    debug_msg = debug_msg + "convert_units() returning: vamt1: %s vunit1: %s vunits2: %s " % (tmp_amt,tmp_unit,unit2)
+
+    return (tmp_amt,tmp_unit)
+
+
+def convert_2G(tmpsize,tmpunits):
+    """Convert given size and units to GB"""
+
+    if tmpunits.lower() == "kb" or tmpunits.lower() == "k":
+        newsize = float(tmpsize) / 2048
+    elif tmpunits.lower() == "mb" or tmpunits.lower() == "m":
+        newsize = float(tmpsize) / 1024
+    elif tmpunits.lower() == "gb" or tmpunits.lower() == "g":
+        newsize = tmpsize
+
+    return(newsize)
+
+
 # ================================== Main ======================================
 def main(argv):
   global ora_home
@@ -1128,8 +1371,9 @@ def main(argv):
         tmpscan = get_scan(vorahome)
         ansible_facts['orafacts']['scan'] = tmpscan
 
-        # vhuge = hugepages()
-        # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
+        # Add Hugepage info
+        vhuge = hugepages(ansible_facts['database_details'])
+        ansible_facts['orafacts'].update(vhuge)
 
       else: # Run these for Single Instance <<< ========================= SI
         msg="Single Instance (SI) Environment"
@@ -1161,6 +1405,9 @@ def main(argv):
       # Add any error messages caught before passing back
       if err_msg:
         msg = msg + err_msg
+
+      if debugme and debug_msg:
+          msg = msg + debug_msg
 
       module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
 
