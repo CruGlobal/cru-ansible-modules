@@ -40,7 +40,7 @@ short description: Given ASM diskgroup and database name it looks for the contro
 EXAMPLES = '''
 
     # when standing up a new database using restore, or clone etc.
-    # this will look in asm for new control files and then set them
+    # this will look in ASM for new control files and then set them
     # in the database.
     - name: Map new alias to spfile
       setcntrlfile:
