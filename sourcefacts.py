@@ -114,7 +114,7 @@ def main ():
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
-  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_fact)
   refname = 'sourcefacts'
 
   os.system("/usr/bin/scl enable python27 bash")
@@ -383,7 +383,7 @@ def main ():
         vtemp = vtemp[0][0]
         # if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
         if 'sga_target' == a_param or 'db_recovery_file_dest_size' == a_param:
-            vtemp = convert_size(float(vtemp),"M")
+            vtemp = convert_size(float(vtemp),"K")
             # ansible_facts[refname][vparams[idx]] = vtemp
             ansible_facts[refname][a_param] = vtemp
         # elif 'db_recovery_file_dest' == vparams[idx]:
