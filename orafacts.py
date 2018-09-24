@@ -713,7 +713,7 @@ def rac_running_homes():
 
 
 def si_running_homes():
-    """Return running databases and the homes their running from for Single Instance Oracle installation"""
+    """Return running databases and the homes they're running from for Single Instance Oracle installation"""
     global ora_home
     global v_rec_count
     dbs = {}
@@ -961,7 +961,7 @@ def host_name():
 
 
 def get_orahome_procid(vdb):
-    """Get database Oracle Home from the running process."""
+    """Get database Oracle Home from the running process (pid)."""
     global global_ora_home
 
     # get the pmon process id for the running database.
@@ -1081,11 +1081,12 @@ def hugepages(running_dbs):
     sga_target_running_tot = 0
     pga_agg_running_tot = 0
     parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','use_large_pages']
-    hg_info = {}
+
+    hg_info = { 'hugepages': {'sam':'ck'} }
 
     # get system hugepage size using: grep Hugepagesize /proc/meminfo
     try:
-        cmd_str = "/bin/grep Hugepagesize /proc/meminfo | awk '{ print $2 \" \" $3}'"
+        cmd_str = "/bin/grep 'Huge\|Mem\|Swap' /proc/meminfo | grep -v Cached"
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
@@ -1093,30 +1094,19 @@ def hugepages(running_dbs):
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    os_huge_page_size,os_huge_page_units = output.split()
+    hg_info['hugepages'].update( {'meminfo': {} })
 
-    # # most db sga sizes are in GB, os huge pages are KB, so convert to GB for easier math later.
-    # os_huge_page_size,os_huge_page_units = convert_2G(os_huge_page_size,os_huge_page_units)
-
-    hg_info = {'hugepages': {'os_hugepagesize' : os_huge_page_size, 'os_hugepage_units': os_huge_page_units } }
-
-    if debugme:
-        debug_msg = "'os_hugepagesize' : %s, 'os_hugepage_units': %s" % (os_huge_page_size,os_huge_page_units)
-
-    # Get system pysical memory (actual installed memory)
-    try:
-        cmd_str = "/bin/grep MemTotal /proc/meminfo | awk '{ print $2 \" \" $3}'"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s ' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    physical_mem,physical_mem_units = output.strip().split()
-
-    hg_info['hugepages'].update( {'physical_memory' : str(physical_mem), 'physical_memory_units': physical_mem_units } )
-
+    for item in output.strip().split("\n"):
+        tmp = item.split()
+        if len(tmp) == 3:
+            vtitle = tmp[0][:-1]
+            vsize  = "%s %s" % (tmp[1],tmp[2])
+            hg_info['hugepages']['meminfo'].update({ vtitle: vsize })
+        elif len(tmp) == 2:
+            vtitle = tmp[0][:-1]
+            vsize  = "%s" % (tmp[1])
+            hg_info['hugepages']['meminfo'].update({ vtitle: vsize })
+    
     # server configuration setting for number of hugepages in Huge Pages pool
     try:
         cmd_str = "/bin/cat /etc/sysctl.conf | /bin/grep huge | cut -d '=' -f2"
@@ -1145,39 +1135,6 @@ def hugepages(running_dbs):
 
     hg_info['hugepages'].update( {'os_nr_hugepages_conf' : os_cnf_num_hugepages } )
 
-    # number of kernel allocated hugepages vs configured
-    # If HugePages_Total is lower than what was requested with nr_hugepages,
-    # then the system does either not have enough memory or there are not enough physically contiguous free pages.
-    # In the latter case the system needs to be rebooted which should give you a better chance of getting the memory.
-    try:
-        cmd_str = "/bin/grep HugePages_Total /proc/meminfo"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ getting HugePages_Total ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    setting_title, krnl_allocated_hugepages = output.split()
-    setting_title = setting_title.replace(":","")
-
-    hg_info['hugepages'].update( { setting_title : krnl_allocated_hugepages } )
-
-    # Free hugepages as per the system
-    try:
-        cmd_str = "/bin/grep HugePages_Free /proc/meminfo"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    setting_title, free_hugepages = output.split()
-    setting_title = setting_title.replace(":","")
-
-    hg_info['hugepages'].update( { setting_title : krnl_allocated_hugepages } )
-
     # soft and hard memlock
     try:
         cmd_str = "/bin/cat /etc/security/limits.conf | grep memlock | grep -v '#'"
@@ -1196,11 +1153,11 @@ def hugepages(running_dbs):
     title1 = "%s_memlock" % (memlock1[1])
     title2 = "%s_memlock" % (memlock2[1])
 
-    hg_info['hugepages']['memlock'] = { memlock1[1] : memlock1[3], memlock2[1]: memlock2[3] }
+    hg_info['hugepages'].update( {'memlock': { memlock1[1] : memlock1[3], memlock2[1]: memlock2[3] } } )
 
-    # /proc/meminfo hugepage info
+    # Get transparent hugepages info
     try:
-        cmd_str = "/bin/cat /proc/meminfo | grep Huge"
+        cmd_str = "sudo /bin/cat /etc/grub.conf | /bin/grep transpar | /bin/grep -v '#' | /bin/grep `uname -r` | /bin/grep -Po 'transparent_hugepage=\K[^ ]+'"
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
@@ -1208,18 +1165,9 @@ def hugepages(running_dbs):
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    hg_info['hugepages']['meminfo'] = {}
+    xparent = output.strip()
 
-    for line in output.strip().split("\n"):
-        tmp = line.split()
-        if len(tmp) == 2:
-           hg_info['hugepages']['meminfo'].update({ tmp[0][:-1] : tmp[1] })
-        else:
-           unit_title = "%s_units" % (tmp[0][:-1])
-           hg_info['hugepages']['meminfo'].update({ tmp[0][:-1] : tmp[1], unit_title: tmp[2] })
-
-    if debugme:
-        debug_msg = debug_msg + "'physical_memory' : %s, 'physical_memory_units': %s " % (str(physical_mem),physical_mem_units)
+    hg_info['hugepages'].update( { 'transparent_hugepages': xparent } )
 
     if not node_number:
         node_number = int(get_node_num())
