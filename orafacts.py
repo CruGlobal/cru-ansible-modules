@@ -1080,9 +1080,9 @@ def hugepages(running_dbs):
     global debug_msg
     sga_target_running_tot = 0
     pga_agg_running_tot = 0
-    parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','use_large_pages']
+    parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','memory_max_target','use_large_pages']
 
-    hg_info = { 'hugepages': {'sam':'ck'} }
+    hg_info = { 'hugepages': {} }
 
     # get system hugepage size using: grep Hugepagesize /proc/meminfo
     try:
@@ -1106,7 +1106,7 @@ def hugepages(running_dbs):
             vtitle = tmp[0][:-1]
             vsize  = "%s" % (tmp[1])
             hg_info['hugepages']['meminfo'].update({ vtitle: vsize })
-    
+
     # server configuration setting for number of hugepages in Huge Pages pool
     try:
         cmd_str = "/bin/cat /etc/sysctl.conf | /bin/grep huge | cut -d '=' -f2"
