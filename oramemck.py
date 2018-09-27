@@ -512,12 +512,18 @@ def main ():
     # Number of pages required for the new database
     src_db_req_hg_pgs = int(vsrc_sga_target) / int(huge_size)
 
-    # Check if number of HugePages required for the new database (src_db_req_hg_pgs) is smaller than unused/unallocated HuagePages (vnum_free_unall_hgpgs)
-    if int(src_db_req_hg_pgs) > int(vnum_free_unall_hgpgs):
+    # get total physical memory required by the source database
+    src_phys_mem_req = int(src_sga_tgt) + int(src_pga_agg_tots)
 
-        # Check that sga_target of new db + pga_aggregate_target of new db is less than free physical memory
-        src_phys_req = int(src_sga_tgt) + int(src_pga_agg_tots)
-        if int(src_pys_req)
+    # Check if number of HugePages required for the new database (src_db_req_hg_pgs) is smaller than unused/unallocated HuagePages (vnum_free_unall_hgpgs)
+    # Check that sga_target of new db + pga_aggregate_target of new db is less than free physical memory
+    # if so, we're good to go. No further action required.
+    if ( int(src_db_req_hg_pgs) > int(vnum_free_unall_hgpgs) ) or ( int(src_phys_mem_req) > int(vnum_free_unall_hgpgs) ):
+
+        # If either of the above is true, attempt to calculate parameter values for sga_target and pga_aggregate_target hat will work with space available.
+        
+
+
 
 
     # Number of pages required for whats already running:
@@ -530,11 +536,11 @@ def main ():
         msgg "The sum off all sga_target values (%s) is greater than hard and soft memlock."
 
 
-
-
     # See if there are enough Free, unallocated HugePages to start the new database
     if int(src_db_req_hg_pgs) < int(vnum_free_unall_hgpgs):
         msgg "Current sga_target: %s and pga_aggregate_target: %s settings should work. No change is required."
+
+
 
 
 
