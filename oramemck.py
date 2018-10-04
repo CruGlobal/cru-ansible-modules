@@ -225,15 +225,15 @@ def hugepages():
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    memlock1, memlock2 = output.strip().split("\n")
+    memlock_soft, memlock_hard = output.strip().split("\n")
 
-    memlock1 = memlock1.split()
-    memlock2 = memlock2.split()
+    memlock_soft = memlock1.split()
+    memlock_hard = memlock2.split()
 
-    title1 = "%s_memlock" % (memlock1[1])
-    title2 = "%s_memlock" % (memlock2[1])
+    title1 = "%s_memlock" % (memlock_soft[1])
+    title2 = "%s_memlock" % (memlock_hard[1])
 
-    hg_info['hugepages'].update( {'memlock': { memlock1[1] : memlock1[3], memlock2[1]: memlock2[3] } } )
+    hg_info['hugepages'].update( {'memlock': { memlock_soft[1] : memlock_soft[3], memlock_hard[1]: memlock_hard[3] } } )
 
     # Get transparent hugepages info
     try:
@@ -249,8 +249,8 @@ def hugepages():
 
     hg_info['hugepages'].update( { 'transparent_hugepages': xparent } )
 
-    if not node_number:
-        node_number = int(get_node_num())
+    # if not node_number:
+    #     node_number = int(get_node_num())
 
     hg_info['hugepages'].update( {'sga_target_totals' : str(sga_target_running_tot), 'pga_aggregte_target_totals': pga_agg_running_tot  } )
 
@@ -439,7 +439,7 @@ def main ():
     Therefore, one must assure that memlock is set to account for the at least the total amount of huge pages that will be allocated.
     """
     global debugme
-
+    vchanged = False
     ansible_facts={}
 
     # Name to call facts dictionary being passed back to Ansible
@@ -469,12 +469,14 @@ def main ():
     vsrc_use_large_pages        = module.params.get('src_use_large_pages')
     vpfile                      = module.params.get('pfile')
 
+
+
     # You cannot be using AMM to use hugepages. Disable AMM by setting MEMORY_TARGET and MEMORY_MAX_TARGET should be set to 0
     if vsrc_memory_target != 0 and vsrc_memory_max_target != 0:
         tmp_str = "Automatic Memory Management (AMM) CANNOT be used with hugepages. To disable AMM set MEMORY_TARGET and MEMORY_MAX_TARGET to 0."
         msgg(tmp_str)
 
-    vchanged = False
+
 
     tmp = hugepages()
     vmeminfo = tmp['hugepages']['meminfo']
@@ -521,7 +523,7 @@ def main ():
     if ( int(src_db_req_hg_pgs) > int(vnum_free_unall_hgpgs) ) or ( int(src_phys_mem_req) > int(vnum_free_unall_hgpgs) ):
 
         # If either of the above is true, attempt to calculate parameter values for sga_target and pga_aggregate_target hat will work with space available.
-        
+
 
 
 
