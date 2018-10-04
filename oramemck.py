@@ -45,9 +45,12 @@ EXAMPLES = '''
     # i.e. '2040 MB' or '2048 mb' either way 1024 base is assumed.
     - name: Check memory on destination host
       memck:
-        src_sga_tgt: "{{ sourcefacts['sga_target'] }}"
-        src_pga_agg_tots: "{{ sourcefacts['pga_aggregate_target'] }}"
-        dest_mem_info: "{{ orafacts['hugepages'] }}"
+        src_memory_target: "{{ sourcefacts['memory_target'] }}"
+        src_memory_max_target: "{{ sourcefacts['memory_max_target'] }}"
+        src_sga_target: "{{ sourcefacts['sga_target'] }}"
+        src_sga_max_size: "{{ sourcefacts['sga_max_size'] }}"
+        src_pga_aggregate_target: "{{ sourcefacts['pga_aggregate_target'] }}"
+        src_use_large_pages: "{{ sourcefacts['use_large_pages'] }}"
         pfile: "{{ oracle_stage }}/pfile.ora"
 
     notes:
@@ -127,26 +130,25 @@ def hugepages():
     # Example of what this function returns:  https://www.kernel.org/doc/Documentation/vm/hugetlbpage.txt
     # --------------------------------------
     #     "hugepages": {
-    #     "meminfo": {
-    #         "AnonHugePages": "0 kB",
-    #         "HugePages_Free": "34433",    # is the number of huge pages in the pool that are not yet allocated.
-    #         "HugePages_Rsvd": "67",       # a commitment to allocate from the pool has been made, but no allocation has yet been made. These come from HugePages_Free
-    #         "HugePages_Surp": "0",        # surplus - the number of huge pages in the pool above the value in /proc/sys/vm/nr_hugepages.
-    #         "HugePages_Total": "76800",   # Total number of HugePages - is the size of the pool of huge pages.
-    #         "Hugepagesize": "2048 kB",    # default hugepage size (in Kb).
-    #         "MemFree": "45329568 kB",
-    #         "MemTotal": "264476444 kB",   # Total Physical memory
-    #         "SwapFree": "17825788 kB",
-    #         "SwapTotal": "17825788 kB"
-    #     },
-    #     "memlock": {                      # The memlock parameter specifies how much memory the oracle user can lock into its address space. Note that Huge Pages are locked in physical memory. The memlock setting is specified in KB and must match the memory size of the number of Huge Pages that Oracle should be able to allocate.
-    #         "hard": "238029005", (kb by definition)
-    #         "soft": "238029005"  (kb by definition)
-    #     },
-    #     "nr_hugepages": "76800",          # indicates the current number of "persistent" huge pages in the kernel's huge page pool.
-    #     "transparent_hugepages": "never"
-    #     }
-    #     }
+    #           "meminfo": {
+    #               "AnonHugePages": "0 kB",
+    #               "HugePages_Free": "34433",    # is the number of huge pages in the pool that are not yet allocated.
+    #               "HugePages_Rsvd": "67",       # a commitment to allocate from the pool has been made, but no allocation has yet been made. These come from HugePages_Free
+    #               "HugePages_Surp": "0",        # surplus - the number of huge pages in the pool above the value in /proc/sys/vm/nr_hugepages.
+    #               "HugePages_Total": "76800",   # Total number of HugePages - is the size of the pool of huge pages.
+    #               "Hugepagesize": "2048 kB",    # default hugepage size (in Kb).
+    #               "MemFree": "45329568 kB",
+    #               "MemTotal": "264476444 kB",   # Total Physical memory
+    #               "SwapFree": "17825788 kB",
+    #               "SwapTotal": "17825788 kB"
+    #           },
+    #           "memlock": {                      # The memlock parameter specifies how much memory the oracle user can lock into its address space. Note that Huge Pages are locked in physical memory. The memlock setting is specified in KB and must match the memory size of the number of Huge Pages that Oracle should be able to allocate.
+    #               "hard": "238029005", (kb by definition)
+    #               "soft": "238029005"  (kb by definition)
+    #           },
+    #           "nr_hugepages": "76800",          # indicates the current number of 'persistent' huge pages in the kernel's huge page pool.
+    #           "transparent_hugepages": "never"
+    #           }
     #     }
     #
     # Hugetlb         ( Translation Lookaside Buffer - tlb ) is the total amount of memory (in kB), consumed by huge
@@ -332,13 +334,13 @@ def get_db_home(local_db):
 
 
 def get_pga_sga_totals():
-    """Get a list of running databases on the host and select all sga_target_totals, sum and return the sum of all running dbs."""
+    """Get a list of running databases on the host and select and sum sga_target and pga_aggregate totals, for all running dbs. Return totals in kb"""
     db_param = ["sga_target","pga_aggregate_target"]
     sga_totals = 0
     pga_totals = 0
     fx_info = {}
 
-    # Get transparent hugepages info
+    # Get a list of running databases on the server
     try:
         cmd_str = "/usr/bin/pgrep -lf _pmon_ | /bin/cut -d '_' -f 3 | /bin/grep -v 'MGMTDB\|ASM1\|cut'"
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
@@ -360,7 +362,7 @@ def get_pga_sga_totals():
 
             try:
                 cmd_str1 = 'export ORACLE_HOME=%s; export ORACLE_SID=%s; %s/bin/sqlplus / as sysdba' % (oracle_home,oracle_sid,oracle_home)
-                cmd_str2 = "select value/1024 from v$parameter where name = '%s';" % (db_param) # kb
+                cmd_str2 = "select value/1024 from v$parameter where name = '%s';" % (db_param) # convert byte value to kb during select
                 process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 output, code = process.communicate(cmd_str2)
             except:
@@ -430,6 +432,17 @@ def recommended_hugepages(hugepg_size,hugepg_size_unit):
         return 1
 
 
+def split_n_convert2kb(tmp_str):
+    """Take a string input of form 'num units' split into two variables and convert to (kb) if not already and return"""
+
+    tmp_amt,tmp_unit = tmp_str.split()
+
+    if tmp_unit.lower() != "kb":
+        tmp_amt,tmp_unit = convert_to(tmp_amt,tmp_unit,"kb")
+
+    return (tmp_amt)
+
+
 def main ():
     """
     This module will check a destination host to see if there is enough memory or hugepages to startup
@@ -439,6 +452,7 @@ def main ():
     Therefore, one must assure that memlock is set to account for the at least the total amount of huge pages that will be allocated.
     """
     global debugme
+    global msg
     vchanged = False
     ansible_facts={}
 
@@ -449,42 +463,38 @@ def main ():
 
     module = AnsibleModule(
       argument_spec = dict(
-        src_sga_target              =dict(required=True),
-        src_sga_max_size            =dict(required=True),
-        src_pga_aggregate_target    =dict(required=True),
         src_memory_target           =dict(required=True),
         src_memory_max_target       =dict(required=True),
+        src_sga_target              =dict(required=True),
+        src_pga_aggregate_target    =dict(required=True),
+        src_sga_max_size            =dict(required=True),
         src_use_large_pages         =dict(required=True),
         pfile                       =dict(required=True)
       ),
       supports_check_mode=True,
     )
 
-    # Get arguements passed from Ansible playbook
-    vsrc_sga_target             = module.params.get('src_sga_target')
-    vsrc_sga_max_size           = module.params.get('sga_max_size')
-    vsrc_pga_aggregate_target   = module.params.get('src_pga_aggregate_target')
+    # Get source db values passed from Ansible playbook
     vsrc_memory_target          = module.params.get('src_memory_target')
     vsrc_memory_max_target      = module.params.get('src_memory_max_target')
+    vsrc_sga_target             = module.params.get('src_sga_target')
+    vsrc_pga_aggregate_target   = module.params.get('src_pga_aggregate_target')
+    vsrc_sga_max_size           = module.params.get('sga_max_size')
     vsrc_use_large_pages        = module.params.get('src_use_large_pages')
     vpfile                      = module.params.get('pfile')
-
-
 
     # You cannot be using AMM to use hugepages. Disable AMM by setting MEMORY_TARGET and MEMORY_MAX_TARGET should be set to 0
     if vsrc_memory_target != 0 and vsrc_memory_max_target != 0:
         tmp_str = "Automatic Memory Management (AMM) CANNOT be used with hugepages. To disable AMM set MEMORY_TARGET and MEMORY_MAX_TARGET to 0."
         msgg(tmp_str)
 
-
-
     tmp = hugepages()
     vmeminfo = tmp['hugepages']['meminfo']
     # available hugepages = Total -  Reserved
-    vphys_mem       = vmeminfo['MemTotal']
-    vhuge_free      = vmeminfo['HugePages_Free']
-    vhuge_rsvd      = vmeminfo['HugePages_Rsvd']
-    vhuge_tot       = vmeminfo['HugePages_Total']
+    vphys_mem       = vmeminfo['MemTotal']          # kb
+    vhuge_free      = vmeminfo['HugePages_Free']    # kb
+    vhuge_rsvd      = vmeminfo['HugePages_Rsvd']    # number of reserved hugepages
+    vhuge_tot       = vmeminfo['HugePages_Total']   # number of total hugepages
     tmp_huge_size   = vmeminfo['Hugepagesize']      # kb
     vmemlock_hard   = vmeminfo['memlock']['hard']   # kb
     vmemlock_soft   = vmeminfo['memlock']['soft']   # kb
@@ -594,14 +604,43 @@ def main ():
     # Confirm that Automatic Shared Memory Management (ASMM) is being used instead of AMM
     if int(vsrc_sga_tgt) == 0 and sga_max_size == 0:
 
+    # Split values into amount and units and convert to kb if necessary
+    vhuge_size_kb = split_n_convert2kb(tmp_huge_size)
+    vphys_mem_kb = split_n_convert2kb(vphys_mem)
 
-    if int(num_hugepages_needed) > int(vhuge_free):
-        tmp_str = "The number of HugePages needed to replicate the source database settings: sga_target (%s) /  HugePage_size (%s) = %s (Number of HugePages needed) is greater than available free HugePages: %s " % (vsrc_sga_tgt,vhuge_size,num_hugepages_needed,vhuge_free)
-        msgg(tmp_str)
+    vmemlock = tmp['hugepages']['memlock']
+    vmemlock_hard   = vmemlock['hard']   # kb
+    vmemlock_soft   = vmemlock['soft']   # kb
 
-    if debugme:
-        tmp_str = "vsrc_sga_tgt: %s vsrc_pga_agg_tots: %s vdest_mem_info: %s vpfile_dest: %s vphys_mem: %s " % (vsrc_sga_tgt,vsrc_pga_agg_tots,vdest_mem_info,vpfile,vphys_mem)
-        debugg(tmp_str)
+    # Split values into amount and units and convert to kb if necessary
+    vmemlock_hard_kb = split_n_convert2kb(vmemlock_hard)
+    vmemlock_soft_kb = split_n_convert2kb(vmemlock_soft)
+
+    vxparent_hgpgs = tmp['hugepages']['transparent_hugepages']
+    if vxparent_hgpgs.lower() == "never":
+        msgg "Transparent HugePages is enabled on the destination server and is incompatible normal HugePages. It must be disabled before proceeding."
+        module.fail_json(msg='ERROR: %s' % (msg), changed=False)
+
+    # verify AMM is disabled : memory_target and memory_max_target are both set to 0
+    if int(vsrc_memory_target) != 0 or int(vsrc_memory_max_target) != 0:
+        msgg "ERROR: AMM is active and incompatible with HugePages. MEMORY_TARGET (%s) should be 0. MEMORY_MAX_TARGET (%s) should be 0." % (vsrc_memory_target,vsrc_memory_max_target)
+        msgg "Source database is using Automatic Memory Management (AMM). AMM CANNOT be used with hugepages. AMM will be disabled in the destination database (pfile)."
+        vdisable_amm = "True"
+        # module.fail_json(msg='ERROR: %s' % (msg), changed=False)
+
+    # The sum of all SGA_TARGET + PGA_AGGREGATE_TARGETs on the server cannot be more than available physical memory.
+    new_db_sga_kb = split_n_convert2kb(vsrc_sga_target)
+    new_db_pga_kb = split_n_convert2kb(vsrc_pga_aggregate_target)
+    vserver_pga_sga_tots_kb = get_pga_sga_totals()
+    pga_sum_total = int(new_db_pga) + int(vserver_pga_sga_tots['pga_totals'])
+    sga_sum_total = int(new_db_sga) = int(vserver_pga_sga_tots['sga_totals'])
+    grand_total = int(sga_sum_total) + int(pga_sum_total)
+    if int(grand_total) > int(vphys_mem_kb):
+        msgg "Grand total of all running databases sga_target and pga_aggregate_target totals (%s) are greater than available physical memory on the server (%s)" % (grand_total,vphys_mem_kb)
+        msgg "SGA_TARGET value and PGA_AGGREGATE_TARGET will be adjusted in destination database to fit available space."
+
+        # attempt to calculate new sga_target pga_aggregate_target values
+
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
