@@ -13,7 +13,7 @@ def get_field(vstring, fieldnum):
 
 
 def get_etc_orahome(local_vdb):
-    """Return database home as recorded in /etc/oratab"""
+    """Return database home as recorded in /etc/oratab for the given database"""
     global my_msg
 
     cmd_str = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
@@ -63,7 +63,7 @@ def get_node_num():
 
 
 def get_nodes(vstring):
-  """Return the nodes in an Oracle RAC cluster and their names"""
+  """Given a string containing a list of nodes separte and return the nodes names"""
   x = 1 # This counter counts node/line numbers
   tmp = {}
   for vline in vstring.splitlines():
@@ -191,7 +191,7 @@ def host_name():
 
 
 def get_orahome_procid(vdb):
-    """Get database Oracle Home from the running process."""
+    """Get the Oracle Home for a given database passed in as a string from the running processes."""
 
     # get the pmon process id for the running database.
     # 10189  tstdb1
@@ -235,7 +235,7 @@ class alphaseq:
     self.charptr = 0
     self.curchar = ''
 
-  @property 
+  @property
   def reset(self):
     """Letter sequencer. Small chars a thru z. Prints message and resets at z. Instantiate with d = alphaseq()"""
     self.allchars = map(chr, range(97, 123))
@@ -253,7 +253,7 @@ class alphaseq:
 
 
 def get_nth_item(vchar, vfieldnum, vstring): # This can be done with python string.split('<char>')[3]
-    """given a character vchar to deliniate a field return field number n from string vstring"""
+    """given a character (vchar - first argument) to deliniate a field, return field number (vfieldnum - second argument) from string (vstring - third argument)"""
     # ex /app/oracle/12.1.0.2/dbhome_1 return field 4 (12.1.0.2) assume EOL a vchar
     letter_counter = 0
     vfield_counter = 0
