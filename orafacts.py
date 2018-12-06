@@ -26,7 +26,7 @@
 #  [ ]      if ASM diskgroup names
 #  [X]  6) tnsnames file location
 #  [X]  7) database information
-#  [X]  8) hugepages information
+#  [ ]  8) hugepages information <<== cannot be done with the sudo error we have
 #  [ ]  9) crsctl version
 #  [X]  10) srvctl version for each home : srvctl -V
 #  [ ]  11) log location
@@ -62,7 +62,6 @@ import sys
 import os
 import os.path
 import subprocess
-import pdb
 from subprocess import PIPE, Popen
 import re
 
@@ -98,12 +97,12 @@ EXAMPLES = '''
 '''
 
 debugme = False
-debug_msg = ""
 ora_home = ""
 global_ora_home = ""
 err_msg = ""
 v_rec_count = 0
 grid_home = ""
+err_msg = ""
 node_number = ""
 node_name = ""
 msg = ""
@@ -401,20 +400,20 @@ def get_db_status(local_vdb):
         grid_home = get_gihome()
 
     if not grid_home:
-        err_msg = err_msg + ' Error [1]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
+        err_msg = ' Error [1]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
     node_number = int(get_node_num())
 
     if node_number is None:
-        err_msg = err_msg + ' Error [2]: orafacts module get_db_status() error - retrieving node_number4: %s' % (str(node_number))
+        err_msg = ' Error [2]: orafacts module get_db_status() error - retrieving node_number: %s' % (node_number)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
     if "ASM" in local_vdb:
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.asm | grep STATE"
-    elif "MGMTDB" in local_vdb:
+    elif "MGMTDB" in local_vdb.upper():
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.mgmtdb | grep STATE"
     elif local_vdb[-1].isdigit() :
         tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb[:-1] + ".db | grep STATE"
@@ -425,7 +424,7 @@ def get_db_status(local_vdb):
       process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-       err_msg = err_msg + ' Error [3]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       err_msg = ' Error [3]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
        raise Exception (err_msg)
 
@@ -443,7 +442,10 @@ def get_db_status(local_vdb):
           node_status[i]=item.strip().rstrip()
       i += 1
 
-    tmpindx = int(node_number) - 1
+    if len(node_status) > 1:
+        tmpindx = int(node_number) - 1
+    elif len(node_status) == 1:
+        tmpindx = 0
 
     if debugme:
         msg = msg + " debug info[101]: get_db_status(%s) called tmp_cmd: %s node_status: %s and status_this_node: %s" % (local_vdb, tmp_cmd, str(node_status), node_status[tmpindx])
@@ -452,11 +454,11 @@ def get_db_status(local_vdb):
         try:
             status_this_node = node_status[tmpindx]
         except:
-            err_msg = err_msg + ' Error[4]: orafacts module get_db_status() tmpindx %s items in the node_status list: %s contents: %s node_number: %s excpetion: %s grid_home: %s local_vdb: %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+            err_msg = ' Error[4]: orafacts module get_db_status() tmpindx %s items in the node_status list: %s contents: %s node_number: %s excpetion: %s grid_home: %s local_vdb: %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
             err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
             raise Exception (err_msg)
     else:
-       err_msg = err_msg + ' Error[5]: orafacts module get_db_status() tmpindx %s items in the node_status list %s contents %s node_number %s excpetion: %s grid_home %s local_vdb %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+       err_msg = ' Error[5]: orafacts module get_db_status() tmpindx %s items in the node_status list %s contents %s node_number %s excpetion: %s grid_home %s local_vdb %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
        err_msg = err_msg + "exc_info(0) %s exc_info(1) %s err_msg %s exc_info(2) %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
        raise Exception (err_msg)
 
@@ -628,11 +630,11 @@ def rac_running_homes():
         if "MGMTDB" in vdbname:
             vdbname = "mgmtdb"
 
-        tmpdbstatus = get_db_status(vdbname)
+        tmpdbstatus = get_db_status(vdbname)    #<<<<<<<<<<<<<<<<<<<<<
         if not tmpdbstatus:
             tmpdbstatus = "unknown"
 
-        tmpnodenum = int(node_number) - 1
+        # tmpnodenum = int(node_number) - 1
 
         if vdbname[-1].isdigit():
             tmpdbname = vdbname[:-1]
@@ -713,7 +715,7 @@ def rac_running_homes():
 
 
 def si_running_homes():
-    """Return running databases and the homes they're running from for Single Instance Oracle installation"""
+    """Return running databases and the homes their running from for Single Instance Oracle installation"""
     global ora_home
     global v_rec_count
     dbs = {}
@@ -961,7 +963,7 @@ def host_name():
 
 
 def get_orahome_procid(vdb):
-    """Get database Oracle Home from the running process (pid)."""
+    """Get database Oracle Home from the running process."""
     global global_ora_home
 
     # get the pmon process id for the running database.
@@ -1072,196 +1074,6 @@ def get_scan(ora_home):
     return (scan_info)
 
 
-def hugepages(running_dbs):
-    """Gather Hugepage information from the host including database parameters for all running databases."""
-    global grid_home
-    global node_number
-    global debugme
-    global debug_msg
-    sga_target_running_tot = 0
-    pga_agg_running_tot = 0
-    parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','memory_max_target','use_large_pages']
-
-    hg_info = { 'hugepages': {} }
-
-    # get system hugepage size using: grep Hugepagesize /proc/meminfo
-    try:
-        cmd_str = "/bin/grep 'Huge\|Mem\|Swap' /proc/meminfo | grep -v Cached"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    hg_info['hugepages'].update( {'meminfo': {} })
-
-    for item in output.strip().split("\n"):
-        tmp = item.split()
-        if len(tmp) == 3:
-            vtitle = tmp[0][:-1]
-            vsize  = "%s %s" % (tmp[1],tmp[2])
-            hg_info['hugepages']['meminfo'].update({ vtitle: vsize })
-        elif len(tmp) == 2:
-            vtitle = tmp[0][:-1]
-            vsize  = "%s" % (tmp[1])
-            hg_info['hugepages']['meminfo'].update({ vtitle: vsize })
-
-    # server configuration setting for number of hugepages in Huge Pages pool
-    try:
-        cmd_str = "/bin/cat /etc/sysctl.conf | /bin/grep huge | cut -d '=' -f2"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    os_cnf_num_hugepages = output.strip()
-
-    if not os_cnf_num_hugepages:
-        # If the first method didn't work and os_num_hugepages is null try this method
-        # server configuration for number of hugepages in Huge Pages pool
-        try:
-            cmd_str = "/bin/cat /proc/sys/vm/nr_hugepages"
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            custom_err_msg = 'Error[ checking if alias already exists ] cmd_str: %s' % (cmd_str)
-            custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-            raise Exception (custom_err_msg)
-
-        os_cnf_num_hugepages = output.strip()
-
-    hg_info['hugepages'].update( {'os_nr_hugepages_conf' : os_cnf_num_hugepages } )
-
-    # soft and hard memlock
-    try:
-        cmd_str = "/bin/cat /etc/security/limits.conf | grep memlock | grep -v '#'"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    memlock1, memlock2 = output.strip().split("\n")
-
-    memlock1 = memlock1.split()
-    memlock2 = memlock2.split()
-
-    title1 = "%s_memlock" % (memlock1[1])
-    title2 = "%s_memlock" % (memlock2[1])
-
-    hg_info['hugepages'].update( {'memlock': { memlock1[1] : memlock1[3], memlock2[1]: memlock2[3] } } )
-
-    # Get transparent hugepages info
-    try:
-        cmd_str = "sudo /bin/cat /etc/grub.conf | /bin/grep transpar | /bin/grep -v '#' | /bin/grep `uname -r` | /bin/grep -Po 'transparent_hugepage=\K[^ ]+'"
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except:
-        custom_err_msg = 'Error[ getting free hugepages ] cmd_str: %s' % (cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
-
-    xparent = output.strip()
-
-    hg_info['hugepages'].update( { 'transparent_hugepages': xparent } )
-
-    if not node_number:
-        node_number = int(get_node_num())
-
-    # For each running database get its sga_target
-    for vdb in running_dbs:
-
-        # set ORACLE_SID
-        if not vdb[-1].isdigit():
-            oracle_sid = vdb + str(node_number)
-        else:
-            oracle_sid = vdb
-            vdb = vdb[:-1] # do this because set oracle_home below requires db name only, not a sid
-
-        # make a new entry in the dictionary for the next db
-        hg_info['hugepages'][vdb] = {}
-
-        # set oracle_home
-        oracle_home = running_dbs[vdb]['oracle_home']
-
-        if debugme:
-            debug_msg = debug_msg + "vdb: %s oracle_sid: %s node_number3: %s " % (vdb,oracle_sid,str(node_number))
-
-        # get the parameter settings for the list in:  parameters_to_get
-        for db_param in parameters_to_get:
-
-            try:
-                cmd_str1 = 'export ORACLE_HOME=%s; export ORACLE_SID=%s; %s/bin/sqlplus / as sysdba' % (oracle_home,oracle_sid,oracle_home)
-                cmd_str2 = "select value from v$parameter where name = '%s';" % (db_param)
-                process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-                output, code = process.communicate(cmd_str2)
-            except:
-                custom_err_msg = 'Error[ retrieving hugepage parameters ] oracle_home: %s oracle_sid: %s parameter: %s cmd_str1: %s cmd_str2: %s debug_msg: %s' % (oracle_home,oracle_sid,db_param,cmd_str1,cmd_str2,debug_msg)
-                custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-                raise Exception (custom_err_msg)
-
-            # get parameter value from output
-            for item in output.split("\n"):
-                if item.isdigit() or item in ('TRUE','FALSE','ONLY'):
-                    param_value = item
-                    hg_info['hugepages'][vdb].update( { db_param: param_value } )
-                    # parameters_to_get = ['sga_target','pga_aggregate_target','memory_target','use_large_pages']
-                    if db_param == "sga_target":
-                        sga_target_running_tot = float(sga_target_running_tot) + float(param_value)
-                    if db_param == "pga_aggregate_target":
-                        pga_agg_running_tot = float(sga_target_running_tot) + float(param_value)
-
-    hg_info['hugepages'].update( {'sga_target_totals' : str(sga_target_running_tot), 'pga_aggregte_target_totals': pga_agg_running_tot  } )
-
-    return(hg_info)
-
-
-def convert_units(vamt1,vunit1,unit2):
-    """Convert input amount (vamt1) and units (vunit1) to the same units as the second parameter (vunit2)"""
-    global debug_msg
-
-    debug_msg = debug_msg + "convert_units() called with : vamt1: %s vunit1: %s vunits2: %s " % (vamt1,vunit1,unit2)
-    if vunit1.lower() in "kb" and unit2.lower() in "gb":
-        tmp_amt = float(vamt1) / 2048
-        tmp_unit = "G"
-    elif vunit1.lower() in "kb" and unit2.lower() in "mb":
-        tmp_amt = float(vamt1) / 1024
-        tmp_unit = "M"
-    elif vunit1.lower() in "mb" and unit2.lower() in "gb":
-        tmp_amt = float(vamt1) / 1024
-        tmp_unit = "G"
-    elif vunit1.lower() in "mb" and unit2.lower() in "kb":
-        tmp_amt = float(vamt1) * 1024
-        tmp_unit = "K"
-    elif vunit1.lower() in "gb" and unit2.lower() in "mb":
-        tmp_amt = int(vamt1) * 1024
-        tmp_unit = "M"
-    elif vunit1.lower() in "gb" and unit2.lower() in "kb":
-        tmp_amt = int(vamt1) * 2048
-        tmp_unit = "K"
-
-    debug_msg = debug_msg + "convert_units() returning: vamt1: %s vunit1: %s vunits2: %s " % (tmp_amt,tmp_unit,unit2)
-
-    return (tmp_amt,tmp_unit)
-
-
-def convert_2G(tmpsize,tmpunits):
-    """Convert given size and units to GB"""
-
-    if tmpunits.lower() == "kb" or tmpunits.lower() == "k":
-        newsize = float(tmpsize) / 2048
-    elif tmpunits.lower() == "mb" or tmpunits.lower() == "m":
-        newsize = float(tmpsize) / 1024
-    elif tmpunits.lower() == "gb" or tmpunits.lower() == "g":
-        newsize = tmpsize
-
-    return(newsize)
-
-
 # ================================== Main ======================================
 def main(argv):
   global ora_home
@@ -1319,9 +1131,8 @@ def main(argv):
         tmpscan = get_scan(vorahome)
         ansible_facts['orafacts']['scan'] = tmpscan
 
-        # Add Hugepage info
-        vhuge = hugepages(ansible_facts['database_details'])
-        ansible_facts['orafacts'].update(vhuge)
+        # vhuge = hugepages()
+        # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
 
       else: # Run these for Single Instance <<< ========================= SI
         msg="Single Instance (SI) Environment"
@@ -1353,9 +1164,6 @@ def main(argv):
       # Add any error messages caught before passing back
       if err_msg:
         msg = msg + err_msg
-
-      if debugme and debug_msg:
-          msg = msg + debug_msg
 
       module.exit_json( msg=msg , ansible_facts=ansible_facts , changed="False")
 
