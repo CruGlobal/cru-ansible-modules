@@ -111,6 +111,25 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 
 
+def msgg(add_string):
+    """Passed a string add it to the msg to pass back to the user"""
+    global msg
+
+    if msg:
+        msg = msg + add_string
+    else:
+        msg = add_string
+
+
+def debugg(add_string):
+    """If debugme is True add this debugging information to the msg to be passed out"""
+    global debugme
+    global msg
+
+    if debugme == "True":
+        msgg(add_string)
+
+
 def get_field(fieldnum, vstring):
     """Simple fuction to return a field from a string of items"""
     x = 1
@@ -877,6 +896,8 @@ def rac_dblist():
   dblist = []
   database_info = { 'database_details':{} }
 
+  debugg("rac_dblist")
+
   try:
     srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
   except:
@@ -894,8 +915,11 @@ def rac_dblist():
 def si_dblist():
   """Return database information from /etc/oratab"""
   global err_msg
+  global msg
   dblist = []
   database_info = { 'database_details':{} }
+
+  debugg("si_dblist")
 
   try:
     oratab = str(commands.getstatusoutput("cat /etc/oratab | grep -v '^#\|^\s*$' | cut -d: -f 1")[1])
