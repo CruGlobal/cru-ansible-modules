@@ -111,6 +111,25 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 
 
+def msgg(add_string):
+    """Passed a string add it to the msg to pass back to the user"""
+    global msg
+
+    if msg:
+        msg = msg + add_string
+    else:
+        msg = add_string
+
+
+def debugg(add_string):
+    """If debugme is True add this debugging information to the msg to be passed out"""
+    global debugme
+    global msg
+
+    if debugme == "True":
+        msgg(add_string)
+
+
 def get_field(fieldnum, vstring):
     """Simple fuction to return a field from a string of items"""
     x = 1
@@ -400,20 +419,20 @@ def get_db_status(local_vdb):
         grid_home = get_gihome()
 
     if not grid_home:
-        err_msg = err_msg + ' Error [1]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
+        err_msg = ' Error [1]: orafacts module get_db_status() error - retrieving local_grid_home: %s' % (grid_home)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
     node_number = int(get_node_num())
 
     if node_number is None:
-        err_msg = err_msg + ' Error [2]: orafacts module get_db_status() error - retrieving node_number: %s' % (node_number)
+        err_msg = ' Error [2]: orafacts module get_db_status() error - retrieving node_number: %s' % (node_number)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
     if "ASM" in local_vdb:
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.asm | grep STATE"
-    elif "MGMTDB" in local_vdb:
+    elif "MGMTDB" in local_vdb.upper():
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.mgmtdb | grep STATE"
     elif local_vdb[-1].isdigit() :
         tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb[:-1] + ".db | grep STATE"
@@ -424,7 +443,7 @@ def get_db_status(local_vdb):
       process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-       err_msg = err_msg + ' Error [3]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+       err_msg = ' Error [3]: srvctl module get_db_status() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
        raise Exception (err_msg)
 
@@ -442,7 +461,10 @@ def get_db_status(local_vdb):
           node_status[i]=item.strip().rstrip()
       i += 1
 
-    tmpindx = int(node_number) - 1
+    if len(node_status) > 1:
+        tmpindx = int(node_number) - 1
+    elif len(node_status) == 1:
+        tmpindx = 0
 
     if debugme:
         msg = msg + " debug info[101]: get_db_status(%s) called tmp_cmd: %s node_status: %s and status_this_node: %s" % (local_vdb, tmp_cmd, str(node_status), node_status[tmpindx])
@@ -451,11 +473,11 @@ def get_db_status(local_vdb):
         try:
             status_this_node = node_status[tmpindx]
         except:
-            err_msg = err_msg + ' Error[4]: orafacts module get_db_status() tmpindx %s items in the node_status list: %s contents: %s node_number: %s excpetion: %s grid_home: %s local_vdb: %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+            err_msg = ' Error[4]: orafacts module get_db_status() tmpindx %s items in the node_status list: %s contents: %s node_number: %s excpetion: %s grid_home: %s local_vdb: %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
             err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
             raise Exception (err_msg)
     else:
-       err_msg = err_msg + ' Error[5]: orafacts module get_db_status() tmpindx %s items in the node_status list %s contents %s node_number %s excpetion: %s grid_home %s local_vdb %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
+       err_msg = ' Error[5]: orafacts module get_db_status() tmpindx %s items in the node_status list %s contents %s node_number %s excpetion: %s grid_home %s local_vdb %s' % (tmpindx, len(node_status), str(node_status), node_number, sys.exc_info()[0], grid_home, local_vdb)
        err_msg = err_msg + "exc_info(0) %s exc_info(1) %s err_msg %s exc_info(2) %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
        raise Exception (err_msg)
 
@@ -627,11 +649,11 @@ def rac_running_homes():
         if "MGMTDB" in vdbname:
             vdbname = "mgmtdb"
 
-        tmpdbstatus = get_db_status(vdbname)
+        tmpdbstatus = get_db_status(vdbname)    #<<<<<<<<<<<<<<<<<<<<<
         if not tmpdbstatus:
             tmpdbstatus = "unknown"
 
-        tmpnodenum = int(node_number) - 1
+        # tmpnodenum = int(node_number) - 1
 
         if vdbname[-1].isdigit():
             tmpdbname = vdbname[:-1]
@@ -874,6 +896,8 @@ def rac_dblist():
   dblist = []
   database_info = { 'database_details':{} }
 
+  debugg("rac_dblist")
+
   try:
     srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
   except:
@@ -891,8 +915,11 @@ def rac_dblist():
 def si_dblist():
   """Return database information from /etc/oratab"""
   global err_msg
+  global msg
   dblist = []
   database_info = { 'database_details':{} }
+
+  debugg("si_dblist")
 
   try:
     oratab = str(commands.getstatusoutput("cat /etc/oratab | grep -v '^#\|^\s*$' | cut -d: -f 1")[1])

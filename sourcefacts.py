@@ -68,6 +68,9 @@ EXAMPLES = '''
 vparams=[ "compatible",
           "sga_target",
           "sga_max_size",
+          "memory_target",
+          "memory_max_target",
+          "pga_aggregate_target",
           "db_recovery_file_dest",
           "db_recovery_file_dest_size",
           "diagnostic_dest",
@@ -111,7 +114,7 @@ def main ():
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
-  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_fact)
   refname = 'sourcefacts'
 
   os.system("/usr/bin/scl enable python27 bash")
@@ -367,9 +370,10 @@ def main ():
 
 
     # get parameters listed in the header of this program defined in "vparams"
-    for idx in range(len(vparams)):
+    # for idx in range(len(vparams)):
+    for a_param in vparams:
         try:
-          v_sel = "select value from v$parameter where name = '" + vparams[idx] + "'"
+          v_sel = "select value from v$parameter where name = '%s'" % (a_param)
           cur.execute(v_sel)
         except cx_Oracle.DatabaseError as exc:
           error, = exc.args
@@ -377,16 +381,23 @@ def main ():
 
         vtemp = cur.fetchall()
         vtemp = vtemp[0][0]
-        if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
-            vtemp = convert_size(float(vtemp),"M")
-            ansible_facts[refname][vparams[idx]] = vtemp
-        elif 'db_recovery_file_dest' == vparams[idx]:
-            ansible_facts[refname][vparams[idx]] = vtemp[1:]
-        elif 'listener' in vparams[idx]:
+        # if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
+        if 'sga_target' == a_param or 'db_recovery_file_dest_size' == a_param:
+            vtemp = convert_size(float(vtemp),"K")
+            # ansible_facts[refname][vparams[idx]] = vtemp
+            ansible_facts[refname][a_param] = vtemp
+        # elif 'db_recovery_file_dest' == vparams[idx]:
+        elif 'db_recovery_file_dest' == a_param:
+            # ansible_facts[refname][vparams[idx]] = vtemp[1:]
+            ansible_facts[refname][a_param] = vtemp[1:]
+        # elif 'listener' in vparams[idx]:
+        elif 'listener' in a_param:
             head, sep, tail = vtemp.partition('.')
-            ansible_facts[refname][vparams[idx]] = head
+            # ansible_facts[refname][vparams[idx]] = head
+            ansible_facts[refname][a_param] = head
         else:
-            ansible_facts[refname][vparams[idx]] = vtemp
+            # ansible_facts[refname][vparams[idx]] = vtemp
+            ansible_facts[refname][a_param] = vtemp
 
     try:
         cur.close()

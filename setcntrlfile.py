@@ -19,7 +19,7 @@ oracle_home=""
 err_msg = ""
 msg = ""
 DebugMe = True
-sleep_time = 2
+sleep_time = 3
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
@@ -40,13 +40,13 @@ short description: Given ASM diskgroup and database name it looks for the contro
 EXAMPLES = '''
 
     # when standing up a new database using restore, or clone etc.
-    # this will look in asm for new control files and then set them
-    # in the database.
+    # this will look in ASM for new control files and then set the control_files parameter
+    # in the database. i.e control_files = +DATA3/stgdb/controlfile/current.404.989162475
     - name: Map new alias to spfile
       setcntrlfile:
-        db_name: "{{ db_name }}"
+        db_name: "{{ dest_db_name }}"
         db_home: "{{ oracle_home }}"
-        asm_dg: "{{ asm_dg_name }}"
+        asm_dg: "{{ database_parameters[dest_db_name].asm_dg_name }}"
       when: master_node
 
     Notes:
@@ -131,7 +131,7 @@ def get_dbhome(vdb):
 
 
 def get_orahome_procid(vdb):
-    """Get database Oracle Home from the running process."""
+    """Get Oracle database Home from the running process."""
     global msg
 
     # get the pmon process id for the running database.
@@ -187,6 +187,8 @@ def main ():
     vasm_sid = "+ASM1"
     voracle_user = "oracle"
     vasm_fra = "+FRA"
+    err_gettn_or_cuttn_data = 0
+    err_gettn_or_cuttn_fra = 0
 
     ansible_facts={}
 
@@ -204,18 +206,22 @@ def main ():
     voracle_home    = module.params["db_home"]
     vasm_dg         = module.params["asm_dg"]
 
+    # if the first character of the asm_dg is not '+' add it.
     if vasm_dg[0] != "+":
         vasm_dg = "+%s" % (vasm_dg)
 
-    if not grid_home:
-        vgrid_home = get_grid_home()
+    # get the grid home
+    vgrid_home = get_grid_home()
 
+    # get the current node number
     vnode_num = get_node_num()
 
+    # if the database name doesn't have an instance number add it
+    # if it does have a node number make sure it's the correct one
     if not vdb[-1].isdigit():
         voracle_sid = vdb + vnode_num
     else:
-        if vdb[-1] != "1":
+        if vdb[-1] != int(vnode_num):
             voracle_sid = vdb[:-1] + vnode_num
         vdb = vdb[:-1]
 
@@ -227,11 +233,18 @@ def main ():
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-        custom_err_msg = 'Error [ getting control file name from %s ] grid_home: %s asm_sid: %s  asm_dg: %s cmd_str: %s' % (vasm_dg,vgrid_home,vasm_sid,vasm_dg,cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
+        custom_err_msg_gettn_asm_data = 'Error [ getting control file name from %s ] grid_home: %s asm_sid: %s  asm_dg: %s cmd_str: %s' % (vasm_dg,vgrid_home,vasm_sid,vasm_dg,cmd_str)
+        custom_err_msg_gettn_asm_data = custom_err_msg_gettn_asm_data + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        err_gettn_or_cuttn_data = 1
+        # raise Exception (custom_err_msg) - if one or the other control file is successful don't throw an error message
 
-    vcntr_file_data = [ item for item in output.split() if "Current" in item ][0]
+    if output:
+        try:
+            vcntr_file_data = [ item for item in output.split() if "Current" in item ][0]
+        except:
+            custom_err_msg_cuttn_asm_data = 'Error [ getting control file name from %s ] grid_home: %s asm_sid: %s  asm_dg: %s cmd_str: %s' % (vasm_dg,vgrid_home,vasm_sid,vasm_dg,cmd_str)
+            custom_err_msg_cuttn_asm_data = custom_err_msg_cuttn_asm_data + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+            err_gettn_or_cuttn_data = 1
 
     if DebugMe:
         msg = "[1] This command: %s used to get control file name: %s from: %s " % (cmd_str,vcntr_file_data,vasm_dg)
@@ -244,16 +257,35 @@ def main ():
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-        custom_err_msg = 'Error [ getting control file name fron %s ] grid_home: %s asm_sid: %s asm_dg: %s cmd_str: %s' % (vasm_fra,vgrid_home,vasm_sid,vasm_dg,cmd_str)
-        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-        raise Exception (custom_err_msg)
+        custom_err_msg_gettn_asm_fra = 'Error [ getting control file name fron %s ] grid_home: %s asm_sid: %s asm_dg: %s cmd_str: %s' % (vasm_fra,vgrid_home,vasm_sid,vasm_dg,cmd_str)
+        custom_err_msg_gettn_asm_fra = custom_err_msg_gettn_asm_fra + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        err_gettn_or_cuttn_fra = 1
+        # raise Exception (custom_err_msg)
 
-    vcntr_file_fra = [ item for item in output.split() if "Current" in item][0]
+    try:
+        vcntr_file_fra = [ item for item in output.split() if "Current" in item][0]
+    except:
+        custom_err_msg_cuttn_asm_fra = 'Error [ getting control file name fron %s ] grid_home: %s asm_sid: %s asm_dg: %s cmd_str: %s' % (vasm_fra,vgrid_home,vasm_sid,vasm_dg,cmd_str)
+        custom_err_msg_cuttn_asm_fra = custom_err_msg_cuttn_asm_fra + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        err_gettn_or_cuttn_fra = 1
+
+    # If neither control file ( +DATA or +FRA ) exists raise error - as long as one does, continue
+    if int(err_gettn_or_cuttn_fra) == 1 and int(err_gettn_or_cuttn_data) == 1:
+        if int(err_gettn_or_cuttn_fra) == 1:
+            if custom_err_msg_gettn_asm_fra:
+                raise Exception(custom_err_msg_gettn_asm_fra)
+            elif custom_err_msg_cuttn_asm_fra:
+                raise Exception(custom_err_msg_cuttn_asm_fra)
+        elif int(err_gettn_or_cuttn_data) == 1:
+            if custom_err_msg_gettn_asm_fra:
+                raise Exception(custom_err_msg_gettn_asm_data)
+            elif custom_err_msg_cuttn_asm_fra:
+                raise Exception(custom_err_msg_gettn_asm_data)
 
     if DebugMe:
         msg = msg + "[2] This command: %s used to get control file name: %s from: %s " % (cmd_str,vcntr_file_fra,vasm_fra)
 
-    time.sleep(2)
+    time.sleep(int(sleep_time))
 
     # Startup nomount the database
     try:
@@ -271,13 +303,19 @@ def main ():
     if DebugMe:
         msg = msg + "[3] Startup nomount: %s" % (cmd_str)
 
-    time.sleep(3)
+    time.sleep(int(sleep_time))
+
+    # create the set control_files command based on which controlfiles exist
+    if int(err_gettn_or_cuttn_fra) == 0 and int(err_gettn_or_cuttn_data) == 0:
+        cmd_str3 = "alter system set control_files='%s/%s/controlfile/%s','%s/%s/controlfile/%s' scope=spfile;\n" % (vasm_dg,vdb,vcntr_file_data,vasm_fra,vdb,vcntr_file_fra)
+    elif int(err_gettn_or_cuttn_fra) == 0:
+        cmd_str3 = "alter system set control_files='%s/%s/controlfile/%s' scope=spfile;\n" % (vasm_fra,vdb,vcntr_file_fra)
+    elif int(err_gettn_or_cuttn_data) == 0:
+        cmd_str3 = "alter system set control_files='%s/%s/controlfile/%s' scope=spfile;\n" % (vasm_dg,vdb,vcntr_file_data)
 
     # Run the alter system command and set the controlfile parameter
     try:
         cmd_str1 = '%s/bin/sqlplus / as sysdba' % (voracle_home)
-        # cmd_str2 = "startup nomount\n"
-        cmd_str3 = "alter system set control_files='%s/%s/controlfile/%s','%s/%s/controlfile/%s' scope=spfile;\n" % (vasm_dg,vdb,vcntr_file_data,vasm_fra,vdb,vcntr_file_fra)
         os.environ['ORACLE_HOME'] = voracle_home
         os.environ['ORACLE_SID'] = voracle_sid
         process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -290,7 +328,7 @@ def main ():
     if DebugMe:
         msg = msg + "[3] Alter system set controlfile with this command: %s oracle_home: %s oracle_sid: %s output: %s" % (cmd_str,voracle_home,voracle_sid,output)
 
-    time.sleep(2)
+    time.sleep(int(sleep_time))
 
     # Shut the database back down
     try:

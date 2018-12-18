@@ -62,7 +62,7 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 DOCUMENTATION = '''
 ---
 module: rmanfacts
-short_description: Collect Oracle RMAN metadata on a remote host for a given db.
+short_description: Collect Oracle RMAN metadata for a given db.
 notes: Returned values are then available to use in Ansible. Currently specifically
 used in the utils rst (restore) function to get a list of spfile backups.
 requirements: [ python2.* ]
