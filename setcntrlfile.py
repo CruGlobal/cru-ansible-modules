@@ -39,10 +39,11 @@ short description: Given ASM diskgroup and database name it looks for the contro
 
 EXAMPLES = '''
 
-    # when standing up a new database using restore, or clone etc.
-    # this will look in ASM for new control files and then set the control_files parameter
+    # this will look in ASM for new control files and then
+    # startup nomount a down dataabsae and set the control_files parameter
     # in the database. i.e control_files = +DATA3/stgdb/controlfile/current.404.989162475
-    - name: Map new alias to spfile
+
+    - name: Set controlfile in database
       setcntrlfile:
         db_name: "{{ dest_db_name }}"
         db_home: "{{ oracle_home }}"
@@ -51,7 +52,6 @@ EXAMPLES = '''
 
     Notes:
         The ASM diskgroup ( asm_dg_name ) the database is in can be entered with or without the + ( +DATA3 or DATA3 )
-
         The database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
 
 '''
