@@ -70,7 +70,7 @@ EXAMPLES = '''
 
 
 # Global variables
-debugme  = True
+debugme  = False
 # module parameters
 vdb_name = ""
 vcmd     = ""
