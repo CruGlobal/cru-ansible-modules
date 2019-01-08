@@ -42,12 +42,7 @@ EXAMPLES = '''
     # this will look in ASM for new control files and then
     # startup nomount a down dataabsae and set the control_files parameter
     # in the database. i.e control_files = +DATA3/stgdb/controlfile/current.404.989162475
-<<<<<<< HEAD
     - name: Set control_files parameter in db with new controlfile name.
-=======
-
-    - name: Set controlfile in database
->>>>>>> 693e4755e973bb1f2e3421f7b2e030b47ec42761
       setcntrlfile:
         db_name: "{{ dest_db_name }}"
         db_home: "{{ oracle_home }}"
