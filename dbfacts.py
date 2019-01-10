@@ -84,7 +84,7 @@ vparams=[ "compatible",
           "background_dump_dest",
           "audit_file_dest" ]
 msg = ""
-debugme = False
+debugme = True
 
 def convert_size(size_bytes, vunit):
 
@@ -141,6 +141,9 @@ def main ():
   if vignore is None:
       vignore = False
 
+  if '.org' in vdbhost:
+    vdbhost = vdbhost.replace('.ccci.org','')
+
   if not cx_Oracle_found:
     module.fail_json(msg="Error: cx_Oracle module not found")
 
@@ -169,7 +172,7 @@ def main ():
           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
       else:
           error, = exc.args
-          module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
+          module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     cur = con.cursor()
 
@@ -345,6 +348,17 @@ def main ():
         ansible_facts[refname][vtemp[0][0]] = vtemp[0][1]
         ansible_facts[refname][vtemp[1][0]] = vtemp[1][1]
 
+    # Get tablespace name like %USER% if one exists:
+    try:
+      cur.execute("select name from v$tablespace where upper(name) like '%USER%'")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    if vtemp:
+        ansible_facts[refname]['USER_TABLESPACE'] = vtemp
 
     # See if dbainfo user/schema exists
     try:
