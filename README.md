@@ -107,7 +107,6 @@ Notes: sourcefacts must run prior to rmanfacts or the user
 ```
 - name: Configure oracle
   hosts: oracle
-
   pre_tasks:
     - name: Gather RMAN spfile backup facts for source database
       rmanfacts:
@@ -141,4 +140,51 @@ Notes: sourcefacts must run prior to rmanfacts or the user
   returns the value:
     "04-JAN-2018 04:34:04"
 
+```
+
+### srvctl
+
+Module to interface with srvctl 
+
+Notes: 
+
+  (1) Use when master_node else it may try to execute on all nodes simultaneously.
+  
+  (2) It's possible to start instance nomount, mount etc. but not to
+      alter instance mount, or open. To open the instance using the srvctl module
+      you must stop the instance then start instance mount, or start instance open.
+      It is possible to "sqlplus> alter database mount" or "alter database open".
+      The status change will then be reflected in crsstat.
+      
+```
+    # To start | stop a database or instance from Ansible using srvctl
+    - name: start database
+      srvctl:
+        db: {{ dest_db_name }}
+        cmd: stop
+        obj: instance
+        inst: 2
+        stopt: immediate
+        param: force
+        ttw: 7
+      when: master_node                 Note: (1)
+
+    values:
+       db: database name
+      cmd: [ start | stop ]
+      obj: [ database | instance ]
+     inst: [ valid instance number ]
+    stopt: (stop options): [ normal | immediate | abort ]
+           (start options): [ open | mount | nomount | restrict | read only | read write | write ]
+    param: [ eval | force | verbose ]
+      ttw: time to wait (in min) for status change after executing the command. Default 5.
+
+    Notes:
+        (1) Use when master_node else it may try to execute on all nodes simultaneously.
+
+        (2) It's possible to start instance nomount, mount etc. but not to
+            alter instance mount, or open. To open the instance using the srvctl module
+            you must stop the instance then start instance mount, or start instance open.
+            It is possible to "sqlplus> alter database mount" or "alter database open".
+            The status change will then be reflected in crsstat.
 ```
