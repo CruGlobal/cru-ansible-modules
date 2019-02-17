@@ -84,7 +84,26 @@ vparams=[ "compatible",
           "background_dump_dest",
           "audit_file_dest" ]
 msg = ""
-debugme = False
+debugme = True
+
+def msgg(add_string):
+    """Passed a string add it to the msg to pass back to the user"""
+    global msg
+
+    if msg:
+        msg = msg + add_string
+    else:
+        msg = add_string
+
+
+def debugg(add_string):
+    """If debugme is True add this debugging information to the msg to be passed out"""
+    global debugme
+    global msg
+
+    if debugme == "True":
+        msgg(add_string)
+
 
 def convert_size(size_bytes, vunit):
 
@@ -132,7 +151,7 @@ def main ():
 
   # Get arguements passed from Ansible playbook
   vdbpass = module.params.get('systempwd')
-  vdb = module.params.get('source_db_name')
+  vdb     = module.params.get('source_db_name')
   vdbhost = module.params.get('source_host')
   vignore = module.params.get('ignore')
 
@@ -140,6 +159,7 @@ def main ():
       vignore = False
 
   if not cx_Oracle_found:
+    debugg("cx_Oracle not found")
     module.fail_json(msg="cx_Oracle module not found")
 
   # check vars passed in are not NULL. All are needed to connect to source db
@@ -150,19 +170,22 @@ def main ():
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
+      debugg("failed on cx_Oracle.makedsn(vdbhost=%s, '1521', vdb=%s and dsn_tns2: %s)" % (vdbhost,vdb,dsn_tns2) )
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
-    except cx_Oracle.DatabaseError as exc:
-      if vignore:
+    #except cx_Oracle.DatabaseError as exc:
+    except cx_Oracle.DatabaseError as e:
+      if vignore.lower() == "true":
+          debugg("err.msg=%s" % (e) )
           msg="DB CONNECTION FAILED"
           if debugme:
               msg = msg + " vignore: %s " % (vignore)
           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
       else:
-          error, = exc.args
-          module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
+          raise
+          #module.fail_json(msg='Database connection error: %s, tnsname: %s' % (error.message, vdb), changed=False)
 
     cur = con.cursor()
 
