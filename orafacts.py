@@ -1,4 +1,6 @@
 #!/opt/rh/python27/root/usr/bin/python
+# -*- coding: utf-8 -*-
+
 # scl enable python27 bash
 # export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 #
@@ -56,14 +58,21 @@
 #
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
+from ansible.module_utils._text import to_native
+from ansible.module_utils._text import to_text
+# from ansible.error import AnsibleError
 import commands
-import json
+import subprocess
 import sys
 import os
-import os.path
-import subprocess
-from subprocess import PIPE, Popen
-import re
+import json
+import re                           # regular expression
+# import math
+# import time
+# import pexpect
+# from datetime import datetime, date, time, timedelta
+from subprocess import (PIPE, Popen)
+from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
