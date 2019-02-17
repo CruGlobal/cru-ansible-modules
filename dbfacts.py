@@ -369,25 +369,25 @@ def main ():
 
     vtemp = cur.fetchall()
     if cur.rowcount == 0:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'False' }} )
-        ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' })
+        ansible_facts[refname].update({'dbainfo': {'dbainfo_schema': 'False' }} )
+        ansible_facts[refname]['dbainfo'].update({'dbainfo_schema': 'False' })
     else:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'True'}} )
+        ansible_facts[refname].update({'dbainfo': {'dbainfo_schema': 'True'}} )
 
-    # if dbainfo exists see if dba_work table exists
+    # if dbainfo schema exists see if dbainfo table exists in the schema
     if cur.rowcount == 1:
 
         try:
-            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBA_WORK'")
+            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBAINFO' and object_type ='TABLE' ")
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
             module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
 
         vtemp = cur.fetchall()
         if cur.rowcount == 0:
-            ansible_facts[refname]['dbainfo'].update({'dba_work': 'False' } )
+            ansible_facts[refname]['dbainfo'].update({'dbainfo_table': 'False' } )
         else:
-            ansible_facts[refname]['dbainfo'].update({'dba_work': 'True' } )
+            ansible_facts[refname]['dbainfo'].update({'dbainfo_table': 'True' } )
 
 
     # get parameters listed in the header of this program defined in "vparams"
