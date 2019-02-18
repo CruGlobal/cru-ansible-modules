@@ -186,7 +186,7 @@ def main ():
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
-    ansible_facts[refname] = {'oracle_version': usable_ver, 'oracle_version_full': retver}
+    ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
 
     # select host_name
     try:
@@ -359,6 +359,18 @@ def main ():
     vtemp = vtemp[0][0]
     if vtemp:
         ansible_facts[refname]['USER_TABLESPACE'] = vtemp
+
+    # Get sourcedb home:
+    try:
+      cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    if vtemp:
+        ansible_facts[refname]['oracle_home'] = vtemp
 
     # See if dbainfo user/schema exists
     try:
