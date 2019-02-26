@@ -401,7 +401,6 @@ def main ():
         else:
             ansible_facts[refname]['dbainfo'].update({'dbainfo': 'True' } )
 
-
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
         try:
