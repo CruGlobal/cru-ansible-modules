@@ -384,13 +384,13 @@ def main ():
         ansible_facts[refname].update({'dbainfo': {'exists': 'False' }} )
         ansible_facts[refname]['dbainfo'].update({'dbainfo': 'False' })
     else:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'True'}} )
+        ansible_facts[refname].update({'dbainfo': {'dbainfo_schema': 'True'}} )
 
-    # if dbainfo exists see if 'dbainfo' table exists
+    # if dbainfo schema exists see if dbainfo table exists in the schema
     if cur.rowcount == 1:
 
         try:
-            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBAINFO'")
+            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBAINFO' and object_type ='TABLE' ")
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
             module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
@@ -400,7 +400,6 @@ def main ():
             ansible_facts[refname]['dbainfo'].update({'dbainfo': 'False' } )
         else:
             ansible_facts[refname]['dbainfo'].update({'dbainfo': 'True' } )
-
 
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
