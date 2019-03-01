@@ -360,17 +360,34 @@ def main ():
     if vtemp:
         ansible_facts[refname]['USER_TABLESPACE'] = vtemp
 
-    # Get sourcedb home:
-    try:
-      cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+    if usable_ver[:2] == "12":
+        # Get sourcedb home:
+        try:
+          cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
 
-    vtemp = cur.fetchall()
-    vtemp = vtemp[0][0]
-    if vtemp:
-        ansible_facts[refname]['oracle_home'] = vtemp
+        vtemp = cur.fetchall()
+        vtemp = vtemp[0][0]
+        if vtemp:
+            ansible_facts[refname]['oracle_home'] = vtemp
+
+    # elif usable_ver[:2] == "11":
+    #
+    #     cmd_str = "DECLARE\n  OH varchar2(100);\nBEGIN\n  dbms_system.get_env('ORACLE_HOME', :OH);\n  dbms_output.put_line(OH);\nEND;"
+    #
+    #     # Get sourcedb home:
+    #     try:
+    #       cur.execute(cmd_str)
+    #     except cx_Oracle.DatabaseError as exc:
+    #       error, = exc.args
+    #       module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+    #
+    #     vtemp = cur.fetchall()
+    #     vtemp = vtemp[0][0]
+    #     if vtemp:
+    #         ansible_facts[refname]['oracle_home'] = vtemp
 
     # See if dbainfo user/schema exists
     try:
