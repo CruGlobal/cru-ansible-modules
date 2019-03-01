@@ -348,17 +348,18 @@ def main ():
 
     meta_msg = ''
 
-    # Get sourcedb home:
-    try:
-      cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+    if usable_ver[:2] == "12":
+        # Get sourcedb home if version 12+ otherwise doesn't work in 11g or lower:
+        try:
+          cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
 
-    vtemp = cur.fetchall()
-    vtemp = vtemp[0][0]
-    if vtemp:
-        ansible_facts[refname]['oracle_home'] = vtemp
+        vtemp = cur.fetchall()
+        vtemp = vtemp[0][0]
+        if vtemp:
+            ansible_facts[refname]['oracle_home'] = vtemp
 
     # Get default_temp_tablespace and default_permanet_tablespace
     try:
@@ -391,7 +392,7 @@ def main ():
     if cur.rowcount == 1:
 
         try:
-            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBA_WORK'")
+            cur.execute("select 1 from dba_objects where owner = 'DBAINFO' and object_name = 'DBAINFO'")
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
             module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
