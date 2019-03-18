@@ -398,10 +398,10 @@ def main ():
 
     vtemp = cur.fetchall()
     if cur.rowcount == 0:
-        ansible_facts[refname].update({'dbainfo': {'exists': 'False' }} )
-        ansible_facts[refname]['dbainfo'].update({'dbainfo': 'False' })
+        ansible_facts[refname].update({'dbainfo': {'schema_exists': 'False' }} )
+        ansible_facts[refname]['dbainfo'].update({'table_exists': 'False' })
     else:
-        ansible_facts[refname].update({'dbainfo': {'dbainfo_schema': 'True'}} )
+        ansible_facts[refname].update({'dbainfo': {'schema_exists': 'True'}} )
 
     # if dbainfo schema exists see if dbainfo table exists in the schema
     if cur.rowcount == 1:
@@ -414,9 +414,9 @@ def main ():
 
         vtemp = cur.fetchall()
         if cur.rowcount == 0:
-            ansible_facts[refname]['dbainfo'].update({'dbainfo': 'False' } )
+            ansible_facts[refname]['dbainfo'].update({'table_exists': 'False' } )
         else:
-            ansible_facts[refname]['dbainfo'].update({'dbainfo': 'True' } )
+            ansible_facts[refname]['dbainfo'].update({'table_exists': 'True' } )
 
     # get parameters listed in the header of this program defined in "vparams"
     for idx in range(len(vparams)):
