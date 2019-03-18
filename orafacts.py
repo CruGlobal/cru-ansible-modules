@@ -333,7 +333,7 @@ def get_db_home_n_vers(local_db):
             exit_msg = "no process running for : %s" % (local_db)
             sys.exit(exit_msg)
 
-    return_info = { local_db: {'home':vhome, 'version': vversion}}
+    return_info = { local_db: {'home':vhome.strip(), 'version': vversion}} # <<== added strip() here
 
     return(return_info)
 
@@ -674,14 +674,14 @@ def rac_running_homes():
             try:
                 metadata = {}
                 metadata = get_meta_data(tmpdbname)
-                dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'state': metadata['STATE'], 'target': metadata['TARGET'], 'state_details': metadata['STATE_DETAILS'], 'status': tmpdbstatus }} ) #[77]
+                dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'state': metadata['STATE'], 'target': metadata['TARGET'], 'state_details': metadata['STATE_DETAILS'], 'status': tmpdbstatus }} ) #[77]
             except:
                 # err_msg = ' Error: loading dbs dict vdbname: %s home: %s version: %s pid: %s state: %s target: %s state_details: %s status: %s' % (vdbname, vhome[ vhome.find("/") - 1 : -3], vver, vprocid, metadata['STATE'], metadata['TARGET'],metadata['STATE_DETAILS'], tmpdbstatus )
                 err_msg = 'Error: rac_running_homes() - get_meta_data() : %s ' % (vdbname)
                 err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
                 raise Exception (err_msg)
         else:
-            dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3], 'version': vver, 'pid': vprocid, 'status': tmpdbstatus }} )
+            dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'status': tmpdbstatus }} )
 
 
     # get a list of all databases registered with srvctl to find those offline
@@ -732,7 +732,7 @@ def rac_running_homes():
 
           try:
               # dbs.update({vnextdb: {'home': tmpdbhome, 'version': vversion, 'status': tempdbstatus}})
-              dbs.update({vnextdb: {'home': tmpdbhome[dbname]['home'], 'version': tmpdbhome[dbname]['version'], 'state': vmetadata['STATE'], 'target': vmetadata['TARGET'], 'state_details': vmetadata['STATE_DETAILS'], 'status': tempdbstatus }} ) #this should work with or without the error
+              dbs.update({vnextdb: {'home': tmpdbhome[dbname]['home'].strip(), 'version': tmpdbhome[dbname]['version'], 'state': vmetadata['STATE'], 'target': vmetadata['TARGET'], 'state_details': vmetadata['STATE_DETAILS'], 'status': tempdbstatus }} ) #this should work with or without the error
           except:
                err_msg = ' Error: orafacts module rac_running_homes() error - adding srvctl homes not in dbs: %s %s' % (tmporahome, sys.exc_info()[0])
                err_msg = err_msg + msg

@@ -139,7 +139,7 @@ def main ():
   )
 
   # Get arguements passed from Ansible playbook
-  vdbpass   = module.params.get('systempwd')
+  vdbpass   = module.params.get('syspwd')
   vdb       = module.params.get('db_name')
   vdbhost   = module.params.get('host')
   vrefname  = module.params.get('refname')
@@ -170,7 +170,7 @@ def main ():
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
-      con = cx_Oracle.connect(dsn=dsn_tns,user='system',password=vdbpass,mode=cx_Oracle.SYSDB)
+      con = cx_Oracle.connect(dsn=dsn_tns,user='sys',password=vdbpass,mode=cx_Oracle.SYSDBA)
     except cx_Oracle.DatabaseError as exc:
       if vignore:
           msg="DB CONNECTION FAILED"
@@ -448,8 +448,8 @@ def main ():
             tmp = vtemp[0][0].split(',')
             data_cntrlfile = tmp[0].strip()
             fra_cntrlfile = tmp[1].strip()
-            ansible_facts[refname][vparams[idx]['data_control_file'] = data_cntrlfile
-            ansible_facts[refname][vparams[idx]['fra_control_file'] = fra_cntrlfile
+            ansible_facts[refname][vparams[idx]].update({'data_control_file': data_cntrlfile})
+            ansible_facts[refname][vparams[idx]].update({'fra_control_file': fra_cntrlfile})
         else:
             ansible_facts[refname][vparams[idx]] = vtemp
 
@@ -468,10 +468,10 @@ def main ():
 
     msg="Custom module dbfacts Failed"
     # sourcefacts={}
-    if module.params['systempwd'] is None:
-        ansible_facts['systempwd'] = 'missing'
+    if module.params['syspwd'] is None:
+        ansible_facts['syspwd'] = 'missing'
     else:
-        ansible_facts['systempwd'] = 'ok'
+        ansible_facts['syspwd'] = 'ok'
 
     if module.params['source_db_name'] is None:
         ansible_facts['source_db_name'] = 'missing'
