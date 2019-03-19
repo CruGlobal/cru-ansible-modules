@@ -115,9 +115,9 @@ def db_registered(db_name):
 
         tmp = output.strip()
         if 'PRCD-' in tmp:
-            return("true")
-        else:
             return("false")
+        else:
+            return("true")
     else:
         return("false")
 
