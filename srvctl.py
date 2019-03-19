@@ -97,6 +97,31 @@ custom_err_msg = ""
 # debugging
 global_debug_msg = ""
 
+def db_registered(db_name):
+    """Given a db name find out if it's registered to srvctl"""
+    ora_home = get_orahome_procid(db_name)
+    if not ora_home:
+        ora_home = get_orahome_oratab(db_name)
+
+    if ora_home:
+        try:
+            cmd_str = "%s/bin/srvctl status database -d %s" % (ora_home,db_name)
+            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+        except:
+            custom_err_msg = 'Error [db_registered()]: Finding db status. cmd_str: %s ' % (cmd_str)
+            custom_err_msg = custom_err_msg + " %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+            raise Exception (custom_err_msg)
+
+        tmp = output.strip()
+        if 'PRCD-' in tmp:
+            return("true")
+        else:
+            return("false")
+    else:
+        return("false")
+
+
 def add_debug_info():
     """If debugging add the global_debug_msg to the msg for json exit"""
     global msg
@@ -827,6 +852,11 @@ def main ():
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
+
+  # If db is not registered with srvctl return
+  if db_registered(vdb_name).lower() == "false":
+      msg = "Database not registered with srvctl."
+      module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   # Ensure if object is an instance and instance number wasn't defined raise exception
   if vobj.lower() == "instance":
