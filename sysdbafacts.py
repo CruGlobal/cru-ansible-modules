@@ -432,26 +432,42 @@ def main ():
           cur.execute(v_sel)
         except cx_Oracle.DatabaseError as exc:
           error, = exc.args
+          if msg:
+              msg = msg + "idx: %s " % (idx)
+          else:
+              msg = "idx: %s" % (idx)
           module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
         vtemp = cur.fetchall()
         vtemp = vtemp[0][0]
-        if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
-            vtemp = convert_size(float(vtemp),"M")
-            ansible_facts[refname][vparams[idx]] = vtemp
-        elif 'db_recovery_file_dest' == vparams[idx]:
-            ansible_facts[refname][vparams[idx]] = vtemp[1:]
-        elif 'listener' in vparams[idx]:
-            head, sep, tail = vtemp.partition('.')
-            ansible_facts[refname][vparams[idx]] = head
-        elif 'control_files' == vparams[idx]:
-            tmp = vtemp[0][0].split(',')
-            data_cntrlfile = tmp[0].strip()
-            fra_cntrlfile = tmp[1].strip()
-            ansible_facts[refname][vparams[idx]].update({'data_control_file': data_cntrlfile})
-            ansible_facts[refname][vparams[idx]].update({'fra_control_file': fra_cntrlfile})
-        else:
-            ansible_facts[refname][vparams[idx]] = vtemp
+        try:
+            if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
+                vtemp = convert_size(float(vtemp),"M")
+                ansible_facts[refname][vparams[idx]] = vtemp
+            elif 'db_recovery_file_dest' == vparams[idx]:
+                try:
+                    ansible_facts[refname][vparams[idx]] = vtemp[1:]
+                except Exception as e:
+                    ansible_facts[refname][vparams[idx]] = "None"
+            elif 'listener' in vparams[idx]:
+                try:
+                    head, sep, tail = vtemp.partition('.')
+                    ansible_facts[refname][vparams[idx]] = head
+                except Exception as e:
+                    ansible_facts[refname][vparams[idx]] = "None"
+            elif 'control_files' == vparams[idx]:
+                tmp = vtemp.split(',')
+                data_cntrlfile = tmp[0].strip()
+                fra_cntrlfile = tmp[1].strip()
+                ansible_facts[refname][vparams[idx]] = {'data_control_file': data_cntrlfile}
+                ansible_facts[refname][vparams[idx]].update({'fra_control_file': fra_cntrlfile})
+            else:
+                ansible_facts[refname][vparams[idx]] = vtemp
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if msg:
+              msg = msg + "vtemp: %s " % (vtemp)
+          module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
     try:
         cur.close()
