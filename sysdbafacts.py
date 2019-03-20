@@ -53,14 +53,17 @@ EXAMPLES = '''
         syspwd: "{{ database_passwords[source_db_name].sys }}"
         db_name: "{{ source_db_name }}"
         host: "{{ source_host }}"
-        refname: "{{ refname_str }} (1)"
-        ignore: True (2)
+        pfile: "{{ /complete/path/and/filename.ora}}" (1)
+        refname: "{{ refname_str }} (2)"
+        ignore: True (3)
       become_user: "{{ utils_local_user }}"
       register: sys_facts
 
-      (1) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+      (1) pfile   - optional. If provided a pfile will be created to that directory/filename
 
-      (2) ignore - (connection errors) is optional. If you know the source
+      (2) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+
+      (3) ignore - (connection errors) is optional. If you know the source
           database may be down set ignore: True. If connection to the
           source database fails the module will not throw a fatal error
           to stop the play and continue.
@@ -92,6 +95,15 @@ vparams=[ "compatible",
           "control_files" ]
 msg = ""
 debugme = True
+
+def add_to_msg(mytext):
+    """Passed some text add it to the msg"""
+    global msg
+
+    if not msg:
+        msg = mytext
+    else:
+        msg = msg + " " + mytext
 
 def convert_size(size_bytes, vunit):
 
@@ -133,6 +145,7 @@ def main ():
         db_name         =dict(required=True),
         host            =dict(required=True),
         refname         =dict(required=True),
+        pfile           =dict(required=False),
         ignore          =dict(required=False)
       ),
       supports_check_mode=True,
@@ -144,6 +157,7 @@ def main ():
   vdbhost   = module.params.get('host')
   vrefname  = module.params.get('refname')
   vignore   = module.params.get('ignore')
+  vpfile    = module.params.get('pfile')
 
   if vignore is None:
       vignore = False
@@ -182,6 +196,20 @@ def main ():
           module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     cur = con.cursor()
+
+    # if pfile provided create it. Only on host 1 ( master_node )
+    if vpfile and str(vdbhost[-1:]) == "1":
+        cmd_str = "create pfile='%s' from spfile" % (vpfile)
+        try:
+          cur.execute(cmd_str)
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore in ("true","yes"):
+              add_to_msg("Error creating pfile: %s" % (error.message))
+          else:
+              module.fail_json(msg='Error creating pfile : %s' % (error.message), changed=False)
+              
+        ansible_facts[refname] = {'pfile': { 'written':'true','location': vpfile}}
 
     # select source db version
     try:
