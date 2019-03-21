@@ -9,6 +9,7 @@ import os
 import json
 import re
 import math
+import string
 
 try:
     import cx_Oracle
@@ -95,6 +96,8 @@ vparams=[ "compatible",
           "control_files" ]
 msg = ""
 debugme = True
+default_ora_base = "/app/oracle/"
+defualt_ora_home = "dbhome_1"
 
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
@@ -131,6 +134,8 @@ def main ():
   """ Run as sysdba against a database in startup nomount mode and retrun parameters"""
   global msg
   ansible_facts={}
+  global default_ora_base
+  global default_ora_base
 
   # Name to call facts dictionary being passed back to Ansible
   # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
@@ -146,6 +151,7 @@ def main ():
         host            =dict(required=True),
         refname         =dict(required=True),
         pfile           =dict(required=False),
+        oracle_home     =dict(required=False),
         ignore          =dict(required=False)
       ),
       supports_check_mode=True,
@@ -158,6 +164,10 @@ def main ():
   vrefname  = module.params.get('refname')
   vignore   = module.params.get('ignore')
   vpfile    = module.params.get('pfile')
+  voracle_home = module.params.get('oracle_home')
+
+  if vdb:
+      orig_vdb_name = vdb
 
   if vignore is None:
       vignore = False
@@ -208,8 +218,9 @@ def main ():
               add_to_msg("Error creating pfile: %s" % (error.message))
           else:
               module.fail_json(msg='Error creating pfile : %s' % (error.message), changed=False)
-              
+
         ansible_facts[refname] = {'pfile': { 'written':'true','location': vpfile}}
+
 
     # select source db version
     try:
@@ -223,9 +234,66 @@ def main ():
     usable_ver = ".".join(retver.split('.')[0:-1])
     ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
 
+    # if orapwd flag set copy the password file from $ORACLE_HOME to pfile directory
+    # get the directory part and dropping the pfile.ora name ( can be any name this way )
+    pfile_dir = vpfile[:vpfile.rindex('/')]
+    if not voracle_home:
+        orapwd_source_dir = "%s/%s/%s/dbs" % (default_ora_base,usable_ver,defualt_ora_home)
+    else:
+        orapwd_source_dir = "%s/dbs" % (voracle_home)
+
+    orapwd_dest_dir = "\/app\/oracle\/backups\/%s\/pfile" % (orig_vdb_name.upper())
+
+    try:
+        cmd_str = "create or replace directory source_orapw_dir as '%s'" % (orapwd_dest_dir)
+        cur.execute(cmd_str)
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error creating orapwd source dir: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+
+    if 'Directory created' in vtemp:
+        add_to_msg("source_orapw_dir created successfully.")
+
+    try:
+        cmd_str = "create or replace directory dest_orapw_dir as '%s'" % (orapwd_dest_dir)
+        cur.execute(cmd_str)
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error creating orapwd dest dir: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+
+    if 'Directory created' in vtemp:
+        add_to_msg("dest_orapw_dir created successfully.")
+
+    cmd_str = ("BEGIN "
+               "  DBMS_FILE_TRANSFER.COPY_FILE("
+               "    source_directory_object       =>  'SOURCE_ORAPW_DIR',"
+               "    source_file_name              =>  'orapwjfprod1',"
+               "    destination_directory_object  =>  'DEST_ORAPW_DIR',"
+               "    destination_file_name         =>  'orapwjfprod1'\)\;"
+               "  END\;" % (vdb))
+
+    # Copy orapwd file from source dir ( ORACLE_HOME/dbs ) to dest dir ( /apps/oracle/backups/DBNAME/pfile )
+    try:
+      cur.execute(cmd_str)
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Copying orapwd file from ORACLE_HOME to Datadomain backups: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    if 'procedure successfully completed' in vtemp:
+        add_to_msg("orapwd%s file successfully copied to: %s " % (vdb, orapwd_dest_dir))
+
+
     # select host_name
     try:
-      cur.execute('select host_name from v$instance')
+      cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
