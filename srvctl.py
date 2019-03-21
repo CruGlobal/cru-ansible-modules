@@ -104,6 +104,11 @@ def db_registered(db_name):
         ora_home = get_orahome_oratab(db_name)
 
     if ora_home:
+        debug_info("db_registered() with ora_home: %s" % (ora_home))
+    else:
+        debug_info("db_registered() NO ora_home: %s")
+
+    if ora_home:
         try:
             cmd_str = "%s/bin/srvctl status database -d %s" % (ora_home,db_name)
             process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
@@ -114,7 +119,7 @@ def db_registered(db_name):
             raise Exception (custom_err_msg)
 
         tmp = output.strip()
-        if 'PRCD-' in tmp:
+        if 'PRCD' in tmp:
             return("false")
         else:
             return("true")
@@ -854,8 +859,9 @@ def main ():
   vobj          = module.params["obj"]
 
   # If db is not registered with srvctl return
-  if db_registered(vdb_name).lower() == "false":
-      msg = "Database not registered with srvctl."
+  dbreg = db_registered(vdb_name)
+  if dbreg.lower() == "false":
+      add_to_msg("Database not registered with srvctl.")
       module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   # Ensure if object is an instance and instance number wasn't defined raise exception

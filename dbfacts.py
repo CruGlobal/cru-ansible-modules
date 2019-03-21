@@ -160,18 +160,21 @@ def main ():
       dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+      if vignore:
+          msg = "Failed to create dns_tns: %s" %s (error.message)
+      else:
+          module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
     except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
       if vignore:
-          msg="DB CONNECTION FAILED"
+          msg="DB CONNECTION FAILED : %s" % (error.message)
           if debugme:
               msg = msg + " vignore: %s " % (vignore)
           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
       else:
-          error, = exc.args
           module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     cur = con.cursor()
