@@ -2,7 +2,6 @@
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
-import commands
 import subprocess
 import sys
 import os
@@ -237,7 +236,7 @@ def main ():
     usable_ver = ".".join(retver.split('.')[0:-1])
     ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
 
-    # if orapwd flag set copy the password file from $ORACLE_HOME to pfile directory
+    # if vpfile ( pfile ) parameter is defined copy the password file from $ORACLE_HOME to pfile directory
     # get the directory part and dropping the pfile.ora name ( can be any name this way )
     if vpfile:
         pfile_dir = vpfile[:vpfile.rindex('/')] # vpfile contains /the/full/path/to/pfile.ora  This command strips /pfile.ora so only the dir is left.
