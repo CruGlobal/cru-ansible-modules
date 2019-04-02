@@ -2,7 +2,6 @@
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
-import commands
 import subprocess
 import sys
 import os
