@@ -152,20 +152,24 @@ def main ():
         db_name         =dict(required=True),
         host            =dict(required=True),
         refname         =dict(required=True),
-        pfile           =dict(required=False),
-        oracle_home     =dict(required=False),
+        oracle_home     =dict(required=True),
+        file            =dict(required=False),
+        src_dir         =dict(required=False),
+        dest_dir        =dict(required=False),
         ignore          =dict(required=False)
       ),
       supports_check_mode=True,
   )
 
   # Get arguements passed from Ansible playbook
-  vdbpass   = module.params.get('syspwd')
-  vdb       = module.params.get('db_name')
-  vdbhost   = module.params.get('host')
-  vrefname  = module.params.get('refname')
-  vignore   = module.params.get('ignore')
-  vpfile    = module.params.get('pfile')
+  vdbpass      = module.params.get('syspwd')
+  vdb          = module.params.get('db_name')
+  vdbhost      = module.params.get('host')
+  vrefname     = module.params.get('refname')
+  vignore      = module.params.get('ignore')
+  vpfile       = module.params.get('file')
+  vsrc_dir     = module.params.get('src_dir')
+  vdest_dir    = module.params.get('dest_dir')
   voracle_home = module.params.get('oracle_home')
 
   if vdb:
@@ -209,9 +213,9 @@ def main ():
 
     cur = con.cursor()
 
-
+    # Generate pfile :
     if vpfile and str(vdbhost[-1:]) == "1":
-        cmd_str = "create pfile='%s' from spfile" % (vpfile)
+        cmd_str = "create pfile='%s/%s' from spfile" % (vdest_dir,vpfile)
         try:
           cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
@@ -235,39 +239,55 @@ def main ():
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
     ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
+    default_db_ver = usable_ver
 
-    # if vpfile ( pfile ) parameter is defined copy the password file from $ORACLE_HOME to pfile directory
-    # get the directory part and dropping the pfile.ora name ( can be any name this way )
+    # if vpfile ( pfile ) parameter is defined copy the password file and from $ORACLE_HOME to pfile directory
+    # get the directory part and dropping the pfile.ora name ( can be any name this way ).
     if vpfile:
-        pfile_dir = vpfile[:vpfile.rindex('/')] # vpfile contains /the/full/path/to/pfile.ora  This command strips /pfile.ora so only the dir is left.
-        if not voracle_home: # If ORACLE_HOME wasn't passed contruct a default else use what was passed.
-            orapw_source = "%s/%s/%s/dbs" % (default_ora_base,usable_ver,defualt_ora_home)
-        else:
+        # pfile_dir = vpfile[:vpfile.rindex('/')] # vpfile contains /the/full/path/to/pfile.ora  This command strips /pfile.ora so only the dir is left.
+        if not vsrc_dir:
             orapw_source = "%s/dbs" % (voracle_home)
+        else:
+            orapw_source = vsrc_dir
 
-        orapw_dest = "/app/oracle/backups/%s/pfile" % (orig_vdb_name.upper())
+        if not vdest_dir:
+            orapw_dest = "/app/oracle/backups/%s/pfile" % (orig_vdb_name.upper())
+        else:
+            orapw_dest = vdest_dir
 
         try:
-            cmd_str = "create or replace directory orapw_dest as '%s'" % (orapw_dest)
+            cmd_str = "create or replace directory ORAPW_DEST as '%s'" % (orapw_dest)
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error creating orapw_dest directory")
             error, = exc.args
-            module.fail_json(msg='Error creating orapwd source dir: %s' % (error.message), changed=False)
+            module.fail_json(msg='Error creating orapwd dest dir: %s msg: %s cmd_str: %s' % (error.message,msg,cmd_str), changed=False)
 
         add_to_msg("orapw_dest directory [%s] created successfully." % (orapw_dest))
 
         try:
-            cmd_str = "create or replace directory orapw_source as '%s'" % (orapw_source)
+            cmd_str = "create or replace directory ORAPW_SOURCE as '%s'" % (orapw_source)
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error creating orapw_dest directory")
             error, = exc.args
-            module.fail_json(msg='Error creating orapwd dest dir: %s' % (error.message), changed=False)
+            module.fail_json(msg='Error creating orapwd dest dir (%s): %s cmd_str: %s msg: %s' % (orapw_source,error.message,cmd_str,msg), changed=False)
+
+        add_to_msg("orapw_source directory [%s] created successfully." % (orapw_source))
+
+        try:
+            # Rename the current pfile to backup
+            cmd_str = ("BEGIN UTL_FILE.FRENAME('%s','orapw%s','%s','orapw%s_bu', TRUE); END;" % ('ORAPW_DEST',vdb,'ORAPW_DEST',vdb))
+            cur.execute(cmd_str)
+        except cx_Oracle.DatabaseError as exc:
+            add_to_msg("Error: attempting to rename current password file orapw%s to orapw%s_bu" % (vdb,vdb))
+            error, = exc.args
+            if 'ORA-29283' not in error.message:
+                module.fail_json(msg='Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
 
         # because the above command has no output unless it fails. If you've made it
         # here, assume it succeeded.
-        add_to_msg("orapw_source directory [%s] created successfully." % (orapw_source))
+        add_to_msg("orapw file successfully renamed.")
 
         cmd_str = ("BEGIN DBMS_FILE_TRANSFER.COPY_FILE(source_directory_object=>'ORAPW_SOURCE',source_file_name=>'orapw%s',destination_directory_object=>'ORAPW_DEST',destination_file_name=>'orapw%s'); END;" % (vdb,vdb))
 
@@ -277,7 +297,7 @@ def main ():
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error attempting to copy orapw%s from %s to %s" %(vdb,orapw_source, orapw_dest))
             error, = exc.args
-            module.fail_json(msg='Copying orapwd file from ORACLE_HOME to Datadomain backups: %s' % (error.message), changed=False)
+            module.fail_json(msg='Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message), changed=False)
 
         add_to_msg("orapwd%s successfully copied from %s to: %s " % (vdb, orapw_source, orapw_dest))
 
