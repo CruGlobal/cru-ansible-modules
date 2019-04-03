@@ -127,7 +127,7 @@ def main ():
         refname         =dict(required=True),
         ignore          =dict(required=False)
       ),
-      supports_check_mode=True,
+      supports_check_mode=False,
   )
 
   # Get arguements passed from Ansible playbook
