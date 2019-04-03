@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/opt/rh/python27/root/usr/bin/python
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
@@ -177,7 +177,7 @@ def main ():
       con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
     #except cx_Oracle.DatabaseError as exc:
     except cx_Oracle.DatabaseError as e:
-      if vignore.lower() == "true":
+      if vignore:
           debugg("err.msg=%s" % (e) )
           msg="DB CONNECTION FAILED"
           if debugme:
