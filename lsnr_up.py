@@ -281,11 +281,11 @@ def main ():
             current_count = num_listeners(vdb)
             msg = msg + " current_count: %s time.time() %s <= timeout: %s diff %s" % (current_count,time.time(),timeout,(timeout - time.time()))
     except:
-        custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl. current_count %s < expected_num_reg_lsnrs %s and time.time() %s < timeout %s oracle_home %s msg: %s' % (vdb,current_count,expected_num_reg_lsnrs,time.time(),timeout,oracle_home,msg)
+        custom_err_msg = 'Error[ lsnr_wait() ]: waiting for %s database to register with lsnrctl. current_count %s <= expected_num_reg_lsnrs %s and time.time() %s < timeout %s oracle_home %s msg: %s' % (vdb,current_count,expected_num_reg_lsnrs,time.time(),timeout,oracle_home,msg)
         custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
         raise Exception (custom_err_msg)
 
-    msg = msg + "module lsnr_up exiting. For %s current_count %s < expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,v_entries,ttw,time.time(),timeout)
+    msg = msg + "module lsnr_up exiting. For %s current_count %s <= expected_num_reg_lsnrs %s ttw %s current time %s < timeout %s" % (vdb,current_count,v_entries,ttw,time.time(),timeout)
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)
