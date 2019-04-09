@@ -156,7 +156,7 @@ def main ():
 
     try:
       vdb = vdb + vdbhost[-1:]
-      dsn_tns2 = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+      dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       if vignore:
@@ -165,7 +165,7 @@ def main ():
           module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     try:
-      con = cx_Oracle.connect('system', vdbpass, dsn_tns2)
+      con = cx_Oracle.connect('system', vdbpass, dsn_tns)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       if vignore:
@@ -330,7 +330,6 @@ def main ():
 
     ansible_facts[refname]['dirs'] = dirs
 
-
     # BCT path
     try:
       cur.execute("select filename from v$block_change_tracking")
@@ -344,6 +343,20 @@ def main ():
 
     meta_msg = ''
 
+    # Get a list of schema owners that aren't Oracle owned schemas
+    oracle_owned = "'MDSYS','SQLTXADMIN','PUBLIC','OUTLN','CTXSYS','FLOWS_FILES','SYSTEM','ORACLE_OCM','EXFSYS','APEX_030200','DBSNMP','ORDSYS','ORDPLUGINS','TOAD','SQLTXPLAIN','APPQOSSYS','XDB','ORDDATA','SYS','WMSYS','SI_INFORMTN_SCHEMA','MIGDBA'"
+    try:
+      cur.execute("select unique(owner) from dba_objects where owner not in (%s)" % (oracle_owned))
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    owner_list = []
+    for own in vtemp:
+        owner_list.append(own[0])
+
+    ansible_facts[refname]['schema_owners'] = owner_list
 
     # Get default_temp_tablespace and default_permanet_tablespace
     try:
@@ -381,6 +394,7 @@ def main ():
         vtemp = vtemp[0][0]
         if vtemp:
             ansible_facts[refname]['oracle_home'] = vtemp
+
 
     # elif usable_ver[:2] == "11":
     #
