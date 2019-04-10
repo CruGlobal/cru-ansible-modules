@@ -354,7 +354,7 @@ def main ():
     vtemp = cur.fetchall()
     owner_list = []
     for own in vtemp:
-        owner_list.append(own[0])
+        owner_list.append(own[0].encode("utf-8"))
 
     ansible_facts[refname]['schema_owners'] = owner_list
 
