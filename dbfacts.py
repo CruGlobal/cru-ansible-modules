@@ -467,7 +467,7 @@ def main ():
         cur.close()
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+      module.fail_json(msg='Error closing cursor: Error: %s' % (error.message), changed=False)
 
     msg="Custom module dbfacts succeeded for %s database." % (vdb)
 
