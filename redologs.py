@@ -13,10 +13,16 @@
 #   Also giving the module the ability to resize redo logs if needed since the
 #   processes are similar and a logical place to put both.
 #
+#   ansible-playbook test.yml -i cru_inventory --extra-vars="hosts=test_rac dest_db_name=tstdb dest_host=tlorad01" --step -vvv
+#
+#   To run this module the following variables must be defined:
+#           dest_db_name, dest_host, function (flush, resize), local_user
+#
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 from ansible.module_utils._text import to_native
 from ansible.module_utils._text import to_text
+from ansible.module_utils.basic import AnsibleModule
 import subprocess
 import sys
 import os
@@ -54,6 +60,7 @@ EXAMPLES = '''
   - name: Flush redo logs
     local_action:
         module: redologs
+        connect_as: system
         system_password: "{{ database_passwords[dest_db_name].system }}"
         dest_db: "{{ dest_db_name }}"
         dest_host: "{{ dest_host }}"
@@ -81,6 +88,7 @@ EXAMPLES = '''
 
   Notes:
 
+    connect_as - Not required. default system.
     size and units are not required for "flush" but are for resize.
     units are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
     ignore - tells the module whether to fail on error and raise it or pass on error
@@ -89,6 +97,13 @@ EXAMPLES = '''
 '''
 # Global Vars:
 itemsToMatch = 0
+msg = ""
+error_msg = ""
+debugme = False
+g_vignore = False
+ansible_facts = {}
+module_fail = False
+module_exit = False
 
 
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
@@ -98,25 +113,26 @@ itemsToMatch = 0
 # So a dictionary like this should be passed into class redoLog
 # { 'thread':1,'GROUP': 1, 'SIZE_MB':50, 'STATUS':'INACTIVE','ARCHIVED': 'YES','MEMBER': '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'}
 class redoLogClass:
-    def __init__(self, redo_dict):
-        self.__redoThread__ = redo_dict['thread']
-        self.__redoGroup__ = redo_dict['group']
-        self.__redoStatus__ = redo_dict['status']
-        self.__prevStatus__
-        self.__startingStatus__ = redo_dict['status']
-        self.__redoSize__, self.__redoUnits__ = redo_dict['size_mb'].split("_")
-        self.__redoStatus__ = redo_dict['archived']
-        self.__archivedStatus__ = redo_dict['member']
-        self.__startLog__
+    def __init__(self, redo_t):
+        self.__redoThread__ = redo_t[0]
+        self.__redoGroup__ = redo_t[1]
+        self.__redoStatus__ = redo_t[3]
+        self.__prevStatus__ = ""
+        self.__startingStatus__ = redo_t[3]
+        self.__redoSize__ = redo_t[2]
+        self.__redoUnits__ = 'm'
+        self.__archivedStatus__ = redo_t[4]
+        self.__member__ = redo_t[5]
+        self.__startObj__ = False
         self.setStartStatus()
 
     def setStartStatus(self):
         if self.__startingStatus__.lower() == "current" and self.__archivedStatus__.lower() == "no":
-            self.__startLog__ = True
+            self.__startObj__ = True
         else:
-            self.__startLog__ = False
+            self.__startObj__ = False
 
-    def get_startObjStatus(self):
+    def startingObj(self):
         return(self.__startObj__)
 
     def getStatus(self):
@@ -148,86 +164,74 @@ class redoLogClass:
         return(self.__archivedStatus__)
 
 
+def debugg(a_str):
+    global msg
+    global error_msg
+
+    if debugme:
+        add_to_msg(a_str)
+
+
 def add_to_msg(add_string):
     """Passed a string add it to the msg to pass back to the user"""
     global msg
 
     if msg:
-        msg = msg + add_string
+        msg = msg + " " + add_string
     else:
         msg = add_string
 
 
-def debugg(add_string):
-    """If debugme is True add this debugging information to the msg to be passed out"""
-    global debugme
-    global msg
-
-    if debugme == "True":
-        msgg(add_string)
-
-
-def ck_required_param(arg_param_name, arg_param):
-    if not arg_param:
-        error_msg = 'REDOLOGS MODULE ERROR: No %s provided for required function parameter.' %s (arg_param_name)
-        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
-
-
-def ck_req_fx_param(arg_param_name, arg_fx, arg_param):
-    if not arg_param:
-        error_msg = 'REDOLOGS MODULE ERROR: No %s provided for required %s function operation.' % (arg_param_name, arg_fx)
-        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
-
-
-def prep_host(arg_dbhost):
-    """If the host was passed in long form (tlorad01.ccci.org) trim it"""
-    if "." in arg_dbhost:
-        return(arg_dbhost.split(".")[0])
-
-
-def prep_db(arg_db, arg_dbhost):
-    """If db name has no instance number, add it"""
-    if not arg_db[-1:].isdigit():
-        return(arg_db + arg_dbhost[-1:])
-
-
 def create_tns(vdbhost,vdb):
     global msg
+    global g_vignore
+    global module_fail
+
+    debugg("Connecting to %s on host %s" % (vdb,vdbhost))
 
     try:
-      vdb = vdb + vdbhost[-1:]
       dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if vignore:
+      if g_vignore:
           add_to_msg("Failed to create dns_tns: %s" %s (error.message))
-          module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
+          module_exit = True
       else:
           add_to_msg('TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost))
-          module.fail_json(msg=msg, changed=False)
+          module_fail = True
 
+    debugg("exit create_tns with : %s " % (dsn_tns))
     return(dsn_tns)
 
 
-def create_con(vdbpass, dsn_tns)
+def create_con(vdbpass, dsn_tns, vconn_as):
     global msg
+    global g_vignore
+    global ansible_facts
+    global module_fail
+    global module_exit
+
+    debugg("Connecting as : %s" % (vconn_as))
 
     try:
-      con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+        if vconn_as != "sys":
+          con = cx_Oracle.connect(dsn=dsn_tns, user=vconn_as, password=vdbpass)
+        elif vconn_as == "sys":
+          con = cx_Oracle.connect(dsn=dsn_tns,user='sys',password=vdbpass,mode=cx_Oracle.SYSDBA)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if vignore:
+      if g_vignore:
           add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
           if debugme:
-              add_to_msg(" vignore: %s " % (vignore))
-          module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+              add_to_msg(" g_vignore: %s " % (g_vignore))
+          module_exit = True
       else:
           add_to_msg('Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost))
-          module.fail_json(msg=msg, changed=False)
+          module_fail = True
 
-    cur = con.cursor()
-
-    return(cur)
+    if not module_exit and not module_fail:
+        cur = con.cursor()
+        return(cur)
 
 # ==============================================================================
 
@@ -235,21 +239,23 @@ def redoFlushMain(cur):
     global msg
     startingPoint = []
     statusNow = []
-    startFlag = 1
+
+    debugg("redoFlushMain")
 
     startingPoint = curStatus(cur)
 
     # start forcing redo changes until this same redo thread group is current again.
-    while not backToStartingPoint(statusNow, startingPoint, startFlag):
+    while not backToStartingPoint(statusNow, startingPoint):
         advanceLogs(cur)
         time.sleep(3)
         statusNow = curStatus(cur)
-        startFlag = 0
 
 
 def curStatus(cur):
     """Get current status of all redo logs and pass back a list of redoLogClass objects"""
+    redoLog_l = []
 
+    debugg("curStatus()")
     try:
         cmd_str = 'select l.thread#,l.group#,l.bytes/1024/1024 SIZE_MB,l.status,l.archived,lf.member from v$logfile lf, v$log l where lf.group#=l.group# order by l.thread#,group#'
         cur.execute(cmd_str)
@@ -258,20 +264,22 @@ def curStatus(cur):
         add_to_msg('Error redo logs and status, Error: %s' % (error.message))
         module.fail_json(msg=msg, ansible_facts={}, changed=False)
 
-    allLogs_l =  cur.fetchall()
+    allRedoLogs_l =  cur.fetchall() # Returns list of tuples
 
-    allLogs_d = convert_to_dict(allLogs_l)
+    # allRedoLogs_d = convert_to_dict(allRedoLogs_l)  # Dicts will provide flexiblity loading class objects
 
     # create a list of redoLog Objects
-    for oneLog in allLogs_d:
+    for oneLog in allRedoLogs_l:
+        # debugg("%s type: %s" % (str(oneLog),type(oneLog)))
         redoLog_l.append(redoLogClass(oneLog))
 
+    debugg("exit curStatus() list of objects: %s" % (str(len(redoLog_l))))
     return(redoLog_l)
 
 
 def advanceLogs(cur):
-    """Advance redo thread to flus redo logs"""
-
+    """Advance redo thread to flush redo logs"""
+    debugg("AdvanceLogs()")
     try:
         cmd_str = 'ALTER SYSTEM ARCHIVE LOG CURRENT'
         cur.execute(cmd_str)
@@ -279,41 +287,47 @@ def advanceLogs(cur):
         error, = exc.args
         add_to_msg('Error redo logs and status, Error: %s' % (error.message))
         module.fail_json(msg=msg, ansible_facts={}, changed=False)
+    debugg("exiting AdvanceLogs()")
 
 
-def backToStartingPoint(statusNow_l, startingPoint_l, startFlag):
-    """startingPoint is list of dictionaries containing the Thread#,Group#'s that were ARC=NO, STATUS=CURRENT at start
+def backToStartingPoint(statusNow_l, origStartingPoint_l):
+    """startingPoint is list of dictionaries containing the Thread#,Group#'s that had the status ARC=NO, STATUS=CURRENT at start
        force archive will continue until the starting point is reached. ( A complete circle is made and all redo logs
        are flushed. )"""
     global itemsToMatch
     itemsThatMatch = 0
+    debugg("backToStartingPoint()")
 
     # startFlag skips first run when objects would match
-    if startFlag == 0:
+    if len(statusNow_l) > 0:
         # on two node rac with min redo of 2 should have to match 4 objects
         if itemsToMatch == 0:
-            for item in redoLog_l:
-                if item.getStatus().lower() == "current" and item.getArchived().lower() == "no":
+            for item in origStartingPoint_l:
+                if item.startingObj():
+                    debugg("startObject found => Group: %s" % (str(item.getGroup())))
                     itemsToMatch += 1
 
-        for item in startingPoint_l:
-            if item.getStartObjStatus():
-                curState = sameItemNow(item, statusNow_l)
-                if item.getStartingStatus() == curState.getStatus():
+        for item in origStartingPoint_l:
+            if item.startingObj():
+                curGroupState = sameGroupNow(item, statusNow_l)   # Find same item in statusNow_list of redoLog objects
+                if item.getStartingStatus() == curGroupState.getStatus():
+                    debugg("")
                     itemsThatMatch += 1
 
         if itemsThatMatch == itemsToMatch:
+            debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: True" % (itemsThatMatch, itemsToMatch))
             return(True)
         else:
+            debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: False" % (itemsThatMatch, itemsToMatch))
             return(False)
 
 
-def sameItemNow(originalItem, curStatusList):
+def sameGroupNow(originalItem, curStatusList):
 
     for item in curStatusList:
-        if item.getThread() == originalItem.getThread() and
-           item.getGroup() == originalItem.getGroup():
-           return(item)
+        if item.getGroup() == originalItem.getGroup():
+            debugg("sameGroupNow returning matching Group from curStatusList Group: %s" % (item.getGroup()))
+            return(item)
 
 
 def findCurrentThread(redoLogObj_list):
@@ -331,8 +345,9 @@ def convert_to_dict(redoLogs_l):
     # (1, 1, 52428800, 'INACTIVE', 'YES', '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175')
     # thread, group, size(bytes),status,archived,member
     for item in redoLogs_l:
-        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5])
-        newRedoLogDict['size'] = hbytes(newRedoLogDict['size'])
+        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5]})
+        tmp = hbytes(newRedoLogDict['size'])
+        newRedoLogDict['size'], newRedoLogDict['units'] = tmp.split("_")
 
     return(newRedoLogDict)
 
@@ -349,6 +364,27 @@ def redo_resize(cur, arg_size, arg_units):
     pass
 
 
+def prep_host(vhost):
+    debugg("prep_host(%s)" % (vhost))
+    if "." in vhost:
+        tmp = vhost.split(".")[0]
+        debugg("prep_host exiting with %s" % (tmp))
+        return(tmp)
+    else:
+        debugg("prep_host exiting with %s" % (vhost))
+        return(vhost)
+
+
+def prep_db(vdb,vhost):
+    debugg("prep_db(%s,%s)" % (vdb,vhost))
+    if vdb[-1:].isdigit():
+        debugg("prep_db exiting with vdb: %s" % (vdb))
+        return(vdb)
+    else:
+        dbinst = vdb + vhost[-1:]
+        debugg("prep_db exiting with vdb: %s" % (dbinst))
+        return(dbinst)
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -356,6 +392,9 @@ def redo_resize(cur, arg_size, arg_units):
 def main ():
     """ Return Oracle database parameters from a database not in the specified group"""
     global msg
+    global debugme
+    global g_vignore
+
     ansible_facts={}
 
     # Name to call facts dictionary being passed back to Ansible
@@ -367,45 +406,71 @@ def main ():
 
     module = AnsibleModule(
        argument_spec = dict(
+         connect_as      =dict(required=False),
          systempwd       =dict(required=True),
          db_name         =dict(required=True),
-         host            =dict(required=True),
+         db_host         =dict(required=True),
          function        =dict(required=True),
          size            =dict(required=False),
          units           =dict(required=False),
          ignore          =dict(required=False),
          refname         =dict(required=False),
+         debugme         =dict(required=False)
        ),
        supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
-    vdbpass   = module.params.get('systempwd')
-    vdb       = module.params.get('db_name')
-    vdbhost   = module.params.get('host')
-    vfx       = module.params.get('function')
-    vsize     = module.params.get('size')
-    vunits    = module.params.get('units')
-    vignore   = module.params.get('ignore')
-    vrefname  = module.params.get('refname')
+    vconnect_as    = module.params.get('connect_as')
+    vdbpass        = module.params.get('systempwd')
+    vdb            = module.params.get('db_name')
+    vdbhost        = module.params.get('db_host')
+    vfx            = module.params.get('function')
+    vsize          = module.params.get('size')
+    vunits         = module.params.get('units')
+    vignore        = module.params.get('ignore')
+    vrefname       = module.params.get('refname')
+    vdebugme       = module.params.get('debugme')
 
+    if vdebugme:
+        debugme = vdebugme
+
+    debugg("Start parameter checks")
     # if the user passed a reference name use it
     if vrefname:
         refname = vrefname
 
-    ck_required_param("passord", vdbpass)
+    if vconnect_as:
+        vconas = vconnect_as
+    else:
+        vconas = "system"
 
-    ck_required_param("database", vdb)
+    if not vdbpass:
+        error_msg = 'REDOLOGS MODULE ERROR: No password provided.' %s (arg_param_name)
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
 
-    ck_required_param("destination host", vdbhost)
+    if not vdb:
+        error_msg = 'REDOLOGS MODULE ERROR: No db_name provided.' %s (arg_param_name)
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
 
-    ck_required_param("function", vfx)
+    if not vdbhost:
+        error_msg = 'REDOLOGS MODULE ERROR: No databae host provided for required function parameter.'
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
 
-    if vfx.lower() == "resize":
-        ck_req_fx_param("size", "resize", vsize)
+    if not vfx:
+        error_msg = 'REDOLOGS MODULE ERROR: No function provided.'
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
 
-    if vfx.lower() == "resize":
-        ck_req_fx_param("units", "resize", vunits)
+    if vignore:
+        g_vignore = vignore
+
+    if not vsize and vfx == "resize":
+        error_msg = 'REDOLOGS MODULE ERROR: No size provided. Required for resize function.'
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
+
+    if not vunits and vfx == "resize":
+        error_msg = 'REDOLOGS MODULE ERROR: No units provided. Required for resize function.'
+        module.fail_json(msg=error_msg, ansible_facts=ansible_facts, changed=False)
 
     if vfx.lower() not in ("resize", "flush"):
         error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
@@ -413,40 +478,53 @@ def main ():
 
     vdbhost = prep_host(vdbhost)
 
+    debugg("before call to prep_db(%s,%s)" % (vdb,vdbhost))
     vdb = prep_db(vdb,vdbhost)
 
+    debugg("before calling create_tns(%s,%s)" % (vdbhost,vdb))
     dsn_tns = create_tns(vdbhost,vdb)
 
-    cur = create_con(vdbpass, dsn_tns)
+    if not module_fail and not module_exit:
 
-    if vfx.lower() == "flush":
+        cur = create_con(vdbpass, dsn_tns, vconas)
 
-        redoFlushMain(cur)
+        if not module_fail and not module_exit:
+            debugg("finished creating cursor")
 
-    elif vfx.lower() == "resize":
+            if vfx.lower() == "flush":
 
-        redoResizeMain(cur)
+                redoFlushMain(cur)
 
-    else:
+            elif vfx.lower() == "resize":
 
-        add_to_msg('REDOLOG MODULE ERROR: choosing function')
+                redoResizeMain(cur)
 
+            else:
+
+                add_to_msg('REDOLOG MODULE ERROR: choosing function')
+
+                module.fail_json(msg=msg, ansible_facts=ansible_facts, changed=False)
+
+
+            # Close the cursor before exit
+            try:
+                cur.close()
+            except cx_Oracle.DatabaseError as exc:
+              error, = exc.args
+              add_to_msg("Error closing cursor during redologs module %s META: %s" % (vfx, error.message))
+              module.fail_json(msg=msg, ansible_facts=ansible_facts, changed=False)
+
+            add_to_msg("Custom module dbfacts succeeded for %s database." % (vdb))
+
+            vchanged="False"
+
+    if module_fail:
         module.fail_json(msg=msg, ansible_facts=ansible_facts, changed=False)
-
-
-    # Close the cursor before exit
-    try:
-        cur.close()
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      add_to_msg("Error closing cursor during redologs module %s META: %s" % (vfx, error.message))
-      module.fail_json(msg=msg, ansible_facts=ansible_facts, changed=False)
-
-    msg="Custom module dbfacts succeeded for %s database." % (vdb)
-
-    vchanged="False"
-
-    module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
+    elif module_exit:
+        add_to_msg("An Error occurred and the module is exiting without stopping the play since ignore was set to True")
+        module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=False)
+    else:
+        module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
