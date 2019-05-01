@@ -40,12 +40,12 @@ EXAMPLES = '''
 #
 #  Oracle version numbers explained (Doc ID 39691.1)
 #
-#   7.2.3.2.0
-#   | | | | |_ Port Specific Maintenance Release
-#   | | | |___ Port Specific Revision Level
-#   | | |_____ Release Level
-#   | |_______ Maintenance Release
-#   |_________ Version Number
+#   11.2.0.4.0
+#    | | | | |_ Port Specific Maintenance Release
+#    | | | |___ Port Specific Revision Level
+#    | | |_____ Release Level
+#    | |_______ Maintenance Release
+#    |_________ Version Number
 #
 
 msg=""
