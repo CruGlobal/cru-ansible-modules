@@ -185,13 +185,6 @@ def main ():
       error, = exc.args
       module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
 
-    # select source db version
-    try:
-      cur.execute('select version from v$instance')
-    except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
-
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
