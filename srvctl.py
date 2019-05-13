@@ -718,20 +718,22 @@ def get_expected_state(vcmd, vstopt, majver):
     if vcmd.lower() == "stop":
         tmp_exp_state = {'exp_state': 'OFFLINE', 'meta': 'Instance Shutdown'}
     elif vcmd.lower() == "start":
-      if vstopt.lower() == "nomount":
-          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Dismounted'}
-      elif vstopt.lower() ==  "mount":         # crsstat output : ora.tstdb.db   database   C ONLINE     INTERMEDIATE tlorad01     0  0 Mounted (Closed)
-          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Mounted (Closed)'} # INTERMEDIATE
-      elif vstopt.lower() == "open":
-          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
-      elif vstopt.lower() == '"read only"':
-          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open,Readonly'}
-      elif vstopt.lower() == '"read write"':
-          tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
-      elif vstopt.lower() == "restrict":
-          tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Restricted Access'}
-
-    # Return dictionary with {state: value, meta: value}
+        if vstopt:
+          if vstopt.lower() == "nomount":
+              tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Dismounted'}
+          elif vstopt.lower() ==  "mount":         # crsstat output : ora.tstdb.db   database   C ONLINE     INTERMEDIATE tlorad01     0  0 Mounted (Closed)
+              tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Mounted (Closed)'} # INTERMEDIATE
+          elif vstopt.lower() == "open":
+              tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
+          elif vstopt.lower() == '"read only"':
+              tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open,Readonly'}
+          elif vstopt.lower() == '"read write"':
+              tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
+          elif vstopt.lower() == "restrict":
+              tmp_exp_state = {'exp_state': 'INTERMEDIATE', 'meta': 'Restricted Access'}
+        elif vstopt is None:
+            tmp_exp_state = {'exp_state': 'ONLINE', 'meta': 'Open'}
+                # Return dictionary with {state: value, meta: value}
     return (tmp_exp_state)
 
 
