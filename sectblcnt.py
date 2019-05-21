@@ -63,7 +63,7 @@ EXAMPLES = '''
 '''
 
 def_ref_name = "sectblcount"
-secTblList = ('PSPTCS_MAPFLDS','PSACCESSPROFILE','PSOPRDEFN')
+secTblList = ('PSACCESSPROFILE','PSOPRDEFN')
 msg = ""
 
 def add_to_msg(inStr):
