@@ -35,44 +35,67 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
-    # if cloning a database and source database information is desired
+    # if refreshing this will check that the defined list of PS security tables
+    # was saved off to the ps_admin (Asiu) for datapump export prior to
+    # deleting the database, so that they can be restored after refresh.
+
     - local_action:
         module: psadmsectblcnt
-        ps_admin: "{{ ps_admin }}"
+        ps_admin: "{{ ps_admin }}" (1)
+        table_list: "{{ security_table_list }}" (1)
         systempwd: "{{ database_passwords[source_db_name].system }}"
         db_name: "{{ dest_db_name }}"
         host: "{{ dest_host }}"
-        oracle_home: "{{ oracle_home }}" (2)
-        refname: "{{ refname_str }} (3)"
-        ignore: True (4)
+        refname: "{{ refname_str }}" (2)
+        ignore: True (3)
+      become: yes
       become_user: "{{ utils_local_user }}"
       register: sec_tbl_count
+      when: master_node
 
-      (3) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+      (1) ps_admin, table_list and num_sec_tables - are defined in
+          vars/utils/utils_env.yml
+          num_sec_tables is used after the count is obtained to fail if
+          the count is less than expected.
+          Fail when:
+          - sectblcount[ps_admin]['security_table_count'] < num_sec_tables
 
-      (4) ignore - (connection errors) is optional. If you know the source
+      (2) refname - can be defined to refer to the output later. The default
+          is 'sectblcount' ( see above Fail when statement )
+          but the user can define anything.
+
+      (3) ignore - (connection errors) is optional. If you know the source
           database may be down set ignore: True. If connection to the
           source database fails the module will not throw a fatal error
-          to stop the play and continue.
+          to stop the play and continue. However, not if the result is critical.
 
-   NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced in
-         roles or tasks later. Therefore, when running fact collecting modules,
-         run them on both nodes. Do not use the "when: master_node" clause.
 
 '''
 
 def_ref_name = "sectblcount"
-secTblList = ('PSACCESSPROFILE','PSOPRDEFN')
 msg = ""
+debugme = False
 
 def add_to_msg(inStr):
     """Add strings to msg"""
     global msg
+
     if inStr:
         msg = msg + " " + inStr
     else:
         msg = inStr
+
+
+def debugg(inStr):
+    """If debugme is True add debugging info to msg"""
+    if debugme:
+        add_to_msg(inStr)
+
+
+def convertToTuple(inStr):
+    """Convert table_list parameter string to tuple"""
+    tmp = inStr.split(",")
+    return(tuple(tmp))
 
 # ==============================================================================
 # =================================== MAIN =====================================
@@ -82,10 +105,9 @@ def main ():
 
   global msg
   global def_ref_name
-  global secTblList
-  debugme = True
-  vchanged = False
+  global debugme
 
+  vchanged = False
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
@@ -99,6 +121,7 @@ def main ():
       argument_spec = dict(
         ps_admin        =dict(required=True),
         systempwd       =dict(required=True),
+        table_list      =dict(required=True),
         db_name         =dict(required=True),
         host            =dict(required=True),
         refname         =dict(required=False),
@@ -110,10 +133,12 @@ def main ():
   # Get arguements passed from Ansible playbook
   vpsadmin  = module.params.get('ps_admin')
   vdbpass   = module.params.get('systempwd')
+  vtblList  = module.params.get('table_list')
   vdb       = module.params.get('db_name')
   vdbhost   = module.params.get('host')
   vrefname  = module.params.get('refname')
   vignore   = module.params.get('ignore')
+  vdebugme  = module.params.get('debugme')
 
   if vignore is None:
       vignore = False
@@ -128,6 +153,13 @@ def main ():
     refname = def_ref_name
   else:
     refname = vrefname
+
+  if vtblList is None:
+    module.fail_json(msg="Error: a string containing tables must be provided: \"table1,table2\" etc. ")
+  else:
+    secTblList = convertToTuple(vtblList)
+
+  debugg("secTblList = %s" % (str(secTblList)))
 
   # check vars passed in are not NULL. All are needed to connect to source db
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None) and (vpsadmin is not None):
@@ -156,11 +188,11 @@ def main ():
 
         cur = con.cursor()
 
+        debugg("about to run select for secTblList = %s parameter table list vtblList = %s " % (secTblList, vtblList))
         # select source db version
         try:
             cmd_str = 'select count(*) from dba_objects where owner = \'%s\' and object_type = \'TABLE\' and object_name in %s' % (vpsadmin.upper(),str(secTblList))
-            if debugme:
-                add_to_msg("cmd_str = %s" % (cmd_str))
+            debugg("cmd_str = %s" % (cmd_str))
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
