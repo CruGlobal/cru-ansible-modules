@@ -40,7 +40,7 @@ short description: Given ASM diskgroup and database name it looks for the contro
 EXAMPLES = '''
 
     # this will look in ASM for new control files and then
-    # startup nomount a down dataabsae and set the control_files parameter
+    # startup nomount a down database and set the control_files parameter
     # in the database. i.e control_files = +DATA3/stgdb/controlfile/current.404.989162475
     - name: Set control_files parameter in db with new controlfile name.
       setcntrlfile:
