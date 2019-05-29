@@ -95,9 +95,9 @@ i.e. running a clone in the test environment and the source is located in the pr
 
 ### sysdbafacts
 
-This module connects as sysdba to a database. This is helpful when the database is in restricted access mode like during duplication, startup mount etc.
+Requirement: `cx_Oracle`
 
-Requirement: cx_Oracle
+This module connects as sysdba to a database. This is helpful when the database is in restricted access mode like during duplication, startup mount etc.
 
 ```
     # if cloning a database and source database information is desired
@@ -123,7 +123,7 @@ Requirement: cx_Oracle
         
 ```
 
-### rmanfacts
+### rmanfacts 
 
 Gather RMAN spfile backup facts for the source database.
 Used during a database restore.
@@ -172,7 +172,7 @@ Notes: sourcefacts must run prior to rmanfacts or the user
 
 ```
 
-### srvctl
+### srvctl - srvctl wrapper
 
 Module to interface with srvctl 
 
@@ -219,9 +219,10 @@ Notes:
             The status change will then be reflected in crsstat.
 ```
 
-### compver
+### compver - compare versions
 
-Module to compare database versions and return the lesser version number and whether it was needed for the datapump export/import operation.
+Module to compare Oracle database versions and return the lesser version and whether it was required ( True / False )
+for the datapump export/import operation.
 
 This module was needed for automating datapump transfers between dissimilar database versions.
 
@@ -251,9 +252,20 @@ This module was needed for automating datapump transfers between dissimilar data
     
 ```      
 
-### dbfacts
+### dbfacts - Database facts
 
-Module returns internal database settings such as an array of v$parameters, database version, host name, archive log mode, database id, ASM diskgroup names and if they're connected, open cursors, block change tracking, pga_aggregate_target, etc.
+Requirement: `cx_Oracle`
+
+Module returns internal database settings and parameters, such as 
+    v$parameters, 
+    database version, 
+    host name, 
+    archive log mode, 
+    database id, 
+    ASM diskgroup names and whether the diskgroup is connected to the database
+    Open cursors setting
+    Block Change Tracking (enabled/disabled)
+    pga_aggregate_target, etc.
 
 ```
     Call from Ansible playbook: 
@@ -280,11 +292,13 @@ Module returns internal database settings such as an array of v$parameters, data
     
 ```
 
-### finrest
+### finrest - Finish Restore
 
-Module Used with our Ansible Oracle database automated restore to FINish the RESTore (finrest).  
+Requirement: `cx_Oracle`
 
-Once the RMAN portion of the restore is complete, this module opens a SQL prompt to execute:
+Module Used with Cru's custom Ansible Oracle database automated restore to finish a restore.  
+
+Once the RMAN portion of the restore is complete, and restoring to point in time, this module opens a SQL prompt to execute:
     RECOVER DATABASE UNTIL CANCEL
     CANCEL
     ALTER DATABASE OPEN RESETLOGS
@@ -302,10 +316,11 @@ It then returns control to the Ansible playbook to finish RAC'ing the database, 
     
 ```
 
-### lsnr_up
+### lsnr_up - listener up
 
-Module to wait for a database to register with the local listener.
-Used when cloning a database after startup nomount command is issued. Slows playbook execution down so the following tasks don't fail because the database isn't ready.
+Module monitors listener control status waiting for a database to register with the local listener.
+Used when cloning a database after startup nomount command is issued. This module slows playbook execution down 
+so the following tasks don't fail because the database isn't ready.
 
 ```
   Call from Ansible playbook: 
@@ -323,7 +338,7 @@ Used when cloning a database after startup nomount command is issued. Slows play
      
 ```
 
-### mkalias
+### mkalias - make alias (ASM)
 
 Module to create an alias in the ASM diskgroup for the spfile
 
@@ -337,15 +352,17 @@ Module to create an alias in the ASM diskgroup for the spfile
       
 ```
 
-### redologs
+### redologs - Redo Logs (FLUSH or RESIZE)
 
-This module is used to flush redo logs prior to taking a backup, or to resize redo logs.
+This module is used to flush redo logs prior to taking a backup, or to resize redo logs. 
 
 FLUSH:
-It looks at the current state and executes 'ALTER SYSTEM ARCHIVE LOG CURRENT' commands until all archivelogs have cycled and flushed their contents to disk.
+Regarless of what supposed to happen when a database is shutdown for backup, we've experienced times when all archivelogs were not written to disk. By running this before a hot or cold backup, this will ensure all archivelogs are flushed to disk before the backup.
+
+The module looks at the current state and executes 'ALTER SYSTEM ARCHIVE LOG CURRENT' commands until all archivelogs have cycled and flushed their contents to disk.
 
 RESIZE:
-Resizes redo logs to whatever size is passed.
+Resizes redo logs to whatever size is provided in the parameters.
 
 ```
   Call from Ansible playbook: 
@@ -388,11 +405,11 @@ Resizes redo logs to whatever size is passed.
 ```
 
 
-### rmandbid
+### rmandbid - RMAN Database ID
 
-Module queries the RMAN database to retrieve a database id 
+Requirement: `cx_Oracle`
 
-requires: cx_Oracle
+Module queries the RMAN database to retrieve a databases' id (dbid)
 
 ```
     Call from Ansible playbook: 
@@ -413,11 +430,16 @@ requires: cx_Oracle
                              
 ```
 
-### sectblcnt 
+### sectblcnt - Security Table Count
+
+Requirement: `cx_Oracle`
 
 Security Table Count module - or any table count. This module takes a Python list of tables and their count to verify they exist in a given schema. Used to export security tables prior to a refresh.
 
 ```
+
+Note: This module could ensure the existance of any tables by providing the schema name in the ps_admin parameter and the list of tables for 'security_table_list' along with the count 'num_sec_tables'
+
 Predefined variables:
     ps_admin: bob
     num_sec_tables: 2
@@ -457,9 +479,10 @@ Predefined variables:
           
 ```
 
-### setcntrlfile
+### setcntrlfile - Set Control File
 
-Set controlfile module - Obsolete. 
+Set controlfile module - `Obsolete`
+
 This module would startup nomount a down database and set the controlfile based on what was in ASM diskgroup. 
 Obsolete because at times there were more than one controlfile in the ASM diskgroup and it was impossible to tell which was current.
 
