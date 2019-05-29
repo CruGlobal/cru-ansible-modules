@@ -191,16 +191,20 @@ Notes:
 
 ### compver
 
-Module to compare database versions and return the lesser version number
+Module to compare database versions and return the lesser version number and whether it was needed for the datapump export/import operation.
 
-This was needed for automating datapump transfers between dissimilar database versions.
+This module was needed for automating datapump transfers between dissimilar database versions.
 
 ```
-    - local_action:
+    Ansible playbook call:
+    - name: Compare database versions
+      local_action:
         module: compver
-        export_ver: "{{ db1[version] }}"
-        import_ver: "{{ db2[version] }}"
-        
+        ver_db1: "{{ sourcefacts['version'] }}"
+        ver_db2: "{{ destfacts['version'] }}"
+      become_user: "{{ utils_local_user }}"
+      register: ver_comp
+      when: master_node 
         
     returns:
     
@@ -208,6 +212,13 @@ This was needed for automating datapump transfers between dissimilar database ve
         required: true
         version: 11.2.0.4
       }
+      
+    The results are referred to using the reference name 'compver' in the jinja2 templated par file:
+    
+    {% if compver is defined and compver.required.lower() == 'true' %}
+    version={{ compver['version'] }}
+    {% endif %}
+    
 ```      
 
         
