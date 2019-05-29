@@ -434,7 +434,7 @@ Module queries the RMAN database to retrieve a databases' id (dbid)
 
 Requirement: `cx_Oracle`
 
-Security Table Count module - or any table count. This module takes a Python list of tables and their count to verify they exist in a given schema. Used to export security tables prior to a refresh.
+Security Table Count module - or any table count. This module takes a list of tables and their count to verify they exist in a given schema. Used to export security tables prior to a refresh.
 
 ```
 
