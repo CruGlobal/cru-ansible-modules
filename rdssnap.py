@@ -31,7 +31,7 @@ short_description: Manually create an AWS RDS Snapshot.
 
 EXAMPLES = '''
 
-    # if cloning a database and source database information is desired
+    # Take manual snapshots of an AWS RDS database
     - local_action:
         module: rdssnap
           db_name: "{{ db_name }}"
