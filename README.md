@@ -221,4 +221,136 @@ This module was needed for automating datapump transfers between dissimilar data
     
 ```      
 
-        
+### dbfacts
+
+Module returns internal database settings such as an array of v$parameters, database version, host name, archive log mode, database id, ASM diskgroup names and if they're connected, open cursors, block change tracking, pga_aggregate_target, etc.
+
+```
+    Call from Ansible playbook: 
+    - name: Get source Oracle database information
+      local_action:
+        module: dbfacts
+        systempwd: "{{ database_passwords[source_db_name].system }}"
+        db_name: "{{ source_db_name }}"
+        host: "{{ source_host }}"
+        refname: sourcefacts
+        ignore: True
+      become_user: "{{ utils_local_user }}"
+      register: src_facts
+      when: source_host is defined
+      tags: always
+      
+    requires cx_Oracle
+    
+    permission on the local system is required, so become user would be set to the linux value of 'whoami'.
+    in the above example utils_local_user variable = 'whoami'.
+    
+    refname parameter allows you to change the reference name of the Ansible facts returned. Default reference name is    'dbfacts'
+    
+    
+```
+
+### finrest
+
+Module Used with our Ansible Oracle database automated restore to FINish the RESTore (finrest).  
+
+Once the RMAN portion of the restore is complete, this module opens a SQL prompt to execute:
+    RECOVER DATABASE UNTIL CANCEL
+    CANCEL
+    ALTER DATABASE OPEN RESETLOGS
+    SHUTDOWN IMMEDIATE
+    EXIT
+It then returns control to the Ansible playbook to finish RAC'ing the database, reset passwords etc.
+
+```
+
+  Call from Ansible playbook: 
+  - name: Finish SQL part of database restore
+    finrest:
+      db_name: "{{ dest_db_name }}"
+    when: master_node
+    
+```
+
+### lsnr_up
+
+Module to wait for a database to register with the local listener.
+Used when cloning a database after startup nomount command is issued. Slows playbook execution down so the following tasks don't fail because the database isn't ready.
+
+```
+  Call from Ansible playbook: 
+  - name: wait for database to register with local listener
+    lsnr_up:
+      db_name: "{{ db_name }}"
+      lsnr_entries: 2
+      ttw: 5
+    when: master_node
+       
+    lsnr_entries - the number of entries to expect to find in 'lsnrctl status' for the database. 
+                   If listener.ora has an entry 2 should be expected. 
+                   
+     ttw         - Time to Wait (ttw) is the amount of time to wait ( in minutes ) for the entries to appear before failing.
+     
+```
+
+### mkalias
+
+Module to create an alias in the ASM diskgroup for the spfile
+
+```
+    Call from Ansible playbook: 
+    - name: Map new alias to spfile
+      mkalias:
+        db_name: "{{ db_name }}"
+        asm_dg: "{{ asm_dg_name }}"
+      when: master_node
+      
+```
+
+### redologs
+
+This module is used to flush redo logs prior to taking a backup, or to resize redo logs.
+
+FLUSH:
+It looks at the current state and executes 'ALTER SYSTEM ARCHIVE LOG CURRENT' commands until all archivelogs have cycled and flushed their contents to disk.
+
+RESIZE:
+Resizes redo logs to whatever size is passed.
+
+```
+  - name: Flush redo logs
+    local_action:
+        module: redologs
+        connect_as: system
+        system_password: "{{ database_passwords[dest_db_name].system }}"
+        dest_db: "{{ dest_db_name }}"
+        dest_host: "{{ dest_host }}"
+        function: flush
+        size:
+        units:
+        ignore: true
+        refname:
+    become_user: "{{ local_user }}"
+    register: redo_run
+
+  - name: Resize redo logs
+    local_action:
+        module: redologs
+        system_password: "{{ database_passwords[dest_db_name].system }}"
+        dest_db: "{{ dest_db_name }}"
+        dest_host: "{{ dest_host }}"
+        function: resize
+        size: 500
+        units: m
+        ignore: false
+        refname:
+    become_user: "{{ local_user }}"
+    register: redo_run
+    
+    
+    size and units are not required for "flush" but are for resize.
+    
+    units are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
+    ignore - tells the module whether to fail on error and raise it or pass on error
+             and continue with the play. Default is to fail.
+```
