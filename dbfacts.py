@@ -82,8 +82,10 @@ vparams=[ "compatible",
           "core_dump_dest",
           "background_dump_dest",
           "audit_file_dest" ]
+          
 msg = ""
 debugme = True
+defrefname = "dbfacts"
 
 def convert_size(size_bytes, vunit):
 
@@ -110,6 +112,7 @@ def convert_size(size_bytes, vunit):
 def main ():
   """ Return Oracle database parameters from a database not in the specified group"""
   global msg
+  global defrefname
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
@@ -147,7 +150,7 @@ def main ():
     module.fail_json(msg="Error: cx_Oracle module not found")
 
   if not vrefname:
-    module.fail_json(msg="Error: refname cannot be ambiguous")
+    refname = defrefname
   else:
     refname = vrefname
 
