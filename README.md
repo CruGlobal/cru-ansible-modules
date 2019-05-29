@@ -299,11 +299,11 @@ Requirement: `cx_Oracle`
 Module Used with Cru's custom Ansible Oracle database automated restore to finish a restore.  
 
 Once the RMAN portion of the restore is complete, and restoring to point in time, this module opens a SQL prompt to execute:
-    RECOVER DATABASE UNTIL CANCEL
-    CANCEL
-    ALTER DATABASE OPEN RESETLOGS
-    SHUTDOWN IMMEDIATE
-    EXIT
+  RECOVER DATABASE UNTIL CANCEL
+  CANCEL
+  ALTER DATABASE OPEN RESETLOGS
+  SHUTDOWN IMMEDIATE
+  EXIT
 It then returns control to the Ansible playbook to finish RAC'ing the database, reset passwords etc.
 
 ```
