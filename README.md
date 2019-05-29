@@ -188,3 +188,26 @@ Notes:
             It is possible to "sqlplus> alter database mount" or "alter database open".
             The status change will then be reflected in crsstat.
 ```
+
+### compver
+
+Module to compare database versions and return the lesser version number
+
+This was needed for automating datapump transfers between dissimilar database versions.
+
+```
+    - local_action:
+        module: compver
+        export_ver: "{{ db1[version] }}"
+        import_ver: "{{ db2[version] }}"
+        
+        
+    returns:
+    
+      compver{
+        required: true
+        version: 11.2.0.4
+      }
+```      
+
+        
