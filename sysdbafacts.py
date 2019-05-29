@@ -62,19 +62,12 @@ EXAMPLES = '''
 
       (1) pfile   - optional. If provided a pfile will be created to that directory/filename
 
+      (2) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
 
-
-      (3) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
-
-      (4) ignore - (connection errors) is optional. If you know the source
+      (3) ignore - (connection errors) is optional. If you know the source
           database may be down set ignore: True. If connection to the
           source database fails the module will not throw a fatal error
           to stop the play and continue.
-
-   NOTE: these modules can be run with the when: master_node statement.
-         However, their returned values cannot be referenced in
-         roles or tasks later. Therefore, when running fact collecting modules,
-         run them on both nodes. Do not use the "when: master_node" clause.
 
 '''
 
