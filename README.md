@@ -93,6 +93,36 @@ i.e. running a clone in the test environment and the source is located in the pr
 
 ```
 
+### sysdbafacts
+
+This module connects as sysdba to a database. This is helpful when the database is in restricted access mode like during duplication, startup mount etc.
+
+Requirement: cx_Oracle
+
+```
+    # if cloning a database and source database information is desired
+    - local_action:
+        module: sysdbafacts
+        syspwd: "{{ database_passwords[source_db_name].sys }}"
+        db_name: "{{ source_db_name }}"
+        host: "{{ source_host }}"
+        pfile: "{{ /complete/path/and/filename.ora }}" (1)
+        oracle_home: "{{ oracle_home }}" (2)
+        refname: "{{ refname_str }} (3)"
+        ignore: True (4)
+      become_user: "{{ utils_local_user }}"
+      register: sys_facts
+
+      (1) pfile   - optional. If provided a pfile will be created to the specified directory/filename
+
+      (2) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+
+      (3) ignore - True will do a non-fatal exit of the module. 
+                   False will cause the module to stop the play execution when encountering an error.
+      
+        
+```
+
 ### rmanfacts
 
 Gather RMAN spfile backup facts for the source database.
@@ -318,6 +348,7 @@ RESIZE:
 Resizes redo logs to whatever size is passed.
 
 ```
+  Call from Ansible playbook: 
   - name: Flush redo logs
     local_action:
         module: redologs
@@ -333,6 +364,7 @@ Resizes redo logs to whatever size is passed.
     become_user: "{{ local_user }}"
     register: redo_run
 
+  Call from Ansible playbook: 
   - name: Resize redo logs
     local_action:
         module: redologs
@@ -354,3 +386,97 @@ Resizes redo logs to whatever size is passed.
     ignore - tells the module whether to fail on error and raise it or pass on error
              and continue with the play. Default is to fail.
 ```
+
+
+### rmandbid
+
+Module queries the RMAN database to retrieve a database id 
+
+requires: cx_Oracle
+
+```
+    Call from Ansible playbook: 
+    # Retrieve the dbid of a given database.
+    - local_action:
+        module: rcatdbid
+        systempwd: "{{ database_passwords['cat'].system }}"
+        cdb: "cat"
+        pdb: "catcdb"
+        schema_owner: rco
+        host: "{{ source_host }}"
+        refname: your_reference_name
+      become_user: "{{ local_user }}"
+
+    Notes:
+        refname (optional) - any name you want to use to referene the data later in the play
+                             defualt refname is 'rmandbid'
+                             
+```
+
+### sectblcnt 
+
+Security Table Count module - or any table count. This module takes a Python list of tables and their count to verify they exist in a given schema. Used to export security tables prior to a refresh.
+
+```
+Predefined variables:
+    ps_admin: bob
+    num_sec_tables: 2
+    security_table_list: "PSACCESSPROFILE,PSOPRDEFN"
+
+    Call from Ansible playbook: 
+    - local_action:
+        module: psadmsectblcnt
+        ps_admin: "{{ ps_admin }}" (1)
+        table_list: "{{ security_table_list }}" (1)
+        systempwd: "{{ database_passwords[source_db_name].system }}"
+        db_name: "{{ dest_db_name }}"
+        host: "{{ dest_host }}"
+        refname: "{{ refname_str }}" (2)
+        ignore: True (3)
+      become: yes
+      become_user: "{{ utils_local_user }}"
+      register: sec_tbl_count
+      when: master_node
+
+      (1) ps_admin, table_list and num_sec_tables - are defined in
+          vars/utils/utils_env.yml
+          num_sec_tables is used after the count is obtained to fail if
+          the count is less than expected.
+          Fail when:
+          - sectblcount[ps_admin]['security_table_count'] < num_sec_tables
+
+      (2) refname - can be defined to refer to the output later. The default
+          is 'sectblcount' ( see above Fail when statement )
+          but the user can define anything.
+
+      (3) ignore - (connection errors) is optional. If you know the source
+          database may be down set ignore: True. If connection to the
+          source database fails the module will not throw a fatal error
+          to stop the play and continue. However, not if the result is critical.
+          
+          
+```
+
+### setcntrlfile
+
+Set controlfile module - Obsolete. 
+This module would startup nomount a down database and set the controlfile based on what was in ASM diskgroup. 
+Obsolete because at times there were more than one controlfile in the ASM diskgroup and it was impossible to tell which was current.
+
+```
+    # this will look in ASM for new control files and then
+    # startup nomount a down database and set the control_files parameter
+    # in the database. i.e control_files = +DATA3/stgdb/controlfile/current.404.989162475
+    - name: Set control_files parameter in db with new controlfile name.
+      setcntrlfile:
+        db_name: "{{ dest_db_name }}"
+        db_home: "{{ oracle_home }}"
+        asm_dg: "{{ database_parameters[dest_db_name].asm_dg_name }}"
+      when: master_node
+
+    Notes:
+        The ASM diskgroup ( asm_dg_name ) the database is in can be entered with or without the + ( +DATA3 or DATA3 )
+        The database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
+  
+```
+
