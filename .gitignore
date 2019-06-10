@@ -100,3 +100,4 @@ mymods/
 
 # mypy
 .mypy_cache/
+logs
