@@ -82,7 +82,8 @@ vparams=[ "compatible",
           "user_dump_dest",
           "core_dump_dest",
           "background_dump_dest",
-          "audit_file_dest" ]
+          "audit_file_dest",
+          "db_files" ]
 msg = ""
 debugme = True
 
@@ -211,6 +212,17 @@ def main ():
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
     ansible_facts[refname]['host_name'] = vtemp
+
+    # actual db_file count
+    try:
+      cur.execute('select count(*) from dba_data_files')
+    except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
+
+    vtemp = cur.fetchall()
+    vtemp = vtemp[0][0]
+    ansible_facts[refname]['db_files_actual'] = vtemp
 
     # Find archivelog mode.
     try:
