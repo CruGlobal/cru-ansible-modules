@@ -165,7 +165,7 @@ def main ():
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
+        module.fail_json(msg='Error determining if db is registered: %s' % (error.message), changed=False)
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
