@@ -101,3 +101,5 @@ mymods/
 # mypy
 .mypy_cache/
 logs
+
+rmanmon.py
