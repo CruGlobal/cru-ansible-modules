@@ -102,13 +102,14 @@ def get_node_num():
         grid_home = get_grid_home()
 
     try:
-      cmd_str = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
-      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-      output, code = process.communicate()
+        cmd_str = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
     except:
-       err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
-       err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-       raise Exception (err_msg)
+        err_msg = ""
+        err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
 
     node_number = output.strip()
 

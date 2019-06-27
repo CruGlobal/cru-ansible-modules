@@ -237,15 +237,15 @@ def get_gihome():
       process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-        err_msg = err_msg + ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+        err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
         module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
     if not grid_home:
-         err_msg = err_msg + ' Error: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
-         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-         raise Exception (err_msg)
+        err_msg = ' Error: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+        raise Exception (err_msg)
 
     return(grid_home)
 
@@ -260,7 +260,7 @@ def get_installed_ora_homes2():
       process = subprocess.Popen(["/bin/cat /etc/oraInst.loc | /bin/grep inventory_loc | /bin/cut -d '=' -f 2"], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
     except:
-        err_msg = err_msg + ' get_installed_ora_homes2() retrieving inventory_loc : (%s,%s)' % (sys.exc_info()[0],code)
+        err_msg = ' get_installed_ora_homes2() retrieving inventory_loc : (%s,%s)' % (sys.exc_info()[0],code)
         module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
     inventory_loc = output.strip()
@@ -757,7 +757,7 @@ def si_running_homes():
     try:
       vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
     except:
-      err_msg = err_msg + ' Error: si_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
+      err_msg = ' Error: si_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
 
     for vdbproc in vproc.split("\n"):
       vprocid,vdbname = vdbproc.split()
@@ -801,7 +801,7 @@ def is_ora_running():
     try:
       vproc = str(commands.getstatusoutput("ps -ef | grep pmon | grep -v grep | wc -l")[1])
     except:
-      err_msg = err_msg + ' Error: is_ora_running() - proc: (%s)' % (sys.exc_info()[0])
+      err_msg = ' Error: is_ora_running() - proc: (%s)' % (sys.exc_info()[0])
 
     if int(vproc) == 0:
       # No databases are running
@@ -825,7 +825,7 @@ def tnsnames():
     try:
       vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
     except:
-      err_msg = err_msg + ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
+      err_msg = ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
 
     if vtns1:
         # return(str(vtns1) + "/tnsnames.ora")
