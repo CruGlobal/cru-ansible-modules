@@ -19,8 +19,9 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 DOCUMENTATION = '''
 ---
 module: compver
-short_description: Compares two Oracle versions and returns the larger of the two.
+short_description: Compares two Oracle versions and returns the smaller of the two.
 This is needed for Datapump when exporting and importing between dissimilar versions.
+The parfile will require the "compatible={smaller value} parameter"
 
 notes: Returned values are then available to use in Ansible.
 requirements: [ python2.* ]
@@ -29,12 +30,25 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
-    # When exporting / importing between dissimilar database versions
+    # When datapump exporting / importing between dissimilar database versions
     - local_action:
         module: compver
         export_ver: "{{ db1[version] }}"
         import_ver: "{{ db2[version] }}"
 
+    "ansible_facts": {
+        "compver": {
+            "required": "true",         # can base conditional on this value
+            "version": "11.2.0.4"
+        }
+    },
+    "msg": "version 11.2.0.4 was found to be less than 12.1.0.2"
+
+    # Use in datapump parfile:
+    
+        {% if compver['required'] %}
+        compatible={{ compver['version'] }}
+        {% endif %}
 
 '''
 #
