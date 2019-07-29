@@ -846,10 +846,13 @@ def is_lsnr_up():
     err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
   # the command returns 1 if no listener, so return 0
-  if int(vlsnr) == 0:
-    return True
-  else:
-    return False
+  try:
+    if int(vlsnr) == 0:
+      return True
+    else:
+      return False
+  except:
+    err_msg = err_msg + 'Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
 
 def listener_info():
