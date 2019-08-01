@@ -56,6 +56,11 @@
 #
 # Last updated August 28, 2017    Sam Kohler
 #
+
+# Make coding more python3-ish
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 from ansible.module_utils._text import to_native
@@ -243,7 +248,7 @@ def get_gihome():
     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
     if not grid_home:
-        err_msg = ' Error: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+        err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
@@ -405,6 +410,61 @@ def get_ora_homes():
            err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
 
          tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
+
+   return (tempHomes)
+
+def oracle_restart_homes():
+   """Return the different Oracle and Grid homes versions installed on Oracle Restart hosts"""
+   global ora_home
+   global err_msg
+   global v_rec_count
+   global global_ora_home
+
+   has_changed = False
+   tempHomes = {}
+   try:
+      allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
+   except:
+      err_msg = err_msg + ' ERROR: get_ora_homes(): (%s)' % (sys.exc_info()[0])
+
+   for newhome in allhomes.split("\n"):
+      if "grid" in newhome.lower():
+         # use the path returned above 'newhome' and execute this command to get grid version:
+         try:
+           tmpver = str(commands.getstatusoutput(newhome + '/bin/crsctl query has softwareversion'))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: (%s)' % (sys.exc_info()[0])
+
+         # get everything between '[' and ']' from the string returned.
+         gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
+         tempHomes.update({'grid': {'version': gver, 'home': newhome}})
+
+
+      elif "home" in newhome.lower():
+         homenum = str(re.search("\d.",newhome).group())
+         if int(homenum) <= 12:
+             homenum = homenum+"g"
+         else:
+             homenum = homenum+"c"
+
+         # this command returns : Oracle Database 11g     11.2.0.4.0
+         # try:
+         #   dbver = get_field(4, os.popen("export ORACLE_HOME=" + newhome +";" + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
+         # except:
+         #   err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
+
+         # also see what version of opatch is running in each home: opatch version | grep Version
+         try:
+           opver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/OPatch/opatch version | grep Version"))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: (%s)' % (sys.exc_info()[0])
+
+         try:
+           srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
+         except:
+           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
+
+         tempHomes.update({ homenum: {'home': newhome, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
 
    return (tempHomes)
 
@@ -795,6 +855,29 @@ def is_rac():
     else:
       return False
 
+def is_oracle_restart():
+    """Determine if a host is single instance Oracle Restart"""
+    global err_msg
+
+    if not is_rac():
+        try:
+            # output = subprocess.check_output("ps -ef | grep ocss[d] | wc -l", shell=True)
+            process = subprocess.Popen("ps -ef | grep ocss[d] | wc -l", stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+        except:
+            err_msg = err_msg + ' Error: is_oracle_restart() - vproc: (%s,%s)' %(sys.exec_info()[0],code)
+            module.fail_json(msg='Error: %s' % (err_msg), changed=False)
+
+        try:
+            if int(output) > 0:
+                return True
+            else:
+                return False
+        except:
+            err_msg = err_msg + ' Error: is_oracle_restart() - vproc: (%s,%s)' %(sys.exec_info()[0],code)
+            module.fail_json(msg='Error: %s' % (err_msg), changed=False)
+
+    return False
 
 def is_ora_running():
     """Determine if Oracle database processses are running on a host"""
@@ -1119,6 +1202,7 @@ def main(argv):
   global global_ora_home
 
   ansible_facts={ 'orafacts': {} }
+  facts = {}
 
   module = AnsibleModule(
       argument_spec = dict(
@@ -1169,6 +1253,19 @@ def main(argv):
 
         # vhuge = hugepages()
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
+      elif is_oracle_restart(): # Run these for Oracle Restart Instance <<< ========================= SI_ASM
+        msg = msg + "Single Instance Oracle Restart Environment"
+
+        homes = oracle_restart_homes()
+        for (vkey, vvalue) in homes.items():
+            ansible_facts['orafacts'][vkey] = vvalue
+
+        #database_details
+        # Get list of all databases configured in SRVCTL
+        ansible_facts.update(rac_dblist())
+
+        #databases
+
 
       else: # Run these for Single Instance <<< ========================= SI
         msg="Single Instance (SI) Environment"
