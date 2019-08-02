@@ -993,15 +993,36 @@ def rac_dblist():
 
   debugg("rac_dblist")
 
+  global grid_home
+  global msg
+
+  if not grid_home:
+      grid_home = get_gihome()
+
   try:
-    srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
+    srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + grid_home + ";" + grid_home + "/bin/srvctl config database -verbose")[1])
   except:
-    err_msg = err_msg + ' Error: rac_dblist() - db_home: (%s)' % (sys.exc_info()[0])
+    err_msg = err_msg + ' Error: rac_dblist() - srvctl_verbose (%s)' % (sys.exc_info()[0])
   if srvctl_verbose:
     for line in srvctl_verbose.split("\n"):
       split = line.split()
+
+      item = {}
+
+      # get additional information for each database
+      try:
+        srvctl_config = str(commands.getstatusoutput("export ORACLE_HOME=" + split[1] + ";" + split[1] + "/bin/srvctl config database -d " + split[0])[1])
+      except:
+        err_msg = err_msg + ' Error: rac_dblist() - srvctl_config (%s)' % (sys.exc_info()[0])
+
+      for x in srvctl_config.split("\n"):
+          if x.startswith('Domain:'):
+              item['domain'] = x[8:]
+          elif x.startswith('Services:'):
+              item['services'] = x[10:]
+
       dblist.append(split[0])
-      database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2] }})
+      database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'domain': item['domain'], 'services': item['services']}})
 
   database_info['databases'] = dblist
   return(database_info)
