@@ -876,7 +876,7 @@ def tnsnames():
     if is_rac() or is_oracle_restart():
         return(get_gihome()+'/network/admin')
     else:
-        return("SI Instance: Could not locate tnsnames.ora file.")
+        return(run_command(("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")))
 
 
 def is_lsnr_up():
@@ -961,22 +961,14 @@ def rac_dblist():
   if not grid_home:
       grid_home = get_gihome()
 
-  try:
-    srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + grid_home + ";" + grid_home + "/bin/srvctl config database -verbose")[1])
-  except:
-    err_msg = err_msg + ' Error: rac_dblist() - srvctl_verbose (%s)' % (sys.exc_info()[0])
-  if srvctl_verbose:
+  srvctl_verbose = run_command("export ORACLE_HOME=" + grid_home + ";" + grid_home + "/bin/srvctl config database -verbose")
+
+  if srvctl_verbose != "No databases are configured":
     for line in srvctl_verbose.split("\n"):
       split = line.split()
-
       item = {}
 
-      # get additional information for each database
-      try:
-        srvctl_config = str(commands.getstatusoutput("export ORACLE_HOME=" + split[1] + ";" + split[1] + "/bin/srvctl config database -d " + split[0])[1])
-      except:
-        err_msg = err_msg + ' Error: rac_dblist() - srvctl_config (%s)' % (sys.exc_info()[0])
-
+      srvctl_config = run_command("export ORACLE_HOME=" + split[1] + ";" + split[1] + "/bin/srvctl config database -d " + split[0])
       for x in srvctl_config.split("\n"):
           if x.startswith('Domain:'):
               item['domain'] = x[8:]
