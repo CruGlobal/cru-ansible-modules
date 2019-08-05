@@ -422,19 +422,12 @@ def oracle_restart_homes():
 
    has_changed = False
    tempHomes = {}
-   try:
-      allhomes = str(commands.getstatusoutput("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")[1])
-   except:
-      err_msg = err_msg + ' ERROR: get_ora_homes(): (%s)' % (sys.exc_info()[0])
+
+   allhomes = run_command("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")
 
    for newhome in allhomes.split("\n"):
       if "grid" in newhome.lower():
-         # use the path returned above 'newhome' and execute this command to get grid version:
-         try:
-           tmpver = str(commands.getstatusoutput(newhome + '/bin/crsctl query has softwareversion'))
-         except:
-           err_msg = err_msg + ' ERROR: get_ora_homes() - grid version: (%s)' % (sys.exc_info()[0])
-
+         tmpver = run_command(newhome + '/bin/crsctl query has softwareversion')
          # get everything between '[' and ']' from the string returned.
          gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
          tempHomes.update({'grid': {'version': gver, 'home': newhome}})
@@ -447,24 +440,10 @@ def oracle_restart_homes():
          else:
              homenum = homenum+"c"
 
-         # this command returns : Oracle Database 11g     11.2.0.4.0
-         # try:
-         #   dbver = get_field(4, os.popen("export ORACLE_HOME=" + newhome +";" + newhome + "/OPatch/opatch lsinventory | grep 'Oracle Database'").read())
-         # except:
-         #   err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
+         opver = run_command('export ORACLE_HOME=' + newhome +';' + newhome + '/OPatch/opatch version | grep Version')[16:]
+         srvctl_ver = run_command('export ORACLE_HOME=' + newhome +';' + newhome + '/bin/srvctl -V')[16:]
 
-         # also see what version of opatch is running in each home: opatch version | grep Version
-         try:
-           opver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/OPatch/opatch version | grep Version"))
-         except:
-           err_msg = err_msg + ' ERROR: get_ora_homes() - OPatch version by ora_home: (%s)' % (sys.exc_info()[0])
-
-         try:
-           srvctl_ver = str(commands.getstatusoutput("export ORACLE_HOME=" + newhome +";" + newhome + "/bin/srvctl -V | awk '{ print $3 }'"))
-         except:
-           err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
-
-         tempHomes.update({ homenum: {'home': newhome, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
+         tempHomes.update({ homenum: {'home': newhome, 'opatch_version': opver, 'srvctl_version': srvctl_ver }})
 
    return (tempHomes)
 
@@ -844,10 +823,7 @@ def is_rac():
     global err_msg
 
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-    try:
-      vproc = str(commands.getstatusoutput("ps -ef | grep lck | grep -v grep | wc -l")[1])
-    except:
-      err_msg = err_msg + ' Error: is_rac() - vproc: (%s)' % (sys.exc_info()[0])
+    vproc = run_command("ps -ef | grep lck | grep -v grep | wc -l")
 
     if int(vproc) > 0:
       # if > 0 "lck" processes running, it's RAC
@@ -860,22 +836,11 @@ def is_oracle_restart():
     global err_msg
 
     if not is_rac():
-        try:
-            # output = subprocess.check_output("ps -ef | grep ocss[d] | wc -l", shell=True)
-            process = subprocess.Popen("ps -ef | grep ocss[d] | wc -l", stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            err_msg = err_msg + ' Error: is_oracle_restart() - vproc: (%s,%s)' %(sys.exec_info()[0],code)
-            module.fail_json(msg='Error: %s' % (err_msg), changed=False)
-
-        try:
-            if int(output) > 0:
-                return True
-            else:
-                return False
-        except:
-            err_msg = err_msg + ' Error: is_oracle_restart() - vproc: (%s,%s)' %(sys.exec_info()[0],code)
-            module.fail_json(msg='Error: %s' % (err_msg), changed=False)
+        check_ocssd = run_command("ps -ef | grep ocss[d] | wc -l")
+        if int(check_ocssd) > 0:
+            return True
+        else:
+            return False
 
     return False
 
@@ -905,16 +870,13 @@ def is_ora_installed():
 
 def tnsnames():
     """Locate tnsnames.ora file being used by this host"""
-    try:
-      vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
-    except:
-      err_msg = ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
+    # vtns1 = run_command("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")
+    # vtns2 = run_command("/bin/cat ~/.bashrc | grep TNS_ADMIN | cut -d '=' -f 2")
 
-    if vtns1:
-        # return(str(vtns1) + "/tnsnames.ora")
-        return(str(vtns1))
+    if is_rac() or is_oracle_restart():
+        return(get_gihome()+'/network/admin')
     else:
-        return("Could not locate tnsnames.ora file.")
+        return("SI Instance: Could not locate tnsnames.ora file.")
 
 
 def is_lsnr_up():
@@ -1213,6 +1175,19 @@ def get_scan(ora_home):
 
     return (scan_info)
 
+def run_command(cmd):
+    """given shell command, returns communication tuple of stdout and stderr"""
+    global err_msg
+
+    try:
+        p = subprocess.Popen([cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       err_msg = err_msg + ' Error run_cmd: %s' % (cmd)
+       err_msg = err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    return output.strip()
 
 # ================================== Main ======================================
 def main(argv):
