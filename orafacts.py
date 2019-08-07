@@ -1168,7 +1168,7 @@ def get_scan(ora_home):
     return (scan_info)
 
 def run_command(cmd):
-    """given shell command, returns communication tuple of stdout and stderr"""
+    """Runs given shell command, returns stdout."""
     global err_msg
 
     try:
