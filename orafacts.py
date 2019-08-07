@@ -56,6 +56,11 @@
 #
 # Last updated August 28, 2017    Sam Kohler
 #
+
+# Make coding more python3-ish
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 from ansible.module_utils._text import to_native
@@ -243,7 +248,7 @@ def get_gihome():
     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
     if not grid_home:
-        err_msg = ' Error: srvctl module get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+        err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
@@ -405,6 +410,40 @@ def get_ora_homes():
            err_msg = err_msg + ' ERROR: get_ora_homes() - db long version: (%s)' % (sys.exc_info()[0])
 
          tempHomes.update({ homenum + "g": {'home': newhome, 'db_version': dbver, 'opatch_version': opver[opver.find(":")+1:-2], 'srvctl_version': srvctl_ver[5:-2]}})
+
+   return (tempHomes)
+
+def oracle_restart_homes():
+   """Return the different Oracle and Grid homes versions installed on Oracle Restart hosts"""
+   global ora_home
+   global err_msg
+   global v_rec_count
+   global global_ora_home
+
+   has_changed = False
+   tempHomes = {}
+
+   allhomes = run_command("cat /etc/oratab | grep -o -P '(?<=:).*(?=:)' | sort | uniq | grep -e app")
+
+   for newhome in allhomes.split("\n"):
+      if "grid" in newhome.lower():
+         tmpver = run_command(newhome + '/bin/crsctl query has softwareversion')
+         # get everything between '[' and ']' from the string returned.
+         gver = tmpver[ tmpver.index('[') + 1 : tmpver.index(']') ]
+         tempHomes.update({'grid': {'version': gver, 'home': newhome}})
+
+
+      elif "home" in newhome.lower():
+         homenum = str(re.search("\d.",newhome).group())
+         if int(homenum) <= 12:
+             homenum = homenum+"g"
+         else:
+             homenum = homenum+"c"
+
+         opver = run_command('export ORACLE_HOME=' + newhome +';' + newhome + '/OPatch/opatch version | grep Version')[16:]
+         srvctl_ver = run_command('export ORACLE_HOME=' + newhome +';' + newhome + '/bin/srvctl -V')[16:]
+
+         tempHomes.update({ homenum: {'home': newhome, 'opatch_version': opver, 'srvctl_version': srvctl_ver }})
 
    return (tempHomes)
 
@@ -784,10 +823,7 @@ def is_rac():
     global err_msg
 
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-    try:
-      vproc = str(commands.getstatusoutput("ps -ef | grep lck | grep -v grep | wc -l")[1])
-    except:
-      err_msg = err_msg + ' Error: is_rac() - vproc: (%s)' % (sys.exc_info()[0])
+    vproc = run_command("ps -ef | grep lck | grep -v grep | wc -l")
 
     if int(vproc) > 0:
       # if > 0 "lck" processes running, it's RAC
@@ -795,6 +831,18 @@ def is_rac():
     else:
       return False
 
+def is_oracle_restart():
+    """Determine if a host is single instance Oracle Restart"""
+    global err_msg
+
+    if not is_rac():
+        check_ocssd = run_command("ps -ef | grep ocss[d] | wc -l")
+        if int(check_ocssd) > 0:
+            return True
+        else:
+            return False
+
+    return False
 
 def is_ora_running():
     """Determine if Oracle database processses are running on a host"""
@@ -822,16 +870,13 @@ def is_ora_installed():
 
 def tnsnames():
     """Locate tnsnames.ora file being used by this host"""
-    try:
-      vtns1 = str(commands.getstatusoutput("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")[1])
-    except:
-      err_msg = ' Error: tnsnames() - vtns1: (%s)' % (sys.exc_info()[0])
+    # vtns1 = run_command("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")
+    # vtns2 = run_command("/bin/cat ~/.bashrc | grep TNS_ADMIN | cut -d '=' -f 2")
 
-    if vtns1:
-        # return(str(vtns1) + "/tnsnames.ora")
-        return(str(vtns1))
+    if is_rac() or is_oracle_restart():
+        return(get_gihome()+'/network/admin')
     else:
-        return("Could not locate tnsnames.ora file.")
+        return(run_command(("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")))
 
 
 def is_lsnr_up():
@@ -846,10 +891,13 @@ def is_lsnr_up():
     err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
   # the command returns 1 if no listener, so return 0
-  if int(vlsnr) == 0:
-    return True
-  else:
-    return False
+  try:
+    if int(vlsnr) == 0:
+      return True
+    else:
+      return False
+  except:
+    err_msg = err_msg + 'Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
 
 def listener_info():
@@ -907,15 +955,28 @@ def rac_dblist():
 
   debugg("rac_dblist")
 
-  try:
-    srvctl_verbose = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/srvctl config database -verbose")[1])
-  except:
-    err_msg = err_msg + ' Error: rac_dblist() - db_home: (%s)' % (sys.exc_info()[0])
-  if srvctl_verbose:
+  global grid_home
+  global msg
+
+  if not grid_home:
+      grid_home = get_gihome()
+
+  srvctl_verbose = run_command("export ORACLE_HOME=" + grid_home + ";" + grid_home + "/bin/srvctl config database -verbose")
+
+  if srvctl_verbose != "No databases are configured":
     for line in srvctl_verbose.split("\n"):
       split = line.split()
+      item = {}
+
+      srvctl_config = run_command("export ORACLE_HOME=" + split[1] + ";" + split[1] + "/bin/srvctl config database -d " + split[0])
+      for x in srvctl_config.split("\n"):
+          if x.startswith('Domain:'):
+              item['domain'] = x[8:]
+          elif x.startswith('Services:'):
+              item['services'] = x[10:]
+
       dblist.append(split[0])
-      database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2] }})
+      database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'domain': item['domain'], 'services': item['services']}})
 
   database_info['databases'] = dblist
   return(database_info)
@@ -1106,6 +1167,19 @@ def get_scan(ora_home):
 
     return (scan_info)
 
+def run_command(cmd):
+    """Runs given shell command, returns stdout."""
+    global err_msg
+
+    try:
+        p = subprocess.Popen([cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       err_msg = err_msg + ' Error run_cmd: %s' % (cmd)
+       err_msg = err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    return output.strip()
 
 # ================================== Main ======================================
 def main(argv):
@@ -1116,6 +1190,7 @@ def main(argv):
   global global_ora_home
 
   ansible_facts={ 'orafacts': {} }
+  facts = {}
 
   module = AnsibleModule(
       argument_spec = dict(
@@ -1166,6 +1241,19 @@ def main(argv):
 
         # vhuge = hugepages()
         # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
+      elif is_oracle_restart(): # Run these for Oracle Restart Instance <<< ========================= SI_ASM
+        msg = msg + "Single Instance Oracle Restart Environment"
+
+        homes = oracle_restart_homes()
+        for (vkey, vvalue) in homes.items():
+            ansible_facts['orafacts'][vkey] = vvalue
+
+        #database_details
+        # Get list of all databases configured in SRVCTL
+        ansible_facts.update(rac_dblist())
+
+        #databases
+
 
       else: # Run these for Single Instance <<< ========================= SI
         msg="Single Instance (SI) Environment"
