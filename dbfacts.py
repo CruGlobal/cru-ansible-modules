@@ -213,6 +213,7 @@ def main ():
         cur = con.cursor()
 
         ansible_facts = { refname : {}}
+
         # get parameters listed in the header of this program defined in "vparams"
         for idx in range(len(vparams)):
             try:
@@ -229,7 +230,9 @@ def main ():
 
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
+
             debugg("param=%s value=%s" % (vparams[idx], vtemp))
+  
             # module.fail_json(msg='processing: vparams[idx]= %s and vtemp = %s' % (vparams[idx], vtemp), changed=False)
             if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
                 vtemp = convert_size(float(vtemp),"M")
