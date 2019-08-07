@@ -212,7 +212,7 @@ def main ():
 
         cur = con.cursor()
 
-        ansible_facts[refname] = {}
+        ansible_facts = { refname : {}}
         # get parameters listed in the header of this program defined in "vparams"
         for idx in range(len(vparams)):
             try:
@@ -229,29 +229,35 @@ def main ():
 
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
+            debugg("param=%s value=%s" % (vparams[idx], vtemp))
             # module.fail_json(msg='processing: vparams[idx]= %s and vtemp = %s' % (vparams[idx], vtemp), changed=False)
             if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
                 vtemp = convert_size(float(vtemp),"M")
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'db_recovery_file_dest' == vparams[idx]:
-                ansible_facts[refname].update({ vparams[idx]: vtemp[1:] })
+                ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'listener' in vparams[idx]:
                 if vtemp is None:
-                    ansible_facts[refname].update({vparams[idx]: 'None'})
+                    ansible_facts[refname].update({ vparams[idx]: 'None' })
                 else:
                     head, sep, tail = vtemp.partition('.')
                     ansible_facts[refname].update({vparams[idx]: head})
             elif 'cluster_database' == vparams[idx]:
+                debugg(">>>> In PARAM FOR LOOP : %s = %s" % (vparams[idx], vtemp))
                 if vtemp.upper() == 'TRUE':
                     is_rac = True
+                    ansible_facts[refname].update({'cluster_database': 'True' })
                 else:
                     is_rac = False
-                ansible_facts[refname].update({ vparams[idx] : vtemp })
+                    ansible_facts[refname].update({ 'cluster_database': 'False' })
+                debugg( ">>>> In PARAM FOR LOOP : is_rac = %s" % (is_rac) )
             else:
                 try:
                     ansible_facts[refname][vparams[idx]] = vtemp
                 except:
                     debugg("Error while adding %s %s" % (str(vparams[idx]), str(vtemp)))
+
+        debugg("#### PARAMS ADDED ansible_facts[%s]= %s " % (refname, ansible_facts[refname]))
 
         # select source db version
         try:
@@ -269,7 +275,7 @@ def main ():
             dbver =  cur.fetchall()
             retver = dbver[0][0]
             usable_ver = ".".join(retver.split('.')[0:-1])
-            ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver, 'major_version': usable_ver.split(".")[0]}
+            ansible_facts[refname].update({'version': usable_ver, 'oracle_version_full': retver, 'major_version': usable_ver.split(".")[0]})
         ignore_err_flag = False
 
         # select host_name
@@ -303,7 +309,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['db_files_actual'] = vtemp
+            ansible_facts[refname].update( { 'db_files_actual': vtemp } )
         ignore_err_flag = False
 
         # Find archivelog mode.
@@ -325,7 +331,7 @@ def main ():
             else:
               vtemp = 'False'
 
-            ansible_facts[refname]['archivelog'] = vtemp
+            ansible_facts[refname].update( { 'archivelog' : vtemp } )
         ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
@@ -342,7 +348,7 @@ def main ():
         if ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['dbid'] = vtemp
+            ansible_facts[refname].update( { 'dbid': vtemp } )
         ignore_err_flag = False
 
         if is_rac:
@@ -361,7 +367,7 @@ def main ():
                 vtemp = cur.fetchall()
                 vtemp = vtemp[0][0]
                 # diskgroups = [row[0] for row in cur.fetchall()]
-                ansible_facts[refname]['diskgroups'] = vtemp #diskgroups
+                ansible_facts[refname].update({ 'diskgroups': vtemp }) #diskgroups
             ignore_err_flag = False
 
         # Open cursors - used in populating dynamic pfiles
@@ -378,7 +384,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['open_cursors'] = vtemp
+            ansible_facts[refname].update( { 'open_cursors': vtemp} )
         ignore_err_flag = False
 
         # pga_aggregate_target - used in populating dynamic pfiles
@@ -395,7 +401,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['pga_aggregate_target'] = vtemp
+            ansible_facts[refname].update({ 'pga_aggregate_target': vtemp })
         ignore_err_flag = False
 
         # use_large_pages - used in populating dynamic pfiles
@@ -412,7 +418,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['use_large_pages'] = vtemp
+            ansible_facts[refname].update({'use_large_pages': vtemp})
         ignore_err_flag = False
 
         # Is Block Change Tracking (BCT) enabled or disabled?
@@ -429,7 +435,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['bct_status'] = vtemp
+            ansible_facts[refname].update({ 'bct_status': vtemp })
         ignore_err_flag = False
 
         # db_create_online_log_dest_# that aren't null. Needed for utils restore.
@@ -454,7 +460,7 @@ def main ():
                 error, = exc.args
                 module.fail_json(msg='Error getting directory info, Error: %s' % (error.message), changed=False)
 
-            ansible_facts[refname]['log_dest'] = log_dests
+            ansible_facts[refname].update({ 'log_dest': log_dests })
         ignore_err_flag = False
 
         # Does the ULNFSA02_DATAPUMP directory exist?
@@ -479,7 +485,7 @@ def main ():
                 msg = msg + ' dir returned meta %s vdir: %s vpath: %s' % (vtemp,vdir,vpath)
                 module.fail_json(msg='ERROR: %s' % (msg), changed=False)
 
-            ansible_facts[refname]['dirs'] = dirs
+            ansible_facts[refname].update( { 'dirs': dirs } )
         ignore_err_flag = False
 
         # BCT path
@@ -496,7 +502,7 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
-            ansible_facts[refname]['bct_file'] = vtemp
+            ansible_facts[refname].update( { 'bct_file': vtemp } )
         ignore_err_flag = True
 
         meta_msg = ''
@@ -519,7 +525,7 @@ def main ():
             for own in vtemp:
                 owner_list.append(own[0].encode("utf-8"))
 
-            ansible_facts[refname]['schema_owners'] = owner_list
+            ansible_facts[refname].update( { 'schema_owners': owner_list } )
         ignore_err_flag = False
 
         # Get default_temp_tablespace and default_permanet_tablespace
@@ -536,8 +542,8 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             if cur.rowcount > 0:
-                ansible_facts[refname][vtemp[0][0]] = vtemp[0][1]
-                ansible_facts[refname][vtemp[1][0]] = vtemp[1][1]
+                ansible_facts[refname].update({ vtemp[0][0]: vtemp[0][1] } )
+                ansible_facts[refname].update({ vtemp[1][0]: vtemp[1][1] } )
         ignore_err_flag = False
 
         # Get tablespace name like %USER% if one exists:
@@ -555,7 +561,7 @@ def main ():
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             if vtemp:
-                ansible_facts[refname]['USER_TABLESPACE'] = vtemp
+                ansible_facts[refname].update( { 'USER_TABLESPACE': vtemp } )
         ignore_err_flag = False
 
         if usable_ver[:2] == "12":
@@ -574,7 +580,7 @@ def main ():
                 vtemp = cur.fetchall()
                 vtemp = vtemp[0][0]
                 if vtemp:
-                    ansible_facts[refname]['oracle_home'] = vtemp
+                    ansible_facts[refname].update( { 'oracle_home': vtemp} )
             ignore_err_flag = False
 
         # elif usable_ver[:2] == "11":
@@ -634,8 +640,10 @@ def main ():
           error, = exc.args
           add_to_msg('Error closing cursor: Error: %s' % (error.message))
           # module.fail_json(msg='Error closing cursor: Error: %s' % (error.message), changed=False)
+          pass # No reason to fail at this point
 
-        msg="Custom module dbfacts succeeded for %s database." % (vdb)
+        if msg:
+            add_to_msg("Custom module dbfacts succeeded for %s database. %s" % (vdb,msg))
 
         vchanged="False"
 
