@@ -323,14 +323,13 @@ def main ():
           else:
               module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
 
-        if ignore_err_flag:
+        if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             if vtemp == 'ARCHIVELOG':
               vtemp = 'True'
             else:
               vtemp = 'False'
-
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
         ignore_err_flag = False
 
