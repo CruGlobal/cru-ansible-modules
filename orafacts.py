@@ -831,6 +831,7 @@ def is_rac():
     else:
       return False
 
+
 def is_oracle_restart():
     """Determine if a host is single instance Oracle Restart"""
     global err_msg
@@ -843,6 +844,7 @@ def is_oracle_restart():
             return False
 
     return False
+
 
 def is_ora_running():
     """Determine if Oracle database processses are running on a host"""

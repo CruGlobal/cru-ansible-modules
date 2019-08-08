@@ -19,6 +19,8 @@ except ImportError:
 # Created by: S Kohler
 # Date: March 16, 2019
 #
+# updated: 2019 : August 7
+#
 # Reference links
 # http://www.oracle.com/technetwork/articles/dsl/prez-python-queries-101587.html
 
@@ -47,27 +49,40 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
-    # if cloning a database and source database information is desired
+    # When cloning a database source database password file use is recommended.
     - local_action:
         module: sysdbafacts
         syspwd: "{{ database_passwords[source_db_name].sys }}"
         db_name: "{{ source_db_name }}"
         host: "{{ source_host }}"
-        pfile: "{{ /complete/path/and/filename.ora }}" (1)
-        oracle_home: "{{ oracle_home }}" (2)
-        refname: "{{ refname_str }} (3)"
-        ignore: True (4)
+        israc: "{{ sourcefacts['cluster_database']|bool }}" (1)
+        pfile_name: "pfile.ora" (2)
+        share_dir: "{{ share_dir }}" (3)
+        src_passwd_dir: "{{ /oracle_home/dbs }}" (4)
+        oracle_home: "{{ oracle_home }}"
+        refname: "{{ refname_str }} (5)"
+        ignore: True (6)
+        debugging: False (7)
       become_user: "{{ utils_local_user }}"
       register: sys_facts
 
-      (1) pfile   - optional. If provided a pfile will be created to that directory/filename
+      (1) israc      - (required) is RAC - this matters when the module puts together the db sid
 
-      (2) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+      (2) pfile_name - optional. If provided a pfile by that name will be created to that share directory/filename
+                       if not provided pfile.ora will be used. ( using default is recommended )
 
-      (3) ignore - (connection errors) is optional. If you know the source
+      (3) share_dir  - location thats accessible to both source db and dest db
+
+      (4) src_passwd_dir - location of the source db password file : $ORACLE_HOME/dbs
+
+      (5) refname        - (optional) name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+
+      (6) ignore     - (optional) (connection errors). If you know the source
           database may be down set ignore: True. If connection to the
           source database fails the module will not throw a fatal error
           to stop the play and continue.
+
+      (7) debugging  - (optional) - if 'True' will add debugging statements to the output msg.
 
 '''
 
@@ -75,6 +90,7 @@ EXAMPLES = '''
 # for reference when this module runs.
 vparams=[ "compatible",
           "sga_target",
+          "diagnostic_dest",
           "sga_max_size",
           "db_recovery_file_dest",
           "db_recovery_file_dest_size",
@@ -89,10 +105,15 @@ vparams=[ "compatible",
           "background_dump_dest",
           "audit_file_dest",
           "control_files" ]
+
+# Global vars
 msg = ""
-debugme = True
+debugme = False
 default_ora_base = "/app/oracle/"
 defualt_ora_home = "dbhome_1"
+default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
+default_refname = "sysdbafacts"
+true_bool = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
 
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
@@ -102,6 +123,15 @@ def add_to_msg(mytext):
         msg = mytext
     else:
         msg = msg + " " + mytext
+
+
+def debugg(a_str):
+    """If debugging is on add debugging string to global msg"""
+    global debugme
+
+    if debugme:
+        add_to_msg(a_str)
+
 
 def convert_size(size_bytes, vunit):
 
@@ -128,13 +158,13 @@ def convert_size(size_bytes, vunit):
 def main ():
   """ Run as sysdba against a database in startup nomount mode and retrun parameters"""
   global msg
-  ansible_facts={}
+  global debugme
+  global true_bool
   global default_ora_base
-  global default_ora_base
+  global default_pfile_name
+  global default_refname
 
-  # Name to call facts dictionary being passed back to Ansible
-  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-  refname = ""
+  ansible_facts={}
 
   os.system("/usr/bin/scl enable python3 bash")
   # os.system("scl enable python27 bash")
@@ -144,61 +174,76 @@ def main ():
         syspwd          =dict(required=True),
         db_name         =dict(required=True),
         host            =dict(required=True),
+        israc           =dict(required=True),
         refname         =dict(required=True),
         oracle_home     =dict(required=True),
-        file            =dict(required=False),
-        src_dir         =dict(required=False),
-        dest_dir        =dict(required=False),
-        ignore          =dict(required=False)
+        pfile_name      =dict(required=False),
+        src_passwd_dir  =dict(required=False),
+        share_dir       =dict(required=False),
+        ignore          =dict(required=False),
+        debugging       =dict(required=False)
       ),
       supports_check_mode=True,
   )
 
   # Get arguements passed from Ansible playbook
-  vdbpass      = module.params.get('syspwd')
-  vdb          = module.params.get('db_name')
-  vdbhost      = module.params.get('host')
-  vrefname     = module.params.get('refname')
-  vignore      = module.params.get('ignore')
-  vpfile       = module.params.get('file')
-  vsrc_dir     = module.params.get('src_dir')
-  vdest_dir    = module.params.get('dest_dir')
-  voracle_home = module.params.get('oracle_home')
+  vdbpass           = module.params.get('syspwd')
+  vdb               = module.params.get('db_name')
+  vdbhost           = module.params.get('host')
+  visrac            = module.params.get('israc')
+  vrefname          = module.params.get('refname')
+  vignore           = module.params.get('ignore')
+  vpfile            = module.params.get('pfile_name')
+  vsrc_passwd_dir   = module.params.get('src_passwd_dir')
+  vshare_dir        = module.params.get('share_dir')
+  voracle_home      = module.params.get('oracle_home')
+  vdebugging        = module.params.get('debugging')
+
+  if vdebugging:
+      debugme = vdebugging
 
   if vdb:
       orig_vdb_name = vdb
 
-  if vignore is None:
+  if vignore is None or not vignore:
       vignore = False
 
-  if '.org' in vdbhost:
-    vdbhost = vdbhost.replace('.ccci.org','')
+  if '.org' not in vdbhost:
+    vdbhost = "%s%s" % (vdbhost, '.ccci.org')
 
   if not cx_Oracle_found:
-    module.fail_json(msg="Error: cx_Oracle module not found")
+    module.fail_json(msg="Error: cx_Oracle module not found!")
 
   if not vrefname:
-    module.fail_json(msg="Error: refname cannot be ambiguous")
+    refname = default_refname
   else:
     refname = vrefname
 
   # check vars passed in are not NULL. All are needed to connect to source db
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
 
+    ansible_facts = { refname : {} }
+
+    if visrac in true_bool:
+        vdb = vdb + vdbhost[-1:]
+
     try:
-      vdb = vdb + vdbhost[-1:]
+      # vdb = vdb + vdbhost[-1:]
       dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
+    debugg("Attempting to connect to db=%s vdbhost=%s dsn_tns=%s " % (vdb, vdbhost, dsn_tns))
     try:
       con = cx_Oracle.connect(dsn=dsn_tns,user='sys',password=vdbpass,mode=cx_Oracle.SYSDBA)
     except cx_Oracle.DatabaseError as exc:
+      error, = exc.args
+      debugg("Oracle-Error-Code: %s" % (error.code))
+      debugg("Oracle-Error-Message: %s" % (error.message))
       if vignore:
-          msg="DB CONNECTION FAILED"
-          if debugme:
-              msg = msg + " vignore: %s " % (vignore)
+          add_to_msg("DB CONNECTION FAILED")
+          debugg("vignore: %s" % (vignore))
           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
       else:
           error, = exc.args
@@ -207,8 +252,8 @@ def main ():
     cur = con.cursor()
 
     # Generate pfile :
-    if vpfile and str(vdbhost[-1:]) == "1":
-        cmd_str = "create pfile='%s/%s' from spfile" % (vdest_dir,vpfile)
+    if vpfile: #  and str(vdbhost[-1:]) == "1:
+        cmd_str = "create pfile='%s/%s' from spfile" % (vshare_dir,vpfile)
         try:
           cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
@@ -218,7 +263,7 @@ def main ():
           else:
               module.fail_json(msg='Error creating pfile : %s' % (error.message), changed=False)
 
-        ansible_facts[refname] = {'pfile': { 'written':'true','location': vpfile}}
+        ansible_facts[refname].update( { 'pfile': { 'written':'true','location': vpfile} } )
 
 
     # select source db version
@@ -231,22 +276,22 @@ def main ():
     dbver =  cur.fetchall()
     retver = dbver[0][0]
     usable_ver = ".".join(retver.split('.')[0:-1])
-    ansible_facts[refname] = {'version': usable_ver, 'oracle_version_full': retver}
+    ansible_facts[refname].update( { 'version': usable_ver, 'oracle_version_full': retver } )
     default_db_ver = usable_ver
 
     # if vpfile ( pfile ) parameter is defined copy the password file and from $ORACLE_HOME to pfile directory
     # get the directory part and dropping the pfile.ora name ( can be any name this way ).
     if vpfile:
         # pfile_dir = vpfile[:vpfile.rindex('/')] # vpfile contains /the/full/path/to/pfile.ora  This command strips /pfile.ora so only the dir is left.
-        if not vsrc_dir:
+        if not vsrc_passwd_dir:
             orapw_source = "%s/dbs" % (voracle_home)
         else:
-            orapw_source = vsrc_dir
+            orapw_source = vsrc_passwd_dir
 
-        if not vdest_dir:
+        if not vshare_dir:
             orapw_dest = "/app/oracle/backups/%s/pfile" % (orig_vdb_name.upper())
         else:
-            orapw_dest = vdest_dir
+            orapw_dest = vshare_dir
 
         try:
             cmd_str = "create or replace directory ORAPW_DEST as '%s'" % (orapw_dest)
@@ -254,7 +299,10 @@ def main ():
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error creating orapw_dest directory")
             error, = exc.args
-            module.fail_json(msg='Error creating orapwd dest dir: %s msg: %s cmd_str: %s' % (error.message,msg,cmd_str), changed=False)
+            if not vignore:
+                module.fail_json(msg='Error creating orapwd dest dir: %s msg: %s cmd_str: %s' % (error.message,msg,cmd_str), changed=False)
+            else:
+                add_to_msg('Error creating orapwd dest dir: %s msg: %s cmd_str: %s' % (error.message,msg,cmd_str))
 
         add_to_msg("orapw_dest directory [%s] created successfully." % (orapw_dest))
 
@@ -264,7 +312,10 @@ def main ():
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error creating orapw_dest directory")
             error, = exc.args
-            module.fail_json(msg='Error creating orapwd dest dir (%s): %s cmd_str: %s msg: %s' % (orapw_source,error.message,cmd_str,msg), changed=False)
+            if not vignore:
+                module.fail_json(msg='Error creating orapwd dest dir (%s): %s cmd_str: %s msg: %s' % (orapw_source,error.message,cmd_str,msg), changed=False)
+            else:
+                add_to_msg('Error creating orapwd dest dir (%s): %s cmd_str: %s msg: %s' % (orapw_source,error.message,cmd_str,msg))
 
         add_to_msg("orapw_source directory [%s] created successfully." % (orapw_source))
 
@@ -276,7 +327,10 @@ def main ():
             add_to_msg("Error: attempting to rename current password file orapw%s to orapw%s_bu" % (vdb,vdb))
             error, = exc.args
             if 'ORA-29283' not in error.message:
-                module.fail_json(msg='Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
+                if not vignore:
+                    module.fail_json(msg='Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
+                else:
+                    add_to_msg('Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg))
 
         # because the above command has no output unless it fails. If you've made it
         # here, assume it succeeded.
@@ -290,7 +344,10 @@ def main ():
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error attempting to copy orapw%s from %s to %s" %(vdb,orapw_source, orapw_dest))
             error, = exc.args
-            module.fail_json(msg='Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message), changed=False)
+            if not vignore:
+                module.fail_json(msg='Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message), changed=False)
+            else:
+                add_to_msg('Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message))
 
         add_to_msg("orapwd%s successfully copied from %s to: %s " % (vdb, orapw_source, orapw_dest))
 
@@ -300,18 +357,24 @@ def main ():
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
+        if not vignore:
+            module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
+        else:
+            add_to_msg('Error selecting host_name from v$instance, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
-    ansible_facts[refname]['host_name'] = vtemp
+    ansible_facts[refname].update( { 'host_name': vtemp } )
 
     # Find archivelog mode.
     try:
       cur.execute('select log_mode from v$database')
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting log_mode from v$database, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -320,37 +383,50 @@ def main ():
     else:
       vtemp = 'False'
 
-    ansible_facts[refname]['archivelog'] = vtemp
+    ansible_facts[refname].update( { 'archivelog': vtemp } )
 
     # Get dbid for active db duplication without target, backup only
     try:
       cur.execute('select dbid from v$database')
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
+      else:
+          add_to_msg('Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context))
+
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
-    ansible_facts[refname]['dbid'] = vtemp
+    ansible_facts[refname].update( { 'dbid': vtemp } )
 
     # Find ASM diskgroups used by the database
     try:
       cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
+      if not vignore:
+        module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
-    vtemp = vtemp[0][0]
-    # diskgroups = [row[0] for row in cur.fetchall()]
-    ansible_facts[refname]['diskgroups'] = vtemp #diskgroups
+    if vtemp:
+        vtemp = vtemp[0][0]
+        # diskgroups = [row[0] for row in cur.fetchall()]
+        ansible_facts[refname].update( { 'diskgroups': vtemp } )
+    else:
+        ansible_facts[refname].update( { 'diskgroups': 'None' } )
 
     # Open cursors - used in populating dynamic pfiles
     try:
       cur.execute("select value from v$parameter where name = 'open_cursors'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting value open_cursors, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -361,7 +437,10 @@ def main ():
       cur.execute("select value from v$parameter where name = 'pga_aggregate_target'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting value pga_aggregate_target, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting value pga_aggregate_target, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting value pga_aggregate_target, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -372,7 +451,10 @@ def main ():
       cur.execute("select value from v$parameter where name = 'use_large_pages'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting value use_large_pages, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting value use_large_pages, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting value use_large_pages, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -383,7 +465,10 @@ def main ():
       cur.execute("select status from v$block_change_tracking")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error getting status of BCT, Error: %s' % (error.message))
 
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
@@ -396,7 +481,10 @@ def main ():
       cur.execute("select name,value from v$parameter where replace(value,'+','') in (select name from  v$asm_diskgroup where state = 'CONNECTED' and name not like '%FRA%')")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
+      if not vignore:
+          module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
+      else:
+          add_to_msg('Error selecting version from v$instance, Error: %s' % (error.message))
 
     try:
       online_logs =  cur.fetchall()

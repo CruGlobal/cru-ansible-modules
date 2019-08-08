@@ -49,6 +49,7 @@ EXAMPLES = '''
         host: "{{ source_host }}"
         refname: "{{ refname_str }} (1)"
         ignore: True (2)
+        debugging: False
       become_user: "{{ remote_user }}"
       register: src_facts
 
@@ -89,6 +90,7 @@ vparams=[ "cluster_database",
 msg = ""
 debugme = False
 defrefname = "dbfacts"
+true_bool = ['True','T','true','t','True','Yes','y']
 
 
 def add_to_msg(a_msg):
@@ -110,7 +112,13 @@ def debugg(db_msg):
         add_to_msg(db_msg)
 
 
-def convert_size(size_bytes, vunit):
+def convert_size(arg_size_bytes, vunit):
+    """Given bytes and units ( K, M, G, T)
+       convert input bytes to that unit:
+             vtemp = convert_size(float(vtemp),"M")
+    """
+
+    size_bytes = arg_size_bytes
 
     if size_bytes == 0:
        return "0B"
@@ -155,7 +163,7 @@ def main ():
         host            =dict(required=True),
         refname         =dict(required=False),
         ignore          =dict(required=False),
-        debug           =dict(required=False)
+        debugging       =dict(required=False)
       ),
       supports_check_mode=False,
     )
@@ -166,10 +174,12 @@ def main ():
     vdbhost    = module.params.get('host')
     vrefname   = module.params.get('refname')
     vignore    = module.params.get('ignore')
-    vdebug     = module.params.get('debug')
+    vdebug     = module.params.get('debugging')
 
-    if vdebug:
-      debugme = vdebug
+    if vdebug in true_bool:
+      debugme = True
+    else:
+      debugme = False
 
     if vignore is None:
       vignore = False
@@ -232,7 +242,7 @@ def main ():
             vtemp = vtemp[0][0]
 
             debugg("param=%s value=%s" % (vparams[idx], vtemp))
-  
+
             # module.fail_json(msg='processing: vparams[idx]= %s and vtemp = %s' % (vparams[idx], vtemp), changed=False)
             if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
                 vtemp = convert_size(float(vtemp),"M")
@@ -371,6 +381,8 @@ def main ():
                 # diskgroups = [row[0] for row in cur.fetchall()]
                 ansible_facts[refname].update({ 'diskgroups': vtemp }) #diskgroups
             ignore_err_flag = False
+        else:
+            ansible_facts[refname].update({ 'diskgroups': 'None' })
 
         # Open cursors - used in populating dynamic pfiles
         try:
@@ -403,6 +415,8 @@ def main ():
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
+            vtemp = convert_size(float(vtemp),"M")
+
             ansible_facts[refname].update({ 'pga_aggregate_target': vtemp })
         ignore_err_flag = False
 
@@ -644,8 +658,7 @@ def main ():
           # module.fail_json(msg='Error closing cursor: Error: %s' % (error.message), changed=False)
           pass # No reason to fail at this point
 
-        if msg:
-            add_to_msg("Custom module dbfacts succeeded for %s database. %s" % (vdb,msg))
+        add_to_msg("Custom module dbfacts, called as refname: %s, succeeded for %s database." % (refname, vdb))
 
         vchanged="False"
 

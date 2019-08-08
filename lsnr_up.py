@@ -74,6 +74,25 @@ EXAMPLES = '''
 '''
 
 
+def add_to_msg(a_msg):
+    """Add the arguement to the msg to be passed out"""
+    global msg
+
+    if msg:
+        msg = msg + " " + a_msg
+    else:
+        msg = a_msg
+
+
+def debugg(db_msg):
+    """if debugging is on add this to msg"""
+    global msg
+    global debugme
+
+    if debugme:
+        add_to_msg(db_msg)
+
+
 def get_grid_home():
     """Determine the Grid Home directory
        using ps -eo args
@@ -201,9 +220,11 @@ def num_listeners(vdb):
     if not oracle_home:
         oracle_home = get_orahome_procid(vdb)
 
-    node_number = get_node_num()
-
-    oracle_sid = vdb + str(node_number)
+    if is_rac():
+        node_number = get_node_num()
+        oracle_sid = vdb + str(node_number)
+    else:
+        oracle_sid = vdb
 
     try:
         tmp_cmd = "%s/bin/lsnrctl status | /bin/grep %s | /bin/grep Instance | /usr/bin/wc -l" % (oracle_home,vdb)
@@ -229,6 +250,36 @@ def num_listeners(vdb):
 
     return (num_listeners)
 
+
+def is_rac():
+    """Determine if a host is running RAC or Single Instance"""
+    global err_msg
+
+    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
+    vproc = run_command("ps -ef | grep lck | grep -v grep | wc -l")
+
+    if int(vproc) > 0:
+      # if > 0 "lck" processes running, it's RAC
+      return True
+    else:
+      return False
+
+
+def run_command(cmd):
+    """Runs given shell command, returns stdout."""
+    global err_msg
+
+    try:
+        p = subprocess.Popen([cmd], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       err_msg = err_msg + ' Error run_cmd: %s' % (cmd)
+       err_msg = err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+       raise Exception (err_msg)
+
+    return output.strip()
+
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -239,7 +290,7 @@ def main ():
     global oracle_home
     global sleep_time
     global default_ttw
-    global expected_num_reg_lsnrs
+    global default_expected_num_reg_lsnrs
 
     ansible_facts={}
 
@@ -264,7 +315,7 @@ def main ():
 
     # See if a snapshot name was passed in
     # if not get the timestamp to create one
-    if vdb[-1].isdigit():
+    if vdb[-1].isdigit() and is_rac():
         vdb = vdb[:-1]
 
     if not vttw:
