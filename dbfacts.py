@@ -199,8 +199,16 @@ def main ():
     if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None):
 
         try:
+
+            if '.org' in vdbhost:
+                vdbhost = vdbhost.replace(".ccci.org","")
+
             if '60' not in vdbhost:
                 vdb = vdb + vdbhost[-1:]
+
+            if '.org' not in vdbhost:
+                vdbhost = vdbhost + ".ccci.org"
+
             dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
@@ -208,7 +216,7 @@ def main ():
                 add_to_msg("Failed to create dns_tns: %s" %s (error.message))
             else:
                 module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
-
+        debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
         try:
           con = cx_Oracle.connect('system', vdbpass, dsn_tns)
         except cx_Oracle.DatabaseError as exc:
