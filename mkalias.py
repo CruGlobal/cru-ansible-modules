@@ -38,14 +38,15 @@ EXAMPLES = '''
       mkalias:
         db_name: "{{ db_name }}"
         asm_dg: "{{ asm_dg_name }}" (1)
-        asm_db: "{{ asm_sid }}"     (2)
       when: master_node
 
     Notes:
 
 
-        A RAC database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
-        The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM
+        A database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
+        The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
+            ** this can be obtained dynamically from sourcefacts.
+
 '''
 #Global variables
 istrue = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
@@ -84,16 +85,6 @@ def debugg(debug_str):
         add_to_msg(debug_str)
 
 
-def if_empty_raise_exception(str_result):
-    """If the string is empty raise exception, else return it"""
-    global msg
-
-    if not str_result:
-        raise Exception (msg)
-    else:
-        return(node_number)
-
-
 def get_grid_home():
     """Determine the Grid Home directory
        using ps -eo args
@@ -103,7 +94,7 @@ def get_grid_home():
     output = run_sub("/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'")
     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
 
-    if_empty_raise_exception(grid_home)
+    return(grid_home)
 
 
 def get_node_num():
@@ -119,19 +110,19 @@ def get_node_num():
     node_number = output.strip()
 
     if israc():
-        if_empty_raise_exception(node_number)
+        return(node_number)
 
 
 def get_dbhome(vdb):
     """Return database home as recorded in /etc/oratab"""
-    global ora_home
-    global msg
 
-    output = run_sub("cat /etc/oratab | grep -m 1 %s | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'" % (vdb))
+    output = run_sub("/bin/cat /etc/oratab | /bin/grep -m 1 %s | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'" % (vdb))
 
     ora_home = output.strip()
 
-    if_empty_raise_exception(ora_home)
+    debugg("get_dbhome(%s) output: %s returning: %s" % (vdb, output, ora_home))
+
+    return(ora_home)
 
 
 def israc():
@@ -142,10 +133,12 @@ def israc():
     vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
 
     if int(vproc) > 0:
-      # if > 0 "lck" processes running, it's RAC
-      return(True)
+        # if > 0 "lck" processes running, it's RAC
+        debugg("israc() returning True")
+        return(True)
     else:
-      return(False)
+        debugg("israc() returning False")
+        return(False)
 
 
 def run_sub(cmd_str):
@@ -175,12 +168,12 @@ def run_sub_env(cmd_str, env=None):
     try:
         os.environ['ORACLE_HOME'] = env['oracle_home']
         os.environ['ORACLE_SID'] = env['oracle_sid']
-        debugg("Running cmd_str=%s with ORACLE_HOME: %s and ORACLE_SID: %s" % (cmd_str, vgrid_home, vasm_sid))
+        debugg("Running cmd_str=%s with ORACLE_HOME: %s and ORACLE_SID: %s" % (cmd_str, env['oracle_home'], env['oracle_sid']))
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-        add_to_msg('Error run_sub_env:: cmd_str=%s env=%s' % (cmd_str,str(env))
-        add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+        add_to_msg('Error run_sub_env cmd_str=%s env=%s' % (cmd_str,str(env)) )
+        add_to_msg('%s, %s, %s' % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]) )
         raise Exception (msg)
 
     if not output:
@@ -238,13 +231,23 @@ def get_orahome_procid(vdb):
     ora_home = vhome.strip()
 
     # msg = msg + "exiting get_orahome_procid(%s) returning: ora_home: %s" % (vdb,ora_home)
-
+    debugg("get_orahome_procid() returning oracle_home=%s for db=%s",(vdb, ora_home))
     return(ora_home)
 
 
 def get_asm_db():
     """Retrieve the ASM DB name"""
     cmd_str = "/bin/ps -ef | grep ora_pmon_ | grep -v grep | grep '+'"
+    output = run_cmd(cmd_str)
+    tmp = output.split()
+    tmp = [ i for i in tmp if '+' in i ]
+    tmp = tmp[0].split('_')
+    tmp = tmp[2]
+
+    debugg("get_asm_db() returning %s" % (tmp) )
+    return(tmp)
+
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -277,15 +280,15 @@ def main ():
     if vasm_dg[0] != "+":
         vasm_dg = "+%s" % (vasm_dg)
 
-    if not grid_home:
-        vgrid_home = get_grid_home()
-
     if vdebug:
         debugme = vdebug
 
-    if israc():
+    asm_db = get_asm_db()
+    visrac = israc()
+
+    if visrac:
         vnode_num = get_node_num()
-        vasm_sid = "+ASM" + str(vnode_num)
+        vasm_sid = asm_db + str(vnode_num)
 
     if visrac in istrue:
         if not vdb[-1].isdigit():
@@ -294,37 +297,41 @@ def main ():
             if vdb[-1] != "1":
                 voracle_sid = vdb[:-1] + vnode_num
             vdb = vdb[:-1]
-        debugg("visrac is True, adding instance number: %s" % (vdb))
+        debugg("visrac is %s, instance name: %s" % (visrac, vdb))
+
+    vdb_home = get_dbhome(vasm_sid)
+
+    debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vdb_home))
 
     # Make sure an alias doesn't already exist
-    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vgrid_home), {'oracle_home': vgrid_home, 'oracle_sid': asm_sid })
+    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
     if output:
         spfile = [ item for item in output.split() if "spfile" in item ]
 
-    debugg("[1] make sure alias doesnt already exist with cmd: %s and results: %s raw output: %s " % (cmd_str,spfile,output))
+    debugg("[1] make sure alias doesnt already exist")
 
     if len(spfile) > 1:
         add_to_msg("spfile already exists: %s/%s/%s => %s" % (vasm_dg,vdb,spfile[0],spfile[1]))
         module.exit_json( msg=msg, ansible_facts={} , changed=False)
 
     # Else get the name of the parameterfile.
-    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vgrid_home), {'oracle_home': vgrid_home, 'oracle_sid': asm_sid })
+    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
     if output:
         spfile_orig = [ item for item in output.split() if "spfile" in item ][0]
 
-    debugg("[2] use this command: %s to get the parameterfile name: %s" % (cmd_str, spfile_orig))
+    debugg("[2] get the parameterfile name: %s" % (spfile_orig))
 
     # Create the alias
-    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg,vdb,spfile_orig,vasm_dg,vdb,vdb,vgrid_home), {'oracle_home': vgrid_home, 'oracle_sid': asm_sid })
+    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg,vdb,spfile_orig,vasm_dg,vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
 
-    debugg("[3] Alias created :: with this command: %s" % (cmd_str))
+    debugg("[3] Alias created")
 
     # Check the alias and return the results
-    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vgrid_home), {'oracle_home': vgrid_home, 'oracle_sid': asm_sid } )
+    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid } )
 
     spfile = [ item for item in output.split() if "spfile" in item]
 
-    debugg("[4] Check Alias with this command: %s and output: %s with final result (spfile): %s" % (cmd_str,output,spfile))
+    debugg("[4] Check Alias")
 
     add_to_msg("Module mkalias exiting successfully. Created alias: %s/%s/%s => %s " % (vasm_dg,vdb,spfile,spfile))
 
