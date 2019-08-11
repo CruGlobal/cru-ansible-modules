@@ -115,6 +115,7 @@ default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
 default_refname = "sysdbafacts"
 true_bool = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
 
+
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
     global msg
@@ -208,9 +209,6 @@ def main ():
   if vignore is None or not vignore:
       vignore = False
 
-  if '.org' not in vdbhost:
-    vdbhost = "%s%s" % (vdbhost, '.ccci.org')
-
   if not cx_Oracle_found:
     module.fail_json(msg="Error: cx_Oracle module not found!")
 
@@ -224,8 +222,14 @@ def main ():
 
     ansible_facts = { refname : {} }
 
+    if '.org' in vdbhost:
+        vdbhost = vdbhost.replace(".ccci.org","")
+
     if visrac in true_bool:
         vdb = vdb + vdbhost[-1:]
+
+    if ".org" not in vdbhost:
+        vdbhost = vdbhost + ".ccci.org"
 
     try:
       # vdb = vdb + vdbhost[-1:]
