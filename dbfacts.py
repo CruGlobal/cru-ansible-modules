@@ -8,6 +8,7 @@ import os
 import json
 import re
 import math
+import commands 
 
 try:
     import cx_Oracle
@@ -137,6 +138,41 @@ def convert_size(arg_size_bytes, vunit):
     return "%s%s" % (int(round(s)), size_name[vidx])
 
 
+def israc():
+    """Determine if a host is running RAC or Single Instance"""
+    global err_msg
+
+    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
+    vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
+
+    if int(vproc) > 0:
+        # if > 0 "lck" processes running, it's RAC
+        debugg("israc() returning True")
+        return(True)
+    else:
+        debugg("israc() returning False")
+        return(False)
+
+
+def run_cmd(cmd_str):
+    """Encapsulate all error handline in one fx. Run cmds here."""
+    global msg
+
+    # get the pmon process id for the running database.
+    # 10189  tstdb1
+    try:
+        vproc = str(commands.getstatusoutput(cmd_str)[1])
+    except:
+        add_to_msg('Error: run_cmd(%s) :: cmd_str=%s' % (sys.exc_info()[0],cmd_str))
+        add_to_msg("Meta:: %s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], msg, sys.exc_info()[2]))
+        raise Exception (msg)
+
+    if vproc:
+        return(vproc)
+    else:
+        return("")
+
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -184,6 +220,8 @@ def main ():
     if vignore is None:
       vignore = False
 
+    visrac = israc()
+
     if '.org' in vdbhost:
         vdbhost = vdbhost.replace('.ccci.org','')
 
@@ -203,8 +241,8 @@ def main ():
             if '.org' in vdbhost:
                 vdbhost = vdbhost.replace(".ccci.org","")
 
-            if '60' not in vdbhost:
-                vdb = vdb + vdbhost[-1:]
+            if visrac:
+                    vdb = vdb + vdbhost[-1:]
 
             if '.org' not in vdbhost:
                 vdbhost = vdbhost + ".ccci.org"
