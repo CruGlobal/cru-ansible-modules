@@ -110,7 +110,7 @@ EXAMPLES = '''
 
 '''
 
-debugme = False
+debugme = True
 ora_home = ""
 global_ora_home = ""
 err_msg = ""
@@ -125,12 +125,30 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 
 
+def add_to_msg(mytext):
+    """Passed some text add it to the msg"""
+    global msg
+
+    if not msg:
+        msg = mytext
+    else:
+        msg = msg + " " + mytext
+
+
+def debugg(debug_str):
+    """If debugging is on add debugging string to global msg"""
+    global debugme
+
+    if debugme:
+        add_to_msg(debug_str)
+
+
 def msgg(add_string):
     """Passed a string add it to the msg to pass back to the user"""
     global msg
 
     if msg:
-        msg = msg + add_string
+        msg = msg + " " + add_string
     else:
         msg = add_string
 
@@ -1190,6 +1208,7 @@ def main(argv):
   global v_rec_count
   global msg
   global global_ora_home
+  global debugme
 
   ansible_facts={ 'orafacts': {} }
   facts = {}
@@ -1270,6 +1289,12 @@ def main(argv):
 
         # Get list of all databases in /etc/oratab
         ansible_facts.update(si_dblist())
+
+        # Add same info to orafacts
+        for key, value in ansible_facts['database_details'].items():
+            ansible_facts['orafacts'].update({ key: value })
+            if 'version' in value:
+                ansible_facts['orafacts'].update( { key: { 'oracle_version': value['version'], 'oracle_home': value['oracle_home'] } } )
 
       # Run the following functions for both RAC and SI
       # Get tnsnames info

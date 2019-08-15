@@ -21,7 +21,7 @@ from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 oracle_home=""
 err_msg = ""
 msg = ""
-DebugMe = False
+debugme = False
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
@@ -213,9 +213,13 @@ def num_listeners(vdb):
     """Return the number of listeners"""
     global oracle_home
     global msg
+    debugg("num_listeners() :: start....")
 
-    if vdb[-1].isdigit():
-        vdb = vdb[:-1]
+    if is_rac():
+        if vdb[-1].isdigit():
+            vdb = vdb[:-1]
+
+    debugg("num_listeners() :: vdb=%s" % (vdb))
 
     if not oracle_home:
         oracle_home = get_orahome_procid(vdb)
@@ -225,6 +229,8 @@ def num_listeners(vdb):
         oracle_sid = vdb + str(node_number)
     else:
         oracle_sid = vdb
+
+    debugg("num_listeners() oracle_sid=%s oracle_home=%s" % (oracle_sid, oracle_home))
 
     try:
         tmp_cmd = "%s/bin/lsnrctl status | /bin/grep %s | /bin/grep Instance | /usr/bin/wc -l" % (oracle_home,vdb)
@@ -237,15 +243,16 @@ def num_listeners(vdb):
         os.environ['USER'] = 'oracle'
         os.environ['ORACLE_HOME'] = oracle_home
         os.environ['ORACLE_SID'] = oracle_sid
+        debugg("num_listeners() :: cmd_str=%s oracle_sid=%s oracle_home=%s" % (tmp_cmd, oracle_sid, oracle_home))
         process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-        err_msg = ' Error [1]: orafacts module get_meta_data() output: %s' % (output)
+        err_msg = ' Error [1]: orafacts module get_meta_data()'
         err_msg = err_msg + "%s, %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
         raise Exception (err_msg)
 
     num_listeners = output.strip()
-
+    debugg("num_listeners() :: raw_output=%s num_listeners=%s" % (output, num_listeners))
     # msg = msg + "exiting num_listeners(%s) number of listeners: %s" % (vdb,num_listeners)
 
     return (num_listeners)
@@ -291,6 +298,7 @@ def main ():
     global sleep_time
     global default_ttw
     global default_expected_num_reg_lsnrs
+    global debugme
 
     ansible_facts={}
 
@@ -298,7 +306,8 @@ def main ():
       argument_spec = dict(
         db_name         = dict(required=True),
         lsnr_entries    = dict(required=False),
-        ttw             = dict(required=False)
+        ttw             = dict(required=False),
+        debugging       = dict(required=False)
       ),
       supports_check_mode=False,
     )
@@ -307,21 +316,28 @@ def main ():
     vdb         = module.params["db_name"]
     num_entries = module.params["lsnr_entries"]
     vttw        = module.params["ttw"]
+    vdebug      = module.params["debugging"]
+
+    if vdebug:
+        debugme = vdebug
 
     if not num_entries:
         v_entries = default_expected_num_reg_lsnrs
     else:
         v_entries = num_entries
+    debugg("Looking for %s lsnrctl entries for the database" % (v_entries))
 
     # See if a snapshot name was passed in
     # if not get the timestamp to create one
     if vdb[-1].isdigit() and is_rac():
         vdb = vdb[:-1]
+    debugg("vdb=%s" % (vdb))
 
     if not vttw:
         ttw = default_ttw
     else:
         ttw = vttw
+    debugg("ttw=%s" % (ttw))
 
     timeout =  time.time() + (60 * int(ttw))
     current_count = 0
