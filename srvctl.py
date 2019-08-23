@@ -144,31 +144,24 @@ def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
     global module
     global msg
 
-    if oracle_home is None:
+    debugg("popen_cmd_str() start....with cmd_str=%s oracle_home = %s" % (cmd_str, oracle_home))
 
-        try:
-            os.environ['USER'] = 'oracle'
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            add_to_msg("Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str))
-            add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
-
-    else:
-
-        try:
-            os.environ['USER'] = 'oracle'
+    try:
+        os.environ['USER'] = 'oracle'
+        if oracle_home is not None:
             os.environ['ORACLE_HOME'] = oracle_home
+        if oracle_sid is not None:
             os.environ['ORACLE_SID'] = oracle_sid
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            add_to_msg("Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str))
-            add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        add_to_msg("Error [popen_cmd_str()]: Executing cmd_str: %s " % (cmd_str))
+        add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+        module.fail_json(msg=msg,ansible_facts={},changed=False)
 
-    return(output)
+    debugg("popen_cmd_str()...exit. returning output [%s]" % (output.strip()))
+
+    return(output.strip())
 
 
 def db_registered(db_name):
@@ -186,7 +179,7 @@ def db_registered(db_name):
     debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
 
     if oracle_home:
-        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name))
+        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name), oracle_home)
         tmp = output.strip()
         debugg("db_registered() output = %s" % (tmp))
         if 'PRCD' in tmp:
@@ -251,14 +244,15 @@ def get_node_num():
     if not grid_home:
         grid_home = get_gihome()
 
-    output = popen_cmd_str("/bin/olsnodes -l -n | awk '{ print $2 }'")
+    output = popen_cmd_str("%s/bin/olsnodes -l -n | awk '{ print $2 }'" % (grid_home))
 
-    if output.strip()[-1].isdigit() :
+    debugg("get_node_num() output=%s" % (output))
+    if output and output[-1].isdigit():
         node_number = int(output.strip()[-1])
     else:
         node_number = int(output.strip())
 
-    debugg("get_node_num() executed this cmd: %s and determined node #: %s full output: %s" % (cmd_str, node_number, output))
+    debugg("get_node_num() determined node #: %s with raw output: %s" % (node_number, output))
 
     return(node_number)
 
@@ -511,9 +505,9 @@ def is_rac():
 
     if rac is None:
         # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | /bin/wc -l")
-
-        if int(vproc) > 0:
+        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l")
+        debugg("is_rac() vproc=%s" % (vproc))
+        if vproc and int(vproc) > 0:
           # if > 0 "lck" processes running, it's RAC
           debugg("is_rac() exit...returning..True")
           rac = True
@@ -524,7 +518,7 @@ def is_rac():
           return False
 
     else:
-        
+
         debugg("is_rac() bypass returning rac = %s" % (rac))
         return(rac)
 
@@ -535,7 +529,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
         vcmd     - start | stop etc.
         vobj     - database | instance
         vstopt   - stop|start option - i.e. immediate
-        vparam   - i.e. -force"""
+        vparam   - i.e. force"""
     global grid_home
     global oracle_home
     global node_number
@@ -604,7 +598,7 @@ def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
 
     debugg("exec_inst_srvctl_11_cmd() cmd_str=%s" % (cmd_str))
-    # def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
+    # popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
     debugg("exec_inst_srvctl_11_cmd() output %s" % (output))
@@ -628,11 +622,14 @@ def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None", 
     elif vstopt and not vparam:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%soption %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vstopt)
     elif vparam and not vstopt:
-        cmd_str = cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vparam)
+        cmd_str = cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vparam)
     else:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s "  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
 
+    debugg("exec_inst_srvctl_12_cmd() cmd_str = %s" % (cmd_str))
+
     output = popen_cmd_str(cmd_str)
+
     debugg("exec_inst_srvctl_12_cmd()...exit...")
     return(True)
 
@@ -876,7 +873,7 @@ def main ():
             if vinst:
                 inst_to_ck_indx = int(vinst) - 1
             else:
-                sys.exit("Instance number needed for operations against an instance.")
+                module_fail("Instance number needed for operations against an instance.")
         except:
             add_to_msg("ERROR[retrieving module parameters]: attempting operation against an %s but no %s number defined." % (vobj, vobj))
             add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
@@ -934,8 +931,13 @@ def main ():
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
 
   # check if vparam given ck if its valid:
-  if vparam and maj_ver == "12":
+  if maj_ver == "12":
       debugg("MAIN() checking parameters for version 12")
+
+      if vobj.lower() == "instance" and vcmd.lower() == "stop" and not vparam:
+          module_fail("ERROR: when stopping db version %s instance with srvctl you must specify param: force" % (maj_ver))
+
+      # These options need one dash
       if vparam in ["eval","force","verbose"]:
           vparam = "-" + vparam
       else:
@@ -955,7 +957,7 @@ def main ():
   # get the actual current state of the database
   current_state = get_db_state(vdb_name)
   debugg("MAIN() current_state = %s" % (current_state))
-
+  
   debugg("END PARAMETERS:vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
   # ==========================================  END PARAMETERS  ===========================================
 
