@@ -237,7 +237,7 @@ def get_orahome_procid(vdb):
 
 def get_asm_db():
     """Retrieve the ASM DB name"""
-    cmd_str = "/bin/ps -ef | grep ora_pmon_ | grep -v grep | grep '+'"
+    cmd_str = "/bin/ps -ef | grep _pmon_ | grep -v grep | grep '+'"
     output = run_cmd(cmd_str)
     tmp = output.split()
     tmp = [ i for i in tmp if '+' in i ]
