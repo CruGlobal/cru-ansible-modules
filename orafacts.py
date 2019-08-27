@@ -253,22 +253,34 @@ def get_nodes(vstring):
 
 
 def get_gihome():
-    """Determine the Grid Home directory"""
+    """Determine the Grid Home"""
     global grid_home
 
     try:
-      process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
-      output, code = process.communicate()
+        process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
     except:
         err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
         module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
-    grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
+    if output:
 
-    if not grid_home:
-        err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
-        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-        raise Exception (err_msg)
+        grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
+
+        if not grid_home:
+            err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+            err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+            raise Exception (err_msg)
+    else: # if no processes are running
+
+        try:
+            process = subprocess.Popen(["cat /etc/oratab | grep ASM |  grep grid | cut -d':' -f2"], stdout=PIPE, stderr=PIPE, shell=True)
+            output, code = process.communicate()
+        except:
+            err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+            module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+        grid_home = output.strip()
 
     return(grid_home)
 
@@ -816,24 +828,27 @@ def si_running_homes():
     except:
       err_msg = ' Error: si_running_homes() - vproc: (%s)' % (sys.exc_info()[0])
 
-    for vdbproc in vproc.split("\n"):
-      vprocid,vdbname = vdbproc.split()
+    if ' sh' in vproc:
+        dbs.update({'running databases':'None'})
+    else:
+        for vdbproc in vproc.split("\n"):
+          vprocid,vdbname = vdbproc.split()
 
-      try:
-        vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq")[1])
-      except:
-        err_msg = err_msg + ' Error: si_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
+          try:
+            vhome = str(commands.getstatusoutput("ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq")[1])
+          except:
+            err_msg = err_msg + ' Error: si_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
 
-      # Get the running database version from the Oracle home path:
-      if "oracle" in vhome:
-        vver = vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
-      elif "grid" in vhome:
-        vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
+          # Get the running database version from the Oracle home path:
+          if "oracle" in vhome:
+            vver = vhome.split("/")[3] #vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
+          elif "grid" in vhome:
+            vver = vhome.split("/")[2]# vhome[vhome.index("app")+4:vhome.index("grid")-1]
 
-    dbs.update({vdbname: {'home': vhome[1: -1], 'pid': vprocid, 'version': vver, 'status': 'running'}})
-    ora_home = vhome[1: -1]
+          dbs.update({vdbname: {'home': vhome[1: -1], 'pid': vprocid, 'version': vver, 'status': 'running'}})
+          ora_home = vhome[1: -1]
 
-    return(dbs)
+        return(dbs)
 
 
 def is_rac():
@@ -893,7 +908,9 @@ def tnsnames():
     # vtns1 = run_command("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")
     # vtns2 = run_command("/bin/cat ~/.bashrc | grep TNS_ADMIN | cut -d '=' -f 2")
 
-    if is_rac() or is_oracle_restart():
+    tmp_grid = get_gihome()
+
+    if tmp_grid:
         return(get_gihome()+'/network/admin')
     else:
         return(run_command(("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")))
@@ -908,7 +925,7 @@ def is_lsnr_up():
   try:
     vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
-    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
+    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info()))
 
   # the command returns 1 if no listener, so return 0
   try:
@@ -917,7 +934,7 @@ def is_lsnr_up():
     else:
       return False
   except:
-    err_msg = err_msg + 'Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
+    err_msg = err_msg + 'Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info()))
 
 
 def listener_info():
@@ -1021,8 +1038,14 @@ def si_dblist():
       dblist.append(dbname)
 
       oracle_home = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab |cut -d: -f2 -s")[1])
-      version = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab | grep -o '[0-9][0-9]\.[0-9].[0-9].[0-9]'")[1])
-      database_info['database_details'].update({dbname: {'oracle_home': oracle_home, 'version': version }})
+      #version = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab | grep -o '[0-9][0-9]\.[0-9].[0-9].[0-9]'")[1])
+      version = str(commands.getstatusoutput("grep " + dbname + " /etc/oratab"))
+      tmp = version.split(":")[1]
+      if 'grid' in version:
+          vver = tmp.split("/")[2]
+      else:
+          vver = tmp.split("/")[3]
+      database_info['database_details'].update({dbname: {'oracle_home': oracle_home, 'version': vver }})
 
   database_info['databases'] = dblist
   return(database_info)
@@ -1054,8 +1077,8 @@ def get_version(local_db):
         return("12")
     elif "11" in oracle_version:
         return("11")
-    else:
-        return("unk")
+    elif "19":
+        return("19")
 
 
 def host_name():
@@ -1220,7 +1243,7 @@ def main(argv):
   )
 
   if is_ora_installed():
-    if is_ora_running():
+    # if is_ora_running():
 
       # get the hostname to passback:
       try:
@@ -1277,6 +1300,7 @@ def main(argv):
 
 
       else: # Run these for Single Instance <<< ========================= SI
+
         msg="Single Instance (SI) Environment"
 
         # get single instance running databases and their homes
@@ -1309,6 +1333,9 @@ def main(argv):
       vtmp = host_name()
       ansible_facts['orafacts']['host_name'] = vtmp
 
+      vtmp = get_gihome()
+      ansible_facts['grid_home'] = vtmp
+
       # Add any error messages caught before passing back
       if err_msg:
         msg = msg + err_msg
@@ -1317,8 +1344,8 @@ def main(argv):
 
       sys.exit(0)
 
-    else:
-      msg="\nOracle does not appear to be running. (No pmon services running)"
+    # else:
+      # msg="\nOracle does not appear to be running. (No pmon services running)"
   else:
     msg="\nOracle does not appear to be installed on this host. (No /etc/oratab file found)"
 
