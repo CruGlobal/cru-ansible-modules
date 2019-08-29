@@ -524,12 +524,12 @@ def is_rac():
           return False
 
     else:
-        
+
         debugg("is_rac() bypass returning rac = %s" % (rac))
         return(rac)
 
 
-def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
+def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
     """Execute 11g srvctl command against a database:
         vdb_name - database name
         vcmd     - start | stop etc.
