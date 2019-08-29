@@ -565,7 +565,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
 
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
-    debugg("exec_db_srvctl_11_cmd() code %s output %s" % (output))
+    debugg("exec_db_srvctl_11_cmd() code %s" % (output))
 
     return 0
 
