@@ -8,7 +8,7 @@ import os
 import json
 import re
 import math
-import commands 
+import commands
 
 try:
     import cx_Oracle
@@ -583,11 +583,13 @@ def main ():
 
         if not ignore_err_flag:
             vtemp = cur.fetchall()
+            add_to_msg("schema_owners={}".format(vtemp))
             owner_list = []
             for own in vtemp:
                 owner_list.append(own[0].encode("utf-8"))
 
             ansible_facts[refname].update( { 'schema_owners': owner_list } )
+
         ignore_err_flag = False
 
         # Get default_temp_tablespace and default_permanet_tablespace
