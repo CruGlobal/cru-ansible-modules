@@ -125,6 +125,31 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 
 
+def run_sub_env(cmd_str, env=None):
+    """Run a subprocess with environmental vars
+       env passed in as dictionary: {'oracle_home': value, oracle_sid: value }
+       this is what mkalias module uses to mk an alias in ASM
+    """
+    global msg
+    debugg("run_sub_env()...starting....cmd_str={} env={}".format(cmd_str,str(env)))
+    try:
+        os.environ['ORACLE_HOME'] = env['oracle_home']
+        # os.environ['ORACLE_SID'] = env['oracle_sid']
+        debugg("Running cmd_str=%s with ORACLE_HOME: %s " % (cmd_str, env['oracle_home']))
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        add_to_msg('Error run_sub_env cmd_str=%s env=%s' % (cmd_str,str(env)) )
+        add_to_msg('%s, %s, %s' % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]) )
+        raise Exception (msg)
+
+    debugg("run_sub_env()...EXITING...output={}".format(output))
+    if not output:
+        return("")
+    else:
+        return(output)
+
+
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
     global msg
@@ -922,8 +947,11 @@ def is_lsnr_up():
   global ora_home
 
   # determine if the listener is up and running - returns 1 if no listener running 0 if the listener is running
+  #  def run_sub_env(cmd_str, env=None): =>  env passed in as dictionary: {'ORACLE_HOME': value, ORACLE_SID: value }
   try:
-    vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
+    cmd_str = ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l"
+    vlsnr = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+    # vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
     err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info()))
 
@@ -946,9 +974,11 @@ def listener_info():
   if is_lsnr_up():
     # Find lsnrctl parameter file
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
+        cmd_str = ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'"
+        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+        # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
     except:
-      err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
+        err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['parameter_file'] = temp
@@ -957,9 +987,11 @@ def listener_info():
 
     # Find lsnrctl alert log
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
+        cmd_str = ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'"
+        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+      # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
     except:
-      err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
+        err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
@@ -968,9 +1000,11 @@ def listener_info():
 
     # Find lsnrctl version
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
+        temp = ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'"
+        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+      # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
     except:
-      err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
+        err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
     if temp:
       lsnrfax['version'] = temp
