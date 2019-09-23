@@ -342,7 +342,10 @@ def get_gihome():
             err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
             module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
-        grid_home = output.strip()
+        if output:
+            grid_home = output.strip()
+        else:
+            grid_home = "None"
 
     return(grid_home)
 
