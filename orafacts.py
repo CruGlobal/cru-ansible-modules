@@ -125,6 +125,43 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 
 
+def sudo_cmd(cmd_str, env=None):
+    """Run a command after sudo su - oracle"""
+    try:
+        if env['oracle_home']:
+            ora_home = True
+        else:
+            ora_home = False
+    except:
+        ora_home = False
+
+    try:
+        if env['oracle_sid']:
+            ora_sid = True
+        else:
+            ora_sid = False
+    except:
+        ora_sid = False
+
+    try:
+        cmd_str1 = "sudo su - oracle".format(voracle_home)
+        cmd_str2 = "export ORACLE_HOME={}; {}".format(env['oracle_home'])
+        if ora_home:
+            os.environ['ORACLE_HOME'] = voracle_home
+        if ora_sid:
+            os.environ['ORACLE_SID'] = voracle_sid
+        process = subprocess.Popen(cmd_str1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, code = process.communicate(cmd_str2)
+    except:
+        custom_err_msg = 'Error[ setting control files in database %s ] oracle_home: %s oracle_sid: %s asm_dg: %s asm_fra: %s database: %s command: %s' % (vdb,voracle_home,voracle_sid,vasm_dg,vasm_fra,vdb,cmd_str)
+        custom_err_msg = custom_err_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        raise Exception (custom_err_msg)
+
+    debugg("sudo_cmd() output={}".format(str(output)))
+
+    return(output)
+
+
 def run_sub_env(cmd_str, env=None):
     """Run a subprocess with environmental vars
        env passed in as dictionary: {'oracle_home': value, oracle_sid: value }
@@ -950,7 +987,9 @@ def is_lsnr_up():
   #  def run_sub_env(cmd_str, env=None): =>  env passed in as dictionary: {'ORACLE_HOME': value, ORACLE_SID: value }
   try:
     cmd_str = ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l"
-    vlsnr = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+    # sudo_cmd(cmd_str, env=None)
+    # vlsnr = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+    vlsnr = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
     # vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
     err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info()))
@@ -975,7 +1014,8 @@ def listener_info():
     # Find lsnrctl parameter file
     try:
         cmd_str = ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'"
-        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
+        # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
         # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
     except:
         err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
@@ -988,7 +1028,8 @@ def listener_info():
     # Find lsnrctl alert log
     try:
         cmd_str = ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'"
-        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
+        # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
       # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
     except:
         err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
@@ -1001,7 +1042,8 @@ def listener_info():
     # Find lsnrctl version
     try:
         temp = ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'"
-        temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
+        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
+        # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
       # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
     except:
         err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
