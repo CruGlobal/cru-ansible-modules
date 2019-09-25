@@ -138,19 +138,29 @@ def convert_size(arg_size_bytes, vunit):
     return "%s%s" % (int(round(s)), size_name[vidx])
 
 
-def israc():
+def israc(host_str=None):
     """Determine if a host is running RAC or Single Instance"""
     global err_msg
+    if host_str is None:
+        exit
 
-    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-    vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
+    if "org" in host_str:
+        host_str = host_str.replace(".ccci.org","")
 
-    if int(vproc) > 0:
-        # if > 0 "lck" processes running, it's RAC
-        debugg("israc() returning True")
+    # if the last digits is 1 or 2 ( something less than 10) and not 0 (60) return True
+    if host_str[-1:].isdigit() and int(host_str[-1:]) < 10 and int(host_str[-1:]) != 0:
         return(True)
     else:
-        debugg("israc() returning False")
+        return(False)
+    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
+    # vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
+    #
+    # if int(vproc) > 0:
+    #     # if > 0 "lck" processes running, it's RAC
+    #     debugg("israc() returning True")
+    #     return(True)
+    # else:
+    #     debugg("israc() returning False")
         return(False)
 
 
@@ -220,10 +230,10 @@ def main ():
     if vignore is None:
       vignore = False
 
-    visrac = israc()
-
     if '.org' in vdbhost:
         vdbhost = vdbhost.replace('.ccci.org','')
+
+    visrac = israc(vdbhost)
 
     if not cx_Oracle_found:
         module.fail_json(msg="Error: cx_Oracle module not found")
