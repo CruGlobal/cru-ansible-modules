@@ -766,7 +766,7 @@ def rac_running_homes():
 
     # Get a list of running instances
     try:
-      vproc = str(commands.getstatusoutput("pgrep -lf _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed")[1])
+      vproc = str(commands.getstatusoutput("ps -ef | grep pmon | awk '{ print $2 $8}' | grep -v grep | sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
     except:
       err_msg = err_msg + ' Error: rac_running_homes() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
 
