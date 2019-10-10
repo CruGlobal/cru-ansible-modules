@@ -675,6 +675,8 @@ def get_meta_data(local_db):
         local_db = local_db[:-1]
 
     if "asm" in local_db.lower() or "mgmt" in local_db.lower(): # version +
+        if '+' in local_db:
+            local_db = local_db[1:]
         grid_ver = [ item for item in grid_home.split("/") if item and item[0].isdigit() ][0]
         debugg("get_meta_data() db: %s grid_ver: %s" % (local_db,grid_ver))
         if "19" in grid_ver and "asm" in local_db.lower():
