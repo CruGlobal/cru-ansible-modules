@@ -123,7 +123,7 @@ msg = ""
 grid_home = ""
 oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
-
+debug_path = '/tmp/mod_debug.log'
 
 def sudo_cmd(cmd_str, env=None):
     """Run a command after sudo su - oracle"""
@@ -202,7 +202,17 @@ def debugg(debug_str):
     global debugme
 
     if debugme:
-        add_to_msg(debug_str)
+        # add_to_msg(debug_str)
+        write_this(debug_str)
+
+
+def write_this(info_str):
+    global debug_path
+
+    f =  open(debug_path, 'a')
+    for aline in info_str.split("\n"):
+        f.write(aline + "\n")
+    f.close()
 
 
 def msgg(add_string):
@@ -215,13 +225,13 @@ def msgg(add_string):
         msg = add_string
 
 
-def debugg(add_string):
-    """If debugme is True add this debugging information to the msg to be passed out"""
-    global debugme
-    global msg
-
-    if debugme == "True":
-        msgg(add_string)
+# def debugg(add_string):
+#     """If debugme is True add this debugging information to the msg to be passed out"""
+#     global debugme
+#     global msg
+#
+#     if debugme == "True":
+#         msgg(add_string)
 
 
 def get_field(fieldnum, vstring):
@@ -629,13 +639,17 @@ def get_db_status(local_vdb):
 
 def get_meta_data(local_db):
     """Return meta data for a database from crsctl status resource"""
-    tokenstoget = ['TARGET', 'STATE', 'STATE_DETAILS']
+    # "=" sign is important, because there can be more than one "target" etc.
+    tokenstoget = ['TARGET=', 'STATE=', 'STATE_DETAILS=', 'TARGET_SERVER=']
     global grid_home
     global my_msg
     global msg
     local_ora_home = ""
     spcl_state = ""
     metadata = {}
+    token = ""
+
+    debugg("get_meta_data()...starting...for db: %s" % (local_db))
 
     if not grid_home:
         grid_home = get_gihome()
@@ -652,12 +666,25 @@ def get_meta_data(local_db):
        raise Exception (my_msg)
 
     node_name = output.strip()
-
+    debugg("get_meta_data() =======> node name : %s" % (node_name))
     # the next command takes db name without instance number, so remove it if it exists
     if local_db[-1].isdigit():
         local_db = local_db[:-1]
 
-    tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+    if "asm" in local_db.lower(): # version +
+        grid_ver = [ item for item in grid_home.split("/") if item and item[0].isdigit() ][0]
+        debugg("get_meta_data() db: %s grid_ver: %s" % (local_db,grid_ver))
+
+        if "19" in grid_ver and "asm" in local_db.lower():
+            tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + " -v -n " + node_name
+        else:
+            tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+
+    else:
+
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+
+    debugg("get_meta_data() #1 tmp_cmd = %s " % (tmp_cmd))
 
     try:
         process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
@@ -667,7 +694,11 @@ def get_meta_data(local_db):
        my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
        raise Exception (my_msg)
 
+    debugg("get_meta_data() #4 db: %s output:\n %s" % (local_db,output))
+
     if not output:
+
+        debugg("get_meta_data() no output for db: %s" % (local_db))
         try:
             local_ora_home = get_orahome_procid(local_db)
             spcl_state = get_more_db_info(local_db, local_ora_home)
@@ -676,33 +707,82 @@ def get_meta_data(local_db):
             err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
             raise Exception (err_msg)
 
-        metadata = {'STATE': spcl_state,'TARGET': 'unknown','STATE_DETAILS': 'unknown', 'status': 'unknown'}
-    else:
-        try:
-            for item in output.split('\n'):
-                if item:
-                    vkey, vvalue = item.split('=')
-                    vkey = vkey.strip()
-                    vvalue = vvalue.strip()
-                    if "STATE=" in vvalue:
-                        vvalue=vvalue.split("=")[1].strip()
-                        if "ONLINE" in vvalue:
-                            vvalue = vvalue.strip().split(" ")[0].strip().rstrip()
-                    elif "ONLINE" in vvalue:
-                        vvalue=vvalue.strip().split(" ")[0].strip().rstrip()
-                    elif "OFFLINE" in vvalue:
-                        vvalue=vvalue.strip().rstrip()
 
-                    if vkey in tokenstoget:
-                        metadata[vkey] = vvalue
+
+    else:
+        # output:
+        # NAME=ora.orcl11g.db
+        # TYPE=ora.database.type
+        # LAST_SERVER=slrac1
+        # STATE=ONLINE on slrac1        #<<
+        # TARGET=ONLINE                 #<<
+        # CARDINALITY_ID=1
+        # OXR_SECTION=0
+        # RESTART_COUNT=0
+        # FAILURE_COUNT=0
+        # FAILURE_HISTORY=
+        # ID=ora.orcl11g.db 1 1
+        # INCARNATION=1
+        # LAST_RESTART=10/08/2019 16:04:31
+        # LAST_STATE_CHANGE=10/08/2019 16:04:31
+        # STATE_DETAILS=Open,HOME=/app/oracle/11.2.0.4/dbhome_1     #<<
+        # INTERNAL_STATE=STABLE
+        # TARGET_SERVER=slrac1
+        # RESOURCE_GROUP=
+        # INSTANCE_COUNT=2
+        # tokenstoget = ['TARGET=', 'STATE=', 'STATE_DETAILS=', 'TARGET_SERVER=']
+        # metadata = {'STATE': spcl_state,'TARGET': 'unknown','STATE_DETAILS': 'unknown', 'status': 'unknown'}
+        metadata = {}
+        try:
+            debugg("Discecting crsctl status resource ....for db: %s" % (local_db))
+            for item in output.split('\n'):
+                debugg("item:  %s" % (item))
+                if any( token in item for token in tokenstoget ):
+                    item = item.strip()
+                    # handle all the token=value
+                    if not any( a in item for a in [' ',','] ):
+                        debugg("standard case with item: %s " % (item))
+                        key,value = item.split("=")
+                        metadata.update( { key.lower(): value })
+                        debugg("metadata= %s" % (str(metadata)))
+                    else:
+                        # special cases: STATE_DETAILS=Open,HOME=/app/oracle/11.2.0.4/dbhome_1 or STATE=ONLINE on slrac1
+                        if "STATE_DETAILS=" in item: # STATE_DETAILS=Open,HOME=/app/oracle/11.2.0.4/dbhome_1
+                            debugg("special case #1 with item: %s" % (item))
+                            for elemnt in item.split(","):
+                                debugg("standard case with : elemnt: %s " % (elemnt))
+                                key,value = elemnt.split("=")
+                                metadata.update( { key.lower(): value })
+                                debugg("metadata= %s" % (str(metadata)))
+                        else: # STATE=ONLINE on slrac1
+                            debugg("special case #2 with item %s" % (item))
+                            # STATE=ONLINE on slrac1
+                            key,value = item.split("=")
+                            value1 = value.split()[0] # by default splits on empty spaces, take index 0 => ONLINE
+                            metadata.update( { key.lower(): value1 } )
+                        debugg("special cases: metadata =  %s" % (str(metadata)))
+
+                    # vkey, vvalue = item.split('=')
+                    # vkey = vkey.strip()
+                    # vvalue = vvalue.strip()
+                    # if "STATE=" in vvalue:
+                    #     vvalue=vvalue.split("=")[1].strip()
+                    #     if "ONLINE" in vvalue:
+                    #         vvalue = vvalue.strip().split(" ")[0].strip().rstrip()
+                    # elif "ONLINE" in vvalue:
+                    #     vvalue=vvalue.strip().split(" ")[0].strip().rstrip()
+                    # elif "OFFLINE" in vvalue:
+                    #     vvalue=vvalue.strip().rstrip()
+                    #
+                    # if vkey in tokenstoget:
+                    #     metadata[vkey] = vvalue
         except:
             my_msg = "ERROR: srvctl module get_meta_data(%s) error - loading metadata dict: %s" % (local_db, str(metadata))
             my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
             raise Exception (my_msg)
 
-
-    if debugme:
-        msg = msg + " get_meta_data(%s) metadata dictionary contents : %s" % (local_db, str(metadata))
+    debugg("+++++++++++ >>> ERROR:::: %s" % (str(metadata)))
+    debugg(" get_meta_data(%s) metadata dictionary contents : %s" % (local_db, str(metadata)))
 
     return(metadata)
 
@@ -713,6 +793,8 @@ def get_more_db_info(vtmpdb, vtmporahome):
     global err_msg
     global os_path
     dbstate = ""
+
+    debugg("get_more_db_info()....starting...")
 
     if not node_number:
         node_number = get_node_num()
@@ -738,7 +820,7 @@ def get_more_db_info(vtmpdb, vtmporahome):
         raise Exception (err_msg)
 
     dbstate = stdout.split('\n')[3]
-
+    debugg("get_more_db_info() returning. %s " % (dbstate))
     return(dbstate)
 
 
@@ -752,6 +834,7 @@ def rac_running_homes():
     global ora_home
     global grid_home
     global node_number
+    grid_ver = ""
     tempstat = ""
     tempdb = ""
     local_cmd = ""
@@ -761,37 +844,53 @@ def rac_running_homes():
     tmp_db_status = ""
     spcl_state = ""
 
+    debugg("rac_running_homes() ...starting...")
+
     if not node_number:
         node_number = get_node_num()
 
     # Get a list of running instances
     try:
-      vproc = str(commands.getstatusoutput("ps -ef | grep pmon | awk '{ print $2 $8}' | grep -v grep | sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
+      # vproc = str(commands.getstatusoutput("ps -ef | grep pmon | awk '{ print $2 $8}' | grep -v grep | sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed")[1])
+      cmd_str = "/bin/ps -ef | /bin/grep pmon | /bin/awk '{ print $2 $8}' | /bin/grep -v grep | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed | grep -v bin"
+      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
     except:
       err_msg = err_msg + ' Error: rac_running_homes() - pgrep lf pmon: (%s)' % (sys.exc_info()[0])
 
+    debugg(" #1 cmd_str = %s " % (cmd_str))
+    debugg(" #2 =======>>  vproc:\n %s " % (str(output)))
+
     # vproc holds : pid db_name  ex. (6205  jfpwtest1\n ) in a stack if all running dbs
-    for vdbproc in vproc.split("\n"):
+    for vdbproc in output.split("\n"):
+        # if 'bin' in vdbproc or not vdbproc:
+        #     continue
+        debugg("#0 =======>>  vdbproc: %s " % (str(vdbproc)))
 
         vprocid,vdbname = vdbproc.strip().split()
 
         # get Oracle home the db process is running out of
         try:
-          vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq"))
+          vhome = str(commands.getstatusoutput("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq")[1][:-1])
         except:
           err_msg = err_msg + ' Error: rac_running_homes() - vhome: (%s)' % (sys.exc_info()[0])
 
+        debugg("rac_running_homes() :: get home for db: %s => vhome: %s" % (vdbname, str(vhome)))
+
         # Get the running database version from the Oracle home path that was returned:
-        if "oracle" in vhome:
-            vver = vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
-        elif "grid" in vhome:
-            vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
+        vver = [ v for v in vhome.split("/") if v and v[0].isdigit() ][0]
+        debugg("rac_running_homes() vver: %s vhome: %s" % (vver,str(vhome)))
+        # if "oracle" in vhome:
+        #     vver = vhome[vhome.index("oracle")+7:vhome.index("dbhome")-1]
+        # elif "grid" in vhome:
+        #     vver = vhome[vhome.index("app")+4:vhome.index("grid")-1]
 
-        ora_home = vhome[ vhome.find("/") : -3 ]
-
+        ora_home = vhome #[ vhome.find("/") : -3 ]
+        debugg("rac_running_homes() :: ora_home: %s" % (ora_home))
         if "MGMTDB" in vdbname:
             vdbname = "mgmtdb"
 
+        debugg("calling get_db_status() for db: %s " % (vdbname))
         tmpdbstatus = get_db_status(vdbname)    #<<<<<<<<<<<<<<<<<<<<<
         if not tmpdbstatus:
             tmpdbstatus = "unknown"
@@ -807,16 +906,22 @@ def rac_running_homes():
         if tmpdbname.lower() not in ["mgmtdb", "+asm"] and vdbname.lower() != "grid":
             try:
                 metadata = {}
+                # metadata = {'STATE_DETAILS': 'Open', 'STATE': 'ONLINE', 'TARGET': 'ONLINE', 'HOME': '/app/oracle/11.2.0.4/dbhome_1', 'TARGET_SERVER': 'slrac1', 'INTERNAL_STATE': 'STABLE'}
                 metadata = get_meta_data(tmpdbname)
-                dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'state': metadata['STATE'], 'target': metadata['TARGET'], 'state_details': metadata['STATE_DETAILS'], 'status': tmpdbstatus }} ) #[77]
+                dbs.update( { vdbname : metadata } )
+                # dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'state': metadata['STATE'], 'target': metadata['TARGET'], 'state_details': metadata['STATE_DETAILS'], 'status': tmpdbstatus }} ) #[77]
             except:
                 # err_msg = ' Error: loading dbs dict vdbname: %s home: %s version: %s pid: %s state: %s target: %s state_details: %s status: %s' % (vdbname, vhome[ vhome.find("/") - 1 : -3], vver, vprocid, metadata['STATE'], metadata['TARGET'],metadata['STATE_DETAILS'], tmpdbstatus )
-                err_msg = 'Error: rac_running_homes() - get_meta_data() : %s ' % (vdbname)
+                err_msg = 'Error: rac_running_homes() - get_meta_data() : %s meatadata : %s' % (vdbname,str(metadata) or "None")
                 err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
                 raise Exception (err_msg)
-        else:
-            dbs.update({vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'status': tmpdbstatus }} )
 
+        else:
+
+            try:
+                dbs.update( { vdbname: {'home': vhome[ vhome.find("/") - 1 : -3].strip(), 'version': vver, 'pid': vprocid, 'status': tmpdbstatus } } )
+            except:
+                err_msg = 'Error: rac_running_homes() - vdbname: %s vhome: %s vver: %s vprocid: %s tmpdbstatus: %s' % (vdbname or "None",str(vhome) or "None", vver or "None", vprocid or "None", str(tmpdbstatus) or "None" )
 
     # get a list of all databases registered with srvctl to find those offline
     local_cmd = ""
@@ -1336,6 +1441,7 @@ def main(argv):
 
         # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
         all_homes = get_ora_homes()
+        debugg("all_homes : %s" % (str(all_homes)))
         for (vkey, vvalue) in all_homes.items():
             ansible_facts['orafacts'][vkey] = vvalue
 
@@ -1343,11 +1449,13 @@ def main(argv):
         ansible_facts['orafacts']['all_dbs']={}
         # this returns running databases, their PID and the homes they're running out of
         run_homes = rac_running_homes()
+        debugg("main() run_homes: %s" % (run_homes))
         # Loop through all databases (running and offline) and make a list of dbs and status
         # helpful in tasks or playbooks to iterate through databases of certain version or status (offline/online)
         for (vkey, vvalue) in run_homes.items():
-          ansible_facts['orafacts'][vkey] = vvalue
-          if "+asm" not in vkey.lower() and "pmon" not in vkey.lower() and "mgmtdb" not in vkey.lower():
+            debugg("main() #5 vkey %s vvalue %s " % ( vkey,vvalue ))
+            ansible_facts['orafacts'][vkey] = vvalue
+            if "+asm" not in vkey.lower() and "pmon" not in vkey.lower() and "mgmtdb" not in vkey.lower():
               tmpdb = vkey[:-1]
               if not tmpdb[-1].isdigit():
                   tmpdb = tmpdb + str(node_number)
