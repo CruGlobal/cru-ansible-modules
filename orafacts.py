@@ -124,6 +124,7 @@ grid_home = ""
 oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 debug_path = '/tmp/mod_debug.log'
+ora_install_logs_loc = "/app/oraInventory/logs"
 
 def sudo_cmd(cmd_str, env=None):
     """Run a command after sudo su - oracle"""
@@ -223,15 +224,6 @@ def msgg(add_string):
         msg = msg + " " + add_string
     else:
         msg = add_string
-
-
-# def debugg(add_string):
-#     """If debugme is True add this debugging information to the msg to be passed out"""
-#     global debugme
-#     global msg
-#
-#     if debugme == "True":
-#         msgg(add_string)
 
 
 def get_field(fieldnum, vstring):
@@ -1091,10 +1083,10 @@ def tnsnames():
         return(run_command(("/bin/cat ~/.bash_profile | grep TNS_ADMIN | cut -d '=' -f 2")))
 
 
-def is_lsnr_up():
+def is_lsnr_up(ora_home):
   """Determine if the local listener is up"""
   global err_msg
-  global ora_home
+  # global ora_home
 
   # determine if the listener is up and running - returns 1 if no listener running 0 if the listener is running
   #  def run_sub_env(cmd_str, env=None): =>  env passed in as dictionary: {'ORACLE_HOME': value, ORACLE_SID: value }
@@ -1105,7 +1097,7 @@ def is_lsnr_up():
     vlsnr = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
     # vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
-    err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info()))
+    add_to_msg(' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info())))
 
   # the command returns 1 if no listener, so return 0
   try:
@@ -1121,54 +1113,125 @@ def listener_info():
   """Return listner facts"""
   global ora_home
   global err_msg
+  global ora_install_logs_loc
+
   lsnrfax={}
 
-  if is_lsnr_up():
+  # debugg("===================================================================")
+  debugg("listener_info()....starting....ora_home: %s " % (ora_home))
+  # debugg("===================================================================")
+
+  # find all installed ORACLE_HOMES:
+  #grep "installArguments = ORACLE_HOME=" *.log | sort | uniq
+  try:
+      cmd_str = "/bin/grep \"^ORACLE_HOME=\" %s/*.log | /bin/sort | /bin/uniq | awk '{ print $4 }'" % (ora_install_logs_loc)
+      debugg("listener_info() cmd_str = %s" % (cmd_str))
+      process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+      output, code = process.communicate()
+  except:
+      add_to_msg(' Error: is_lsnr_up() - vlsnr: (%s)' % (str(sys.exc_info())))
+
+  debugg("listener_info() oracle_install_logs_loc:\n %s " % (str(output)))
+
+  # find which ORACLE_HOME is hosting lsnrctl
+  for item in output.split("\n"):
+      # ORACLE_HOME=/app/oracle/12.1.0.2/dbhome_1
+      if not item:
+          continue
+
+      ora_home = item.split("=")
+
+      if len(ora_home) == 2:
+          ora_home = ora_home[1]
+      else:
+          continue
+
+      debugg("listener_info() trying ora_home: %s " % (ora_home))
+
+      try:
+          cmd_str = "%s/bin/lsnrctl status" % (ora_home)
+          os.environ['USER'] = 'oracle'
+          os.environ['ORACLE_HOME'] = ora_home
+          debugg("cmd_str = %s" % (cmd_str))
+          process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+          output, code = process.communicate()
+      except:
+          pass
+
+      debugg("listener_info() lsnrctl status check output = %s" % (str(output)))
+      if 'Listener Parameter File' in output:
+          break
+
+  debugg("listener_info(): lsnrctl ora_home found => %s" % (ora_home))
+
+  # if is_lsnr_up(ora_home):
+  if output:
     # Find lsnrctl parameter file
     try:
         cmd_str = ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'"
-        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
+        debugg("cmd_str = %s" % (cmd_str))
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+        # temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
         # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
         # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
     except:
         err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
 
-    if temp:
-      lsnrfax['parameter_file'] = temp
+    debugg("parameterfile output %s" % (output))
+
+    if output:
+        lsnrfax.update( { 'parameter_file' : output.strip() } )
     else:
-      lsnrfax['parameter_file'] = "No parameter file found."
+        lsnrfax.update( { 'parameter_file' : 'No parameter file found' } )
+
+    debugg("listener_info() lsnrfax: %s " % (str(lsnrfax)))
 
     # Find lsnrctl alert log
     try:
         cmd_str = ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'"
-        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
-        # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
-      # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
+        debugg("cmd_str = %s" % (cmd_str))
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
     except:
         err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
-    if temp:
-      lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
+    debugg("lsnrctl log file %s" % (output))
+
+    if output:
+      tmplog = output.replace('alert/log.xml','').strip() + "trace/listner.log"
+      debugg("tmplog %s" % (tmplog))
+      lsnrfax.update( { 'log_file' : tmplog } )
     else:
-      lsnrfax['log_file'] = "No listener.log found."
+      lsnrfax.update( { 'log_file' : "No listener.log found." } )
+
+      debugg("listener_info() lsnrfax: %s " % (str(lsnrfax)))
 
     # Find lsnrctl version
     try:
-        temp = ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'"
-        temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
+        cmd_str = ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'"
+        debugg("cmd_str = %s" % (cmd_str))
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+        # temp = sudo_cmd(cmd_str, {'oracle_home': ora_home } )
         # temp = run_sub_env(cmd_str, {'oracle_home': ora_home } )
       # temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
     except:
         err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
-    if temp:
-      lsnrfax['version'] = temp
-    else:
-      lsnrfax['version'] = "Listener version could not be determined."
+    debugg("lsnrctl version %s" % (output))
 
+    if output:
+      lsnrfax.update( { 'version': output.strip() } )
+    else:
+      lsnrfax.update( { 'version' : "Listener version could not be determined." } )
+
+    debugg("listener_info()....exiting...lsnrfax: %s" % (lsnrfax))
     return(lsnrfax)
 
   else:
+
+    debugg("listener_info()....exiting...lsnrfax: %s" % ("No listener running"))
     return({"lsnrctl": "No listener running"})
 
 
@@ -1540,6 +1603,7 @@ def main(argv):
     # else:
       # msg="\nOracle does not appear to be running. (No pmon services running)"
   else:
+
     msg="\nOracle does not appear to be installed on this host. (No /etc/oratab file found)"
 
   msg = msg + err_msg
