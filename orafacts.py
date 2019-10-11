@@ -278,6 +278,52 @@ def get_nth_item(vchar, vfieldnum, vstring): # This can be done with python stri
     return(vreturn_item)
 
 
+def is_rac_host():
+    """Determine if the host this is running on is
+       part of a RAC installation with other nodes
+       or a single instance host.
+       return True or False
+    """
+    debugg("is_rac_host() ...starting...")
+    cmd_str = "/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l"
+
+    results = run_on_host(cmd_str)
+
+    debugg("is_rac_host() results = %s" % (results))
+
+    if int(results) > 0:
+        return(True)
+    else:
+        return(False)
+
+
+def run_on_host(cmd_str=None):
+    """
+       Encapsulate the error handling in this function.
+       Run the command (cmd_str) on the remote host and return results.
+    """
+    global err_msg
+
+    debugg("run_on_host()....start...cmd_str=%s" % (cmd_str))
+
+    if cmd_str:
+
+        try:
+          process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+          output, code = process.communicate()
+        except:
+           err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+           err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+           raise Exception (err_msg)
+
+        debugg("listener_info()....exiting....output=%s" % (str(output)))
+        return(output)
+
+    else:
+        debugg("listener_info()....exiting....return=None")
+        return(None)
+
+
 def get_node_num():
     """Return current node number to ensure that srvctl is only executed on one node (1)"""
     global grid_home
@@ -1114,6 +1160,8 @@ def listener_info():
   global ora_home
   global err_msg
   global ora_install_logs_loc
+  rachost = False
+  nodenum = 0
 
   lsnrfax={}
 
@@ -1121,10 +1169,23 @@ def listener_info():
   debugg("listener_info()....starting....ora_home: %s " % (ora_home))
   # debugg("===================================================================")
 
+  rachost = is_rac_host()
+  if rachost:
+      nodenum = get_node_num()
+      if int(nodenum) == 1:
+          nodenum = 0
+
+  debugg("listener_info() rachost=%s nodenum=%s" % (str(rachost),str(nodenum)))
+
+  # if running on node 1 use this command to grep install logs otherwise the other.
+  if int(nodenum) == 0:
+      cmd_str = "grep \"installArguments = ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
+  else:
+      cmd_str = "grep \"^ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
   # find all installed ORACLE_HOMES:
   #grep "installArguments = ORACLE_HOME=" *.log | sort | uniq
   try:
-      cmd_str = "/bin/grep \"^ORACLE_HOME=\" %s/*.log | /bin/sort | /bin/uniq | awk '{ print $4 }'" % (ora_install_logs_loc)
+
       debugg("listener_info() cmd_str = %s" % (cmd_str))
       process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
