@@ -1179,6 +1179,7 @@ def listener_info():
 
   # if running on node 1 use this command to grep install logs otherwise the other.
   if int(nodenum) == 0:
+      # This command is needed for DW ( si ) hosts and node 1 of RAC
       cmd_str = "grep \"installArguments = ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
   else:
       cmd_str = "grep \"^ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
