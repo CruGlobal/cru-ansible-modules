@@ -1124,6 +1124,7 @@ def listener_info():
   # find all installed ORACLE_HOMES:
   #grep "installArguments = ORACLE_HOME=" *.log | sort | uniq
   try:
+
       cmd_str = "/bin/grep \"^ORACLE_HOME=\" %s/*.log | /bin/sort | /bin/uniq | awk '{ print $4 }'" % (ora_install_logs_loc)
       debugg("listener_info() cmd_str = %s" % (cmd_str))
       process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
