@@ -125,6 +125,7 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 debug_path = '/tmp/mod_debug.log'
 ora_install_logs_loc = "/app/oraInventory/logs"
+installed_homes = []
 
 def sudo_cmd(cmd_str, env=None):
     """Run a command after sudo su - oracle"""
@@ -292,8 +293,10 @@ def is_rac_host():
     debugg("is_rac_host() results = %s" % (results))
 
     if int(results) > 0:
+        debugg("is_rac_host()...exiting....returning True")
         return(True)
     else:
+        debugg("is_rac_host()...exiting....returning False")
         return(False)
 
 
@@ -316,11 +319,11 @@ def run_on_host(cmd_str=None):
            err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
            raise Exception (err_msg)
 
-        debugg("listener_info()....exiting....output=%s" % (str(output)))
+        debugg("run_on_host()....exiting....output=%s" % (str(output)))
         return(output)
 
     else:
-        debugg("listener_info()....exiting....return=None")
+        debugg("run_on_host()....exiting....return=None")
         return(None)
 
 
@@ -333,8 +336,12 @@ def get_node_num():
     global msg
     tmp_cmd = ""
 
+    debugg("get_node_num()...starting....")
+
     if not grid_home:
         grid_home = get_gihome()
+
+    debugg("get_node_num() grid_home= %s" % (grid_home))
 
     try:
       tmp_cmd = grid_home + "/bin/olsnodes -l -n | awk '{ print $2 }'"
@@ -346,6 +353,8 @@ def get_node_num():
        raise Exception (err_msg)
 
     node_number = int(output.strip())
+
+    debugg("get_node_num()...exiting...node_number = %s" % (node_number))
 
     return(node_number)
 
@@ -1160,34 +1169,37 @@ def listener_info():
   global ora_home
   global err_msg
   global ora_install_logs_loc
+  global installed_homes
   rachost = False
   nodenum = 0
 
   lsnrfax={}
 
   # debugg("===================================================================")
-  debugg("listener_info()....starting....ora_home: %s " % (ora_home))
+  debugg("listener_info()....starting....")
   # debugg("===================================================================")
 
   rachost = is_rac_host()
+  debugg("listener_info() rachost=%s" % (rachost))
+
   if rachost:
       nodenum = get_node_num()
-      if int(nodenum) == 1:
-          nodenum = 0
+  else:
+      nodenum = 1
 
   debugg("listener_info() rachost=%s nodenum=%s" % (str(rachost),str(nodenum)))
 
   # if running on node 1 use this command to grep install logs otherwise the other.
-  if int(nodenum) == 0:
+  if int(nodenum) == 1:
       # This command is needed for DW ( si ) hosts and node 1 of RAC
       cmd_str = "grep \"installArguments = ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
   else:
       cmd_str = "grep \"^ORACLE_HOME=\" %s/*.log | sort | uniq | grep -v agent | awk '{ print $4 }'" % (ora_install_logs_loc)
 
+  debugg("listener_info()....grep install logs for ORACLE_HOME cmd_str=%s" % (cmd_str))
   # find all installed ORACLE_HOMES:
   #grep "installArguments = ORACLE_HOME=" *.log | sort | uniq
   try:
-      cmd_str = "/bin/grep \"^ORACLE_HOME=\" %s/*.log | /bin/sort | /bin/uniq | awk '{ print $4 }'" % (ora_install_logs_loc)
       debugg("listener_info() cmd_str = %s" % (cmd_str))
       process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
       output, code = process.communicate()
@@ -1206,10 +1218,14 @@ def listener_info():
 
       if len(ora_home) == 2:
           ora_home = ora_home[1]
+          if ora_home not in installed_homes:
+              installed_homes.append(ora_home)
       else:
           continue
 
       debugg("listener_info() trying ora_home: %s " % (ora_home))
+
+      lsnrfax.update( { 'home': ora_home })
 
       try:
           cmd_str = "%s/bin/lsnrctl status" % (ora_home)
@@ -1525,6 +1541,7 @@ def get_scan(ora_home):
 
     return (scan_info)
 
+
 def run_command(cmd):
     """Runs given shell command, returns stdout."""
     global err_msg
@@ -1539,7 +1556,10 @@ def run_command(cmd):
 
     return output.strip()
 
+# ==============================================================================
 # ================================== Main ======================================
+# ==============================================================================
+
 def main(argv):
   global ora_home
   global err_msg
@@ -1547,6 +1567,7 @@ def main(argv):
   global msg
   global global_ora_home
   global debugme
+  global installed_homes
 
   ansible_facts={ 'orafacts': {} }
   facts = {}
@@ -1648,6 +1669,9 @@ def main(argv):
       # Get local listener info
       vtmp = listener_info()
       ansible_facts['orafacts']['lsnrctl'] = vtmp
+
+      # listener_info also gethers installed homes. Add them now.
+      ansible_facts['orafacts']['installed_homes'] = installed_homes
 
       vtmp = host_name()
       ansible_facts['orafacts']['host_name'] = vtmp
