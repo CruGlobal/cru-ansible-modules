@@ -417,28 +417,35 @@ def main ():
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             ansible_facts[refname].update( { 'dbid': vtemp } )
+
         ignore_err_flag = False
 
-        if is_rac:
+        # if is_rac:
             # Find ASM diskgroups used by the database
-            try:
-                cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
-            except cx_Oracle.DatabaseError as exc:
-                error, = exc.args
-                if vignore:
-                    ignore_err_flag = True
-                    add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
-                else:
-                    module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
+        try:
+            cur.execute("select name from v$asm_diskgroup where state='CONNECTED'")
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            if vignore:
+                ignore_err_flag = True
+                add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
+            else:
+                module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
-            if not ignore_err_flag:
-                vtemp = cur.fetchall()
-                vtemp = vtemp[0][0]
-                # diskgroups = [row[0] for row in cur.fetchall()]
-                ansible_facts[refname].update({ 'diskgroups': vtemp }) #diskgroups
-            ignore_err_flag = False
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            disks = {}
+            for item in vtemp:
+                debugg("ASM Diskgroup: item={}".format(item))
+                if 'data' in item[0].lower():
+                    disks.update( { 'data':item[0] } )
+                elif 'fra' in item[0].lower():
+                    disks.update( { 'fra':item[0] } )
+            # diskgroups = [row[0] for row in cur.fetchall()]
+            ansible_facts[refname].update({ 'diskgroups': disks }) #diskgroups
         else:
             ansible_facts[refname].update({ 'diskgroups': 'None' })
+        ignore_err_flag = False
 
         # Open cursors - used in populating dynamic pfiles
         try:
