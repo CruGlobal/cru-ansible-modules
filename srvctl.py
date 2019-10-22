@@ -559,7 +559,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam=""):
 
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
-    debugg("exec_db_srvctl_11_cmd() code %s output %s" % (output))
+    debugg("exec_db_srvctl_11_cmd() output %s" % (output))
 
     return 0
 
@@ -957,7 +957,7 @@ def main ():
   # get the actual current state of the database
   current_state = get_db_state(vdb_name)
   debugg("MAIN() current_state = %s" % (current_state))
-  
+
   debugg("END PARAMETERS:vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
   # ==========================================  END PARAMETERS  ===========================================
 
