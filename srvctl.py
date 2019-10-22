@@ -61,7 +61,12 @@ EXAMPLES = '''
 debugging: debugging: True | False | directory - turns on all debugging outoput which is added to msg
 
     Notes:
-        (1) True -  add debug info to msg output retruned when Ansible module completes
+
+        ** remember if running against 12c and up and you try to stop and instance you have to
+           specify param: force just like executing the command manually using -force.
+
+        (1) debugging parameter:
+            True  - add debug info to msg output retruned when Ansible module completes
             False - no debugging info
             /dir/to/output.log - give absolute path to debugging log including log name.
                 debugging info will be appeneded to the file as they execute.
