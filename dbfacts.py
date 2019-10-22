@@ -8,7 +8,7 @@ import os
 import json
 import re
 import math
-import commands 
+import commands
 
 try:
     import cx_Oracle
@@ -138,19 +138,29 @@ def convert_size(arg_size_bytes, vunit):
     return "%s%s" % (int(round(s)), size_name[vidx])
 
 
-def israc():
+def israc(host_str=None):
     """Determine if a host is running RAC or Single Instance"""
     global err_msg
+    if host_str is None:
+        exit
 
-    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-    vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
+    if "org" in host_str:
+        host_str = host_str.replace(".ccci.org","")
 
-    if int(vproc) > 0:
-        # if > 0 "lck" processes running, it's RAC
-        debugg("israc() returning True")
+    # if the last digits is 1 or 2 ( something less than 10) and not 0 (60) return True
+    if host_str[-1:].isdigit() and int(host_str[-1:]) < 10 and int(host_str[-1:]) != 0:
         return(True)
     else:
-        debugg("israc() returning False")
+        return(False)
+    # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
+    # vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
+    #
+    # if int(vproc) > 0:
+    #     # if > 0 "lck" processes running, it's RAC
+    #     debugg("israc() returning True")
+    #     return(True)
+    # else:
+    #     debugg("israc() returning False")
         return(False)
 
 
@@ -220,10 +230,10 @@ def main ():
     if vignore is None:
       vignore = False
 
-    visrac = israc()
-
     if '.org' in vdbhost:
         vdbhost = vdbhost.replace('.ccci.org','')
+
+    visrac = israc(vdbhost)
 
     if not cx_Oracle_found:
         module.fail_json(msg="Error: cx_Oracle module not found")
@@ -407,28 +417,35 @@ def main ():
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             ansible_facts[refname].update( { 'dbid': vtemp } )
+
         ignore_err_flag = False
 
-        if is_rac:
+        # if is_rac:
             # Find ASM diskgroups used by the database
-            try:
-                cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
-            except cx_Oracle.DatabaseError as exc:
-                error, = exc.args
-                if vignore:
-                    ignore_err_flag = True
-                    add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
-                else:
-                    module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
+        try:
+            cur.execute("select name from v$asm_diskgroup where state='CONNECTED'")
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            if vignore:
+                ignore_err_flag = True
+                add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
+            else:
+                module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
 
-            if not ignore_err_flag:
-                vtemp = cur.fetchall()
-                vtemp = vtemp[0][0]
-                # diskgroups = [row[0] for row in cur.fetchall()]
-                ansible_facts[refname].update({ 'diskgroups': vtemp }) #diskgroups
-            ignore_err_flag = False
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            disks = {}
+            for item in vtemp:
+                debugg("ASM Diskgroup: item={}".format(item))
+                if 'data' in item[0].lower():
+                    disks.update( { 'data':item[0] } )
+                elif 'fra' in item[0].lower():
+                    disks.update( { 'fra':item[0] } )
+            # diskgroups = [row[0] for row in cur.fetchall()]
+            ansible_facts[refname].update({ 'diskgroups': disks }) #diskgroups
         else:
             ansible_facts[refname].update({ 'diskgroups': 'None' })
+        ignore_err_flag = False
 
         # Open cursors - used in populating dynamic pfiles
         try:
@@ -583,11 +600,13 @@ def main ():
 
         if not ignore_err_flag:
             vtemp = cur.fetchall()
+            add_to_msg("schema_owners={}".format(vtemp))
             owner_list = []
             for own in vtemp:
                 owner_list.append(own[0].encode("utf-8"))
 
             ansible_facts[refname].update( { 'schema_owners': owner_list } )
+
         ignore_err_flag = False
 
         # Get default_temp_tablespace and default_permanet_tablespace
