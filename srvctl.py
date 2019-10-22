@@ -173,6 +173,8 @@ def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
             add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
             module.fail_json(msg=msg,ansible_facts={},changed=False)
 
+    debugg("popen_cmd_str()...exit. returning output [%s]" % (output.strip()))
+          
     return(output)
 
 
@@ -185,13 +187,20 @@ def db_registered(db_name):
     if not oracle_home:
         oracle_home = get_orahome_procid(db_name)
 
+    debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
+
+    # Try Two ways to get oracle_home. If first doesn't work, try the second.
+    if not oracle_home:
+        oracle_home = get_orahome_procid(db_name)
+
     if not oracle_home:
         oracle_home = get_orahome_oratab(db_name)
 
     debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
 
+    # check oracle_home finally found.
     if oracle_home:
-        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name))
+        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name), oracle_home)
         tmp = output.strip()
         debugg("db_registered() output = %s" % (tmp))
         if 'PRCD' in tmp:
@@ -256,9 +265,10 @@ def get_node_num():
     if not grid_home:
         grid_home = get_gihome()
 
-    output = popen_cmd_str("/bin/olsnodes -l -n | awk '{ print $2 }'")
+    output = popen_cmd_str("%s/bin/olsnodes -l -n | awk '{ print $2 }'" % (grid_home))
 
-    if output.strip()[-1].isdigit() :
+    debugg("get_node_num() output=%s" % (output))
+    if output and output[-1].isdigit():
         node_number = int(output.strip()[-1])
     else:
         node_number = int(output.strip())
@@ -516,6 +526,7 @@ def is_rac():
 
     if rac is None:
         # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
+        
         vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | /bin/wc -l")
 
         if int(vproc) > 0:
@@ -541,6 +552,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
         vobj     - database | instance
         vstopt   - stop|start option - i.e. immediate
         vparam   - i.e. -force"""
+    
     global grid_home
     global oracle_home
     global node_number
@@ -571,6 +583,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
     debugg("exec_db_srvctl_11_cmd() code %s" % (output))
+
 
     return 0
 
@@ -609,6 +622,7 @@ def exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst):
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
 
     debugg("exec_inst_srvctl_11_cmd() cmd_str=%s" % (cmd_str))
+
     # def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
@@ -633,7 +647,7 @@ def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None", 
     elif vstopt and not vparam:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%soption %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vstopt)
     elif vparam and not vstopt:
-        cmd_str = cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vparam)
+        cmd_str = cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vparam)
     else:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s "  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst))
 
@@ -641,7 +655,7 @@ def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None", 
     debugg("exec_inst_srvctl_12_cmd()...exit...")
     return(True)
 
-
+  
 def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None"):
     """Execute 12c srvctl command against a database """
     global grid_home
@@ -665,7 +679,7 @@ def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None"):
     debugg("exec_db_srvctl_12_cmd()...exit...")
     return(True)
 
-
+  
 def set_global_vars(db_name):
     """Set program global variables grid_home, node_number, oracle_home, thishost (hostname), a list of all hosts (vall_hosts) and oracle_sid"""
     global grid_home
@@ -881,7 +895,7 @@ def main ():
             if vinst:
                 inst_to_ck_indx = int(vinst) - 1
             else:
-                sys.exit("Instance number needed for operations against an instance.")
+                module_fail("Instance number needed for operations against an instance.")
         except:
             add_to_msg("ERROR[retrieving module parameters]: attempting operation against an %s but no %s number defined." % (vobj, vobj))
             add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
