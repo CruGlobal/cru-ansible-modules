@@ -42,7 +42,6 @@ EXAMPLES = '''
 
     Notes:
 
-
         A database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
         The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
             ** this can be obtained dynamically from sourcefacts.
@@ -53,7 +52,7 @@ istrue = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
 oracle_home=""
 err_msg = ""
 msg = ""
-debugme = False
+debugme = True
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
@@ -65,7 +64,7 @@ env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/b
 # Service "tstdb.ccci.org" has 2 instance(s).
 #   Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
 #   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
-
+host_debug_log = "/tmp/mod_debug.log"
 
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
@@ -83,6 +82,17 @@ def debugg(debug_str):
 
     if debugme:
         add_to_msg(debug_str)
+        write_to_file(debug_str)
+
+
+def write_to_file(info_str):
+    """write this string to debug log"""
+    global host_debug_log
+
+    f =  open(host_debug_log, 'a')
+    for aline in info_str.split("\n"):
+        f.write(aline + "\n")
+    f.close()
 
 
 def get_grid_home():
@@ -166,6 +176,7 @@ def run_sub_env(cmd_str, env=None):
     global msg
 
     try:
+        # passed in python dictionary is 'env'
         os.environ['ORACLE_HOME'] = env['oracle_home']
         os.environ['ORACLE_SID'] = env['oracle_sid']
         debugg("Running cmd_str=%s with ORACLE_HOME: %s and ORACLE_SID: %s" % (cmd_str, env['oracle_home'], env['oracle_sid']))
@@ -288,7 +299,10 @@ def main ():
 
     if visrac:
         vnode_num = get_node_num()
-        vasm_sid = asm_db + str(vnode_num)
+        if not asm_db[-1:].isdigit():
+            vasm_sid = asm_db + str(vnode_num)
+        else:
+            vasm_sid = asm_db
 
     if visrac in istrue:
         if not vdb[-1].isdigit():
@@ -304,27 +318,30 @@ def main ():
     debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vdb_home))
 
     # Make sure an alias doesn't already exist
+    debugg("[1] make sure alias doesnt already exist")
     output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
-    if output:
+    debugg("main: spfile output=%s" % (output))
+    if not 'does not exist' in output and 'spfile' in output:
+        debugg("[1a] spfile found in output %s" % (output))
         spfile = [ item for item in output.split() if "spfile" in item ]
 
-    debugg("[1] make sure alias doesnt already exist")
-
-    if len(spfile) > 1:
-        add_to_msg("spfile already exists: %s/%s/%s => %s" % (vasm_dg,vdb,spfile[0],spfile[1]))
-        module.exit_json( msg=msg, ansible_facts={} , changed=False)
+        if len(spfile) > 1:
+            debugg("[1b] spfile already exists %s" % (spfile))
+            add_to_msg("spfile already exists: %s/%s/%s => %s" % (vasm_dg,vdb,spfile[0],spfile[1]))
+            module.exit_json( msg=msg, ansible_facts={} , changed=False)
 
     # Else get the name of the parameterfile.
-    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+    debugg("output=%s" % (output))
     if output:
         spfile_orig = [ item for item in output.split() if "spfile" in item ][0]
 
-    debugg("[2] get the parameterfile name: %s" % (spfile_orig))
+        debugg("[2] get the parameterfile name: %s" % (spfile_orig))
 
     # Create the alias
-    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg,vdb,spfile_orig,vasm_dg,vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),spfile_orig,vasm_dg.upper(),vdb.upper(),vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
 
-    debugg("[3] Alias created")
+    debugg("[3] Alias created output %s" % (output))
 
     # Check the alias and return the results
     output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid } )
