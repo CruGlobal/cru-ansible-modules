@@ -141,7 +141,7 @@ def israc():
 
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
     vproc = run_cmd("ps -ef | grep lck | grep -v grep | wc -l")
-
+    debugg("israc()...run_cmd() returning vproc = %s" % (vproc))
     if int(vproc) > 0:
         # if > 0 "lck" processes running, it's RAC
         debugg("israc() returning True")

@@ -156,7 +156,7 @@ def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
             process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
             output, code = process.communicate()
         except:
-            add_to_msg("Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str))
+            add_to_msg("Error [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
             add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
             module.fail_json(msg=msg,ansible_facts={},changed=False)
 
@@ -169,12 +169,12 @@ def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
             process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
             output, code = process.communicate()
         except:
-            add_to_msg("Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str))
+            add_to_msg("Error [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
             add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
             module.fail_json(msg=msg,ansible_facts={},changed=False)
 
     debugg("popen_cmd_str()...exit. returning output [%s]" % (output.strip()))
-          
+
     return(output)
 
 
@@ -526,7 +526,7 @@ def is_rac():
 
     if rac is None:
         # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
-        
+
         vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | /bin/wc -l")
 
         if int(vproc) > 0:
@@ -552,7 +552,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
         vobj     - database | instance
         vstopt   - stop|start option - i.e. immediate
         vparam   - i.e. -force"""
-    
+
     global grid_home
     global oracle_home
     global node_number
@@ -655,7 +655,7 @@ def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None", 
     debugg("exec_inst_srvctl_12_cmd()...exit...")
     return(True)
 
-  
+
 def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None"):
     """Execute 12c srvctl command against a database """
     global grid_home
@@ -679,7 +679,7 @@ def exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None"):
     debugg("exec_db_srvctl_12_cmd()...exit...")
     return(True)
 
-  
+
 def set_global_vars(db_name):
     """Set program global variables grid_home, node_number, oracle_home, thishost (hostname), a list of all hosts (vall_hosts) and oracle_sid"""
     global grid_home
