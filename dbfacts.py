@@ -413,7 +413,7 @@ def main ():
             else:
                 module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
 
-        if ignore_err_flag:
+        if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             ansible_facts[refname].update( { 'dbid': vtemp } )
