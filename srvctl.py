@@ -144,34 +144,23 @@ def debugg(debug_str):
         add_to_msg(debug_str)
 
 
-def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
+def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
     """Execute a command string and fail if necessary"""
     global module
     global msg
 
-    if oracle_home is None:
-
-        try:
-            os.environ['USER'] = 'oracle'
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            add_to_msg("Error [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
-            add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
-
-    else:
-
-        try:
-            os.environ['USER'] = 'oracle'
+    try:
+        os.environ['USER'] = 'oracle'
+        if oracle_home:
             os.environ['ORACLE_HOME'] = oracle_home
+        if oracle_sid:
             os.environ['ORACLE_SID'] = oracle_sid
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            add_to_msg("Error [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
-            add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        add_to_msg("Error #1 [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
+        add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+        module.fail_json(msg=msg,ansible_facts={},changed=False)
 
     debugg("popen_cmd_str()...exit. returning output [%s]" % (output.strip()))
 
