@@ -110,7 +110,7 @@ EXAMPLES = '''
 
 '''
 
-debugme = True
+debugme = False
 ora_home = ""
 global_ora_home = ""
 err_msg = ""
