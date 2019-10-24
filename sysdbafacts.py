@@ -223,22 +223,28 @@ def main ():
     ansible_facts = { refname : {} }
 
     if '.org' in vdbhost:
-        vdbhost = vdbhost.replace(".ccci.org","")
+        # vdbhost => full_hostname and abbr_hostname
+        abbr_hostname = vdbhost.replace(".ccci.org","")
+        full_hostname = vdbhost
+    elif '.ora' not in vdbhost:
+        abbr_hostname = vdbhost
+        full_hostname = abbr_hostname + ".ccci.org"
 
     if visrac in true_bool:
-        vdb = vdb + vdbhost[-1:]
-
-    if ".org" not in vdbhost:
-        vdbhost = vdbhost + ".ccci.org"
+        if abbr_hostname[-1:].isdigit():
+            vdb = vdb + abbr_hostname[-1:]
+        else:
+            add_to_msg("Error attempting to configure database sid for db: %s" % (vdb))
 
     try:
       # vdb = vdb + vdbhost[-1:]
-      dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+      dsn_tns = cx_Oracle.makedsn(full_hostname, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
-    debugg("Attempting to connect to db=%s vdbhost=%s dsn_tns=%s " % (vdb, vdbhost, dsn_tns))
+    debugg("Attempting to connect to db=%s full_hostname=%s dsn_tns=%s " % (vdb, full_hostname, dsn_tns))
+
     try:
       con = cx_Oracle.connect(dsn=dsn_tns,user='sys',password=vdbpass,mode=cx_Oracle.SYSDBA)
     except cx_Oracle.DatabaseError as exc:
@@ -332,7 +338,7 @@ def main ():
             error, = exc.args
             if 'ORA-29283' not in error.message:
                 if not vignore:
-                    module.fail_json(msg='Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
+                    module.fail_json(msg='Error: Renaming orapwd file in data domain backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
                 else:
                     add_to_msg('Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg))
 
