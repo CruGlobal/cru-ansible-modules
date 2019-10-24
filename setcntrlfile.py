@@ -18,7 +18,7 @@ from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 oracle_home=""
 err_msg = ""
 msg = ""
-DebugMe = True
+DebugMe = False
 sleep_time = 3
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
