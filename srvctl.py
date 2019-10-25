@@ -254,7 +254,9 @@ def get_node_num():
     if not grid_home:
         grid_home = get_gihome()
 
-    output = popen_cmd_str("%s/bin/olsnodes -l -n | awk '{ print $2 }'" % (grid_home))
+    cmd_str = "%s/bin/olsnodes -l -n | awk '{ print $2 }'" % (grid_home)
+
+    output = popen_cmd_str(cmd_str)
 
     debugg("get_node_num() output=%s" % (output))
     if output and output[-1].isdigit():
