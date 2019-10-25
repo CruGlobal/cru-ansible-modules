@@ -226,8 +226,8 @@ def main ():
         # vdbhost => full_hostname and abbr_hostname
         abbr_hostname = vdbhost.replace(".ccci.org","")
         full_hostname = vdbhost
-    elif '.ora' not in vdbhost:
-        abbr_hostname = vdbhost
+    else:
+        abbr_hostname = vdbhost.replace(".ccci.org","")
         full_hostname = abbr_hostname + ".ccci.org"
 
     if visrac in true_bool:
