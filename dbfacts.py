@@ -92,6 +92,7 @@ msg = ""
 debugme = False
 defrefname = "dbfacts"
 true_bool = ['True','T','true','t','True','Yes','y']
+db_home_name = "dbhome_1"
 
 
 def add_to_msg(a_msg):
@@ -186,11 +187,13 @@ def run_cmd(cmd_str):
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
+
 def main ():
     """ Return Oracle database parameters from a database not in the specified group"""
     global msg
     global defrefname
     global debugme
+    global db_home_name
     ansible_facts={}
     is_rac = None
     ignore_err_flag = False
@@ -662,23 +665,14 @@ def main ():
                 vtemp = vtemp[0][0]
                 if vtemp:
                     ansible_facts[refname].update( { 'oracle_home': vtemp} )
+
             ignore_err_flag = False
 
-        # elif usable_ver[:2] == "11":
-        #
-        #     cmd_str = "DECLARE\n  OH varchar2(100);\nBEGIN\n  dbms_system.get_env('ORACLE_HOME', :OH);\n  dbms_output.put_line(OH);\nEND;"
-        #
-        #     # Get sourcedb home:
-        #     try:
-        #       cur.execute(cmd_str)
-        #     except cx_Oracle.DatabaseError as exc:
-        #       error, = exc.args
-        #       module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
-        #
-        #     vtemp = cur.fetchall()
-        #     vtemp = vtemp[0][0]
-        #     if vtemp:
-        #         ansible_facts[refname]['oracle_home'] = vtemp
+        # We know there's no easy way like 12 to get database home internally for 11 so set 11 manually
+        if "11" in ansible_facts[refname]['compatible']:
+            home = '/app/oracle/%s/%s' %  ( ansible_facts[refname]['compatible'], db_home_name)
+            debugg("-------- > home=%s" % (home))
+            ansible_facts[refname].update( { 'oracle_home' : home } )
 
         # See if dbainfo user/schema exists
         try:
@@ -713,7 +707,8 @@ def main ():
                         ansible_facts[refname]['dbainfo'].update({'table_exists': 'False' } )
                     else:
                         ansible_facts[refname]['dbainfo'].update({'table_exists': 'True' } )
-        ignore_err_flag = False
+
+            ignore_err_flag = False
 
         try:
             cur.close()
