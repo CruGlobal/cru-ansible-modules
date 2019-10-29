@@ -770,7 +770,7 @@ def get_db_meta_state(vdb_name):
 
     for vhost in vall_hosts:
 
-        cmd_str = grid_home + "/bin/crsctl status resource ora." + vdb_name + ".db -v -n " + vhost + " | /bin/grep STATE_DETAILS | /bin/cut -d '=' -f 2"
+        cmd_str = grid_home + "/bin/crsctl status resource ora." + vdb_name + ".db -v -n " + vhost + " | /bin/grep STATE_DETAILS | /bin/cut -d '=' -f 2 | /bin/awk  -F, '{print $1}'"
         debugg("get_db_meta_state() cmd_str = %s" % (cmd_str))
         output = popen_cmd_str(cmd_str)
         debugg("get_db_meta_state() popen_cmd_str() returning output = %s " % (output))
