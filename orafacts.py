@@ -878,6 +878,8 @@ def get_more_db_info(vtmpdb, vtmporahome):
 
     debugg("get_more_db_info()....starting... vtmpdb = %s vtmporahome = %s" % (vtmpdb, vtmporahome))
 
+    debugg("get_more_db_info()....starting...")
+
     if not node_number:
         node_number = get_node_num()
 

@@ -124,6 +124,49 @@ utils_dir = os.path.expanduser("~/.utils")
 module = None
 istrue = ['True','TRUE','T','true','YES','Yes','yes','y']
 rac = None
+cru_domain = ".ccci.org"
+
+debug_path = '/tmp/mod_debug.log'
+rac_nums = 10
+
+def determine_sid():
+    """determine database sid given db name and host"""
+    global vdb_name
+    global module
+    global cru_domain
+    global rac_nums
+    debugg("determine_sid()...starting...")
+    try:
+        cmd_str = "hostname"
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        tmp_msg = "Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str)
+        tmp_msg = tmp_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
+        debugg("determine_sid() ERROR with NO ORACLE HOME. Error Messge = %s" % (tmp_msg))
+        add_to_msg(tmp_msg)
+        module.fail_json(msg=msg,ansible_facts={},changed=False)
+
+    output = output
+
+    debugg("determine_sid() #1 output = %s" % (output))
+
+    if cru_domain in output:
+        host = output.replace(cru_domain,"")
+        debugg("determine_sid() #2 host = %s" % (host))
+
+    if host[-1:].isdigit():
+        debugg("determine_sid() host has last item is digit")
+        # 60 is old dw. 01,02 is rac.
+        if host[-1:] in range(0,rac_nums+1) and not db_name[-1:].isdigit():
+            sid = db_name + str(host[-1:])
+    else:
+        debugg("determine_sid()...sid is same as db name: [%s]" % (vdb_name))
+        sid = vdb_name
+
+    debugg("determine_sid()..exiting...returning %s" % (sid))
+
+    return(sid)
 
 
 def add_to_msg(msg_str):
@@ -139,15 +182,30 @@ def add_to_msg(msg_str):
 def debugg(debug_str):
     """add debugging info to msg if debugging=true"""
     global debugme
+    global debug_path
 
     if debugme:
         add_to_msg(debug_str)
+        debugg_to_file(debug_str)
+
+
+def debugg_to_file(info_str):
+    """write debugging to /tmp/mod_debug.log on remote host"""
+    global debug_path
+
+    f =  open(debug_path, 'a')
+    for aline in info_str.split("\n"):
+        f.write(aline + "\n")
+    f.close()
 
 
 def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
     """Execute a command string and fail if necessary"""
     global module
     global msg
+    # global oracle_sid
+    tmp_msg = ""
+    debugg("popen_cmd_str()...starting...with cmd_str = %s oracle_home = %s oracle_sid = %s " % (cmd_str,oracle_home or "None", oracle_sid or "None"))
 
     try:
         os.environ['USER'] = 'oracle'
@@ -170,9 +228,12 @@ def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
 def db_registered(db_name):
     """Given a db name find out if it's registered to srvctl"""
     global oracle_home
+    global oracle_sid
 
     debugg("db_registered()...starting...db_name=%s" % (db_name))
 
+    # Try Two ways to get oracle_home. If first doesn't work, try the second.
+    # preferred method is get oracle home from running database process id.
     if not oracle_home:
         oracle_home = get_orahome_procid(db_name)
 
@@ -189,15 +250,17 @@ def db_registered(db_name):
 
     # check oracle_home finally found.
     if oracle_home:
-        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name), oracle_home)
+        output = popen_cmd_str("%s/bin/srvctl status database -d %s" % (oracle_home, db_name), oracle_home, oracle_sid)
         tmp = output.strip()
-        debugg("db_registered() output = %s" % (tmp))
+        debugg("db_registered() #3 output = %s" % (tmp))
         if 'PRCD' in tmp:
+            debugg("db_registered()...#4 exiting...False")
             return(False)
         else:
+            debugg("db_registered()...#5 exiting...True")
             return(True)
     else:
-        debugg("db_registered() FALSE. db not registered with srvctl. No ")
+        debugg("db_registered() #6 FALSE. db not registered with srvctl. No ")
         return(False)
 
 
@@ -299,8 +362,10 @@ def get_orahome_procid(db_name):
 
     # get the pmon process id for the running database.
     # 10189  tstdb1
-    output = popen_cmd_str("/bin/pgrep -lf _pmon_" + db_name + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed")
-
+    # cmd_str = "/bin/pgrep -lf _pmon_" + db_name + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
+    cmd_str = "ps -ef | grep _pmon_tstdb | grep -v grep | awk '{ print $2 \" \" $8 }' | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
+    output = popen_cmd_str(cmd_str)
+    debugg("get_orahome_procid(db_name) output = %s" % (output))
     # if the database is down, but it possibly had an entry in /etc/oratab try this:
     if not output:
         debugg("get_orahome_procid()..calling...get_orahome_oratab()")
@@ -318,10 +383,13 @@ def get_orahome_procid(db_name):
         add_to_msg("Error[ get_orahome_procid(db_name) ] error parsing process id for database: %s Full output: [%s]" % (db_name, output))
         module_fail("get_orahome_procid() failed splitting output to get procid.")
 
+
     # get Oracle home the db process is running out of
     # (0, ' /app/oracle/12.1.0.2/dbhome_1/')
-    output = popen_cmd_str("sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/\/bin\/oracle//' ")
-
+    cmd_str = "sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/\/bin\/oracle//' "
+    debugg("get_orahome_procid()..running cmd_str = %s with process id = %s")
+    output = popen_cmd_str(cmd_str)
+    debugg("get_orahome_procid() cmd_str returned output returned %s" % (output))
     ora_home = output.strip()
 
     if not ora_home:
@@ -575,7 +643,6 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
 
     debugg("exec_db_srvctl_11_cmd() code %s" % (output))
 
-
     return 0
 
 
@@ -630,8 +697,18 @@ def exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt="None", vparam="None", 
     global node_number
     global oracle_sid
     global debugme
+    global msg
     debugg("exec_inst_srvctl_12_cmd()...starting...vdb_name=%s vcmd=%s vobj=%s vstopt=%s vparam=%s vinst=%s" % (vdb_name, vcmd, vobj, vstopt, vparam, vinst))
+
     set_global_vars(vdb_name)
+
+    if vcmd == "stop":
+        if not vparam:
+            add_to_msg("""\n
+                        >>>>>>>>>>>>>>>>>
+                        with version 12 or greater you have to specify parameter => -force in the module call when stopping an instance.\n
+                        <<<<<<<<<<<<<<<<<n""")
+            module_fail(msg)
 
     if vparam and vstopt:
         cmd_str = "%s/bin/srvctl %s %s -d %s -i %s%s -%soption %s %s"  % (oracle_home,vcmd,vobj,vdb_name,vdb_name,str(vinst),vcmd,vstopt,vparam)
@@ -923,7 +1000,7 @@ def main ():
       vttw = default_ttw
 
   # If debugging save current state of all variables:
-  debugg("vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
+  debugg("MAIN() vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
 
   # # see if it's 11g database (no stopt) in 11g srvctl Commands
   # if not oracle_home:
@@ -932,7 +1009,7 @@ def main ():
   maj_ver = extract_maj_version(oracle_home)
   debugg("MAIN() extracted maj_version = %s" % (maj_ver))
 
-  # 0 valid, 1 invalid. checked against a list of valid star and stop options per major version
+  # 0 valid, 1 invalid. checked against a list of valid start and stop options per major version
   if vstopt:
       debugg("MAIN() checking start/stop options")
       vresult = is_opt_valid(vstopt,vcmd,maj_ver)
@@ -987,8 +1064,10 @@ def main ():
   elif vobj is not None and (vobj.lower() == "instance" and current_state[inst_to_ck_indx] != vexpected_state['exp_state']):
       debugg("MAIN() Else dealing with instance. Check current_state vs expected state. Run srvctl cmd if needed....maj_ver: %s vobj: %s expected_state: %s" % (maj_ver,vobj,str(vexpected_state)))
       if maj_ver in ["12","18","19"]:
+          debugg("MAIN() dealing with version %s so in 12,18,19 section for instance" % (maj_ver))
           vchanged = exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
       elif maj_ver == "11":
+          debugg("MAIN() dealing with version %s so in 11 section for instance" % (maj_ver))
           vchanged = exec_inst_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
 
   else:
