@@ -85,7 +85,7 @@ vparams=[ "compatible",
           "audit_file_dest",
           "db_files" ]
 msg = ""
-debugme = True
+debugme = False
 
 def msgg(add_string):
     """Passed a string add it to the msg to pass back to the user"""

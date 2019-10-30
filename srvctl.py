@@ -61,7 +61,12 @@ EXAMPLES = '''
 debugging: debugging: True | False | directory - turns on all debugging outoput which is added to msg
 
     Notes:
-        (1) True -  add debug info to msg output retruned when Ansible module completes
+
+        ** remember if running against 12c and up and you try to stop and instance you have to
+           specify param: force just like executing the command manually using -force.
+
+        (1) debugging parameter:
+            True  - add debug info to msg output retruned when Ansible module completes
             False - no debugging info
             /dir/to/output.log - give absolute path to debugging log including log name.
                 debugging info will be appeneded to the file as they execute.
@@ -194,7 +199,7 @@ def debugg_to_file(info_str):
     f.close()
 
 
-def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
+def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
     """Execute a command string and fail if necessary"""
     global module
     global msg
@@ -202,33 +207,18 @@ def popen_cmd_str(cmd_str, oracle_home=None,oracle_sid=None):
     tmp_msg = ""
     debugg("popen_cmd_str()...starting...with cmd_str = %s oracle_home = %s oracle_sid = %s " % (cmd_str,oracle_home or "None", oracle_sid or "None"))
 
-    if not oracle_home:
-
-        try:
-            os.environ['USER'] = 'oracle'
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            tmp_msg = "Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str)
-            tmp_msg = tmp_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-            debugg("popen_cmd_str() ERROR with NO ORACLE HOME. Error Messge = %s" % (tmp_msg))
-            add_to_msg(tmp_msg)
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
-
-    else:
-
-        try:
-            os.environ['USER'] = 'oracle'
+    try:
+        os.environ['USER'] = 'oracle'
+        if oracle_home:
             os.environ['ORACLE_HOME'] = oracle_home
+        if oracle_sid:
             os.environ['ORACLE_SID'] = oracle_sid
-            process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-            output, code = process.communicate()
-        except:
-            tmp_msg = "Error [get_hostname()]: retrieving hostname. cmd_str: %s " % (cmd_str)
-            tmp_msg = tmp_msg + "%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2])
-            debugg("popen_cmd_str() ERROR with ORACLE HOME.")
-            add_to_msg(tmp_msg)
-            module.fail_json(msg=msg,ansible_facts={},changed=False)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        add_to_msg("Error #1 [popen_cmd_str()]: retrieving hostname. cmd_str: %s " % (cmd_str))
+        add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+        module.fail_json(msg=msg,ansible_facts={},changed=False)
 
     debugg("popen_cmd_str()...exit. returning output [%s]" % (output.strip()))
 
@@ -247,17 +237,16 @@ def db_registered(db_name):
     if not oracle_home:
         oracle_home = get_orahome_procid(db_name)
 
-    # if database isn't running, try /etc/oratab
+    debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
+
+    # Try Two ways to get oracle_home. If first doesn't work, try the second.
+    if not oracle_home:
+        oracle_home = get_orahome_procid(db_name)
+
     if not oracle_home:
         oracle_home = get_orahome_oratab(db_name)
 
     debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
-
-    # get database sid if not set.
-    if not oracle_sid:
-        oracle_sid = determine_sid()
-
-    debugg("db_registered()...#2 oracle_sid returned ; %s " % (oracle_sid))
 
     # check oracle_home finally found.
     if oracle_home:
@@ -597,7 +586,7 @@ def is_rac():
     if rac is None:
         # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
 
-        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l")
+        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | /bin/wc -l")
 
         if int(vproc) > 0:
           # if > 0 "lck" processes running, it's RAC
@@ -652,7 +641,7 @@ def exec_db_srvctl_11_cmd(vdb_name, vcmd, vobj, vstopt="", vparam=""):
 
     output = popen_cmd_str(cmd_str, oracle_home, oracle_sid)
 
-    debugg("exec_db_srvctl_11_cmd() output %s" % (output))
+    debugg("exec_db_srvctl_11_cmd() code %s" % (output))
 
     return 0
 
@@ -858,7 +847,7 @@ def get_db_meta_state(vdb_name):
 
     for vhost in vall_hosts:
 
-        cmd_str = grid_home + "/bin/crsctl status resource ora." + vdb_name + ".db -v -n " + vhost + " | /bin/grep STATE_DETAILS | /bin/cut -d '=' -f 2"
+        cmd_str = grid_home + "/bin/crsctl status resource ora." + vdb_name + ".db -v -n " + vhost + " | /bin/grep STATE_DETAILS | /bin/cut -d '=' -f 2 | /bin/awk  -F, '{print $1}'"
         debugg("get_db_meta_state() cmd_str = %s" % (cmd_str))
         output = popen_cmd_str(cmd_str)
         debugg("get_db_meta_state() popen_cmd_str() returning output = %s " % (output))
@@ -1054,7 +1043,7 @@ def main ():
   current_state = get_db_state(vdb_name)
   debugg("MAIN() current_state = %s" % (current_state))
 
-  debugg("MAIN() END PARAMETERS:vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
+  debugg("END PARAMETERS:vdb_name: [%s], vcmd: [%s], vobj: [%s], vinst: [%s], vparam: [%s], vstopt: [%s], vttw: [%s], grid_home: [%s], node_number: [%s], oracle_home: [%s]" % (vdb_name,vcmd,vobj,vinst,vparam,vstopt,vttw,grid_home,node_number,oracle_home))
   # ==========================================  END PARAMETERS  ===========================================
 
   # =========================================  START SRVCTL COMMAND  =======================================
