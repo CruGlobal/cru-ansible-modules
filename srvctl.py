@@ -586,7 +586,7 @@ def is_rac():
     if rac is None:
         # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
 
-        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | /bin/wc -l")
+        vproc = popen_cmd_str("/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l")
 
         if int(vproc) > 0:
           # if > 0 "lck" processes running, it's RAC
