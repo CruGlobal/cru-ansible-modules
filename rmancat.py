@@ -123,8 +123,9 @@ def main ():
     if v_pdb[-1].isdigit():
         v_pdb = v_pdb[:-1]
 
-    if d_domain in v_host:
-        v_host = v_host.replace(d_domain,'')
+    if d_domain not in v_host:
+        v_host = v_host + d_domain
+
 
     try:
         dsn_tns = cx_Oracle.makedsn(v_host, '1521', v_pdb)
