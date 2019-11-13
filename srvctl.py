@@ -90,7 +90,7 @@ debugging: debugging: True | False | directory - turns on all debugging outoput 
 
 
 # Global variables
-debugme  = False
+debugme = False
 # module parameters
 vdb_name = ""
 vcmd     = ""
@@ -943,6 +943,8 @@ def main ():
 
   if vdebugging:
     debugme = vdebugging
+  else:
+    debugme = False
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
 
