@@ -943,10 +943,11 @@ def main ():
 
   if vdebugging:
     debugme = vdebugging
-  else:
-    debugme = False
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
+  else:
+    debugme = False
+
 
   # If db is not registered with srvctl return
   debugg("MAIN() calling db_registered()")
