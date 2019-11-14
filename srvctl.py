@@ -129,6 +129,20 @@ cru_domain = ".ccci.org"
 debug_path = '/tmp/mod_debug.log'
 rac_nums = 10
 
+
+def to_bool(in_str):
+    """Given an input string return True of False:
+       Expected intput:
+        Y,y,yes,N,n,no,No,True,true,t,False,false,f,F
+    """
+    affirm = ['True','true','t','T','Yes','yes','y','Y']
+
+    if in_str in affirm:
+        return(True)
+    else:
+        return(False)
+
+
 def determine_sid():
     """determine database sid given db name and host"""
     global vdb_name
@@ -941,13 +955,12 @@ def main ():
   vobj          = module.params["obj"]
   vdebugging    = module.params["debugging"]
 
-  if vdebugging:
+  if to_bool(vdebugging):
     debugme = vdebugging
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
   else:
     debugme = False
-
 
   # If db is not registered with srvctl return
   debugg("MAIN() calling db_registered()")
