@@ -39,6 +39,8 @@ EXAMPLES = '''
            EXIT;
     # This module will expecute these commands.
 
+    # Example of what a task in a playbook might look like:
+
     - name: Finish SQL part of database restore
       finrest:
         db_name: "{{ dest_db_name }}"
