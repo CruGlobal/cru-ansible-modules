@@ -48,7 +48,7 @@ EXAMPLES = '''
       utilstimediff:
         start_time: "{{ ans_run_start }}"
         refname: fin_time
-        debug: False
+        debugging: False
       when:
         - ans_run_start is defined
 
@@ -67,13 +67,13 @@ EXAMPLES = '''
 
             =====================================================================
 
-                      Utils {{ fx }} run time: ( HR:MI:SS )
-
-                            {{ '%02d' | format( utilstimediff.hrs|int ) }}:{{ '%02d' | format( utilstimediff.min|int ) }}:{{ '%02d' | format( utilstimediff.sec|int ) }}
+                      Utils {{ fx }} run time:
+                          ( HR:MI:SS )
+                            {{ '%02d' | format( timediff.hrs|int ) }}:{{ '%02d' | format( timediff.min|int ) }}:{{ '%02d' | format( timediff.sec|int ) }}
 
                        or
 
-                             {{ utilstimediff.total }}
+                            {{ timediff.total }}
 
                       ** From the time you hit the utils 'Run' button until now.
 
@@ -95,6 +95,7 @@ EXAMPLES = '''
 msg=""
 vdebugme = False
 vlogit = False
+refname = "timediff"
 
 def add_to_msg(in_str):
     """Add an input string to the global msg string"""
@@ -218,11 +219,11 @@ def main(argv):
     global msg
     global vdebugme
     global vlogit
+    global refname
     divider = "="
     weekday = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
     ansible_facts={}
-    refname = "timediff"
 
     # os.system("/usr/bin/scl enable python27 bash")
 
