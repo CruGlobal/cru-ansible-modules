@@ -764,11 +764,11 @@ def get_meta_data(local_db):
             tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db.lower() + " -v -n " + node_name
         else:
             # tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
-            tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + " -v -n " + node_name
+            tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db.lower() + " -v -n " + node_name
 
     else:
 
-        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db + ".db -v -n " + node_name
+        tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_db.lower() + ".db -v -n " + node_name
 
     debugg("get_meta_data() #1 tmp_cmd = %s " % (tmp_cmd))
 
