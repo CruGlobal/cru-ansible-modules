@@ -96,6 +96,8 @@ msg=""
 vdebugme = False
 vlogit = False
 refname = "timediff"
+affirm = ['TRUE', 'True', 'true', 'YES', 'Yes', 'yes', 'T', 't', 'Y', 'y']
+
 
 def add_to_msg(in_str):
     """Add an input string to the global msg string"""
@@ -124,94 +126,6 @@ def debugg(in_str):
     return
 
 
-def run_sub(cmd_str):
-    """Run a command using the subprocess
-       module on the localhost
-    """
-
-    debugg("run_sub() ...starting... with cmd_str= %s" % (cmd_str))
-
-    try:
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        (output, code) = process.communicate()
-    except subprocess.CalledProcessError as e:
-        if global_debugFile:
-            err_msg = "common::run_command() : [ERROR]: output = %s, error code = %s\n".format(e.output, e.returncode)
-            debugg(None, "Error running global run_sub. cmd_str={} Error: {}".format(cmd_str,err_msg))
-        else:
-            tellUser("Error running cmd: {} Error info: {}".format(cmd_str,err_msg))
-
-    # results = output.decode('ascii').strip()
-    results = output.encode('ascii', 'ignore').strip()
-
-    debugg("run_sub()...exiting....output=%s code=%s" % (results, str(code)))
-
-    return(results)
-
-
-def monthtoNum(short_mon):
-    """Given an abbreviation for a month, return its number equivelent"""
-    ret_num = [ num for num, name in enumerate(calendar.month_abbr) if name == short_mon ][0]
-    return(ret_num)
-
-
-def purge_clutter(in_list):
-    """Given a list of date time items of format:
-        ['Wed', 'Nov', '13', '13:47:13', 'EST', '2019']
-       delete times 0 (Wed) then item 3 ( EST )
-    """
-    debugg("purge_clutter...start....in_list=%s" % (str(in_list)))
-    del in_list[0]
-    debugg("purge_clutter...purged[0]....in_list=%s" % (str(in_list)))
-    del in_list[3]
-    debugg("purge_clutter...exiting..purged[3]....in_list=%s" % (str(in_list)))
-    return(in_list)
-
-
-def date_to_dict(in_list):
-    """Given a list of date time items of format:
-        [Nov', '13', '13:47:13', '2019']
-       put in dictionary to reference: '%Y-%m-%d %H:%M:%S' and return
-    """
-    d = {}
-
-    mnth = pad_zeros(monthtoNum(in_list[0]))
-
-    hr,min,sec = in_list[2].split(":")
-
-    hr = pad_zeros(hr)
-    min = pad_zeros(min)
-    sec = pad_zeros(sec)
-
-    d.update({ 'y': in_list[3], 'm': mnth , 'd': in_list[1], 'h': hr, 'min': min, 's': sec})
-    debugg("date_to_dict=%s" % (str(in_list)))
-    return(d)
-
-
-def pad_zeros(in_item):
-    """given a string with digit < 10 pad with zeros"""
-    a = ""
-    if int(in_item) < 10 and "0" not in in_item:
-        a = "0%s" % (in_item)
-    else:
-        a = in_item
-
-    return(a)
-
-
-def to_bool(in_str):
-    """Given an input string return True of False:
-       Expected intput:
-        Y,y,yes,N,n,no,No,True,true,t,False,false,f,F
-    """
-    affirm = ['True','true','t','T','Yes','yes','y','Y']
-
-    if in_str in affirm:
-        return(True)
-    else:
-        return(False)
-
-
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -220,6 +134,7 @@ def main(argv):
     global vdebugme
     global vlogit
     global refname
+    global affirm
     divider = "="
     weekday = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
@@ -241,57 +156,29 @@ def main(argv):
     vrefname     = module.params.get('refname')
     vdebug       = module.params.get('debugging')
 
-    if to_bool(vdebug):
+    if vdebug in affirm:
         add_to_msg("=====>>> vdebug: %s" % (vdebug))
         vdebugme = True
         if vdebug == "log":
             vlogit = True
 
-    debugg("vdebug = %s and vlogit = %s vdebugme = %s" % (vdebug,vlogit,vdebugme))
+    debugg("vdebug = {} | vdebugme = {} and vlogit = {} vdebugme = {}".format(vdebug, vdebugme, vlogit, vdebugme))
 
     if vrefname:
         refname = vrefname
 
     ansible_facts = { refname: { } }
 
-    # start_time= ans_run_start = "Wed Nov 13 13:47:13 EST 2019"
-    # ckpt_time                    "Wed Nov 13 14:19:12 EST 2019"
-    cmd_str = "date"
-    ckpt_time = run_sub(cmd_str)
-    debugg("vdebugme = %s" % (vdebugme))
-    debugg("ckpt_time: %s" % (str(ckpt_time)))
+    _elapsedtime = ( time.time() - vstart_time )
+    hours = int( ( _elapsedtime / 60.0 ) / 60.0 )
+    minutes = int( ( _elapsedtime / 60.0 ) - ( hours * 60.0 ) )
+    seconds = int( _elapsedtime - ( hours * 60 * 60 ) - ( minutes * 60.0 ) )
+    hseconds = int( ( _elapsedtime - ( hours * 60 * 60 ) - ( minutes * 60.0 ) - seconds ) * 100 )
+    tot_run = '%02d:%02d:%02d.%02d' % (hours, minutes, seconds, hseconds)
 
-    # _start = ['Wed', 'Nov', '13', '13:47:13', 'EST', '2019']
-    _start = vstart_time.split()
-    _now = ckpt_time.split()
+    ansible_facts[refname].update( { 'hrs': hours, 'min': minutes, 'sec': seconds, 'total': tot_run } )
 
-    # removing weekday and EST from list:
-    # ['Nov', '13', '13:47:13', '2019']
-    s1 = purge_clutter(_start)
-    n1 = purge_clutter(_now)
-
-    debugg("s = %s n = %s" % (str(s1),str(n1)))
-
-    s = date_to_dict(s1)
-    n = date_to_dict(n1)
-
-    debugg("s = %s n = %s" % (s,n))
-
-    # { 'y': in_list[3], 'm': mnth , 'd': in_list[1], 'h': hr, 'min': min, 's': sec}
-    frmt_start = "%s-%s-%s %s:%s:%s" % (s['y'],s['m'],s['d'],s['h'],s['m'],s['s'])
-    frmt_now = "%s-%s-%s %s:%s:%s" % (n['y'],n['m'],n['d'],n['h'],n['m'],n['s'])
-
-    new_start = datetime.datetime.strptime(frmt_start, '%Y-%m-%d %H:%M:%S')
-    new_now = datetime.datetime.strptime(frmt_now, '%Y-%m-%d %H:%M:%S')
-
-    # diff => (hours=+2, minutes=+59, seconds=+57)
-    diff = relativedelta( new_now, new_start)
-
-    tot_run = "%02d:%02d:%02d" % (int(diff.hours),int(diff.minutes),int(diff.seconds))
-
-    ansible_facts[refname].update( { 'hrs': diff.hours, 'min': diff.minutes, 'sec': diff.seconds, 'total': tot_run } )
-
-    add_to_msg("Checkpoint time difference : %s " % (str(diff)))
+    add_to_msg("Checkpoint time difference : %s " % (tot_run))
 
     add_to_msg("utilstimediff completed successfully.")
 
