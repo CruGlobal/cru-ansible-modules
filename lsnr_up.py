@@ -27,6 +27,7 @@ default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
+affirm = ['TRUE', 'True', 'true', 'YES', 'Yes', 'yes', 'T', 't', 'Y', 'y']
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
 # [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
 # Service "tstdb.ccci.org" has 2 instance(s).
@@ -299,6 +300,7 @@ def main ():
     global default_ttw
     global default_expected_num_reg_lsnrs
     global debugme
+    global affirm
 
     ansible_facts={}
 
@@ -318,8 +320,8 @@ def main ():
     vttw        = module.params["ttw"]
     vdebug      = module.params["debugging"]
 
-    if vdebug:
-        debugme = vdebug
+    if vdebug in affirm:
+        debugme = True
 
     if not num_entries:
         v_entries = default_expected_num_reg_lsnrs
