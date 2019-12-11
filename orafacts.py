@@ -128,6 +128,7 @@ debug_path = '/tmp/mod_debug.log'
 ora_install_logs_loc = "/app/oraInventory/logs"
 installed_homes = []
 israc = False
+affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 
 def sudo_cmd(cmd_str, env=None):
     """Run a command after sudo su - oracle"""

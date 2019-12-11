@@ -49,6 +49,7 @@ EXAMPLES = '''
 '''
 #Global variables
 istrue = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
+affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 oracle_home=""
 err_msg = ""
 msg = ""
@@ -269,6 +270,8 @@ def main ():
     global grid_home
     global istrue
     global debugme
+    global affirm
+
     vasm_sid = "+ASM"
     voracle_user = "oracle"
 
@@ -291,8 +294,8 @@ def main ():
     if vasm_dg[0] != "+":
         vasm_dg = "+%s" % (vasm_dg)
 
-    if vdebug:
-        debugme = vdebug
+    if vdebug in affirm:
+        debugme = True
 
     asm_db = get_asm_db()
     visrac = israc()
