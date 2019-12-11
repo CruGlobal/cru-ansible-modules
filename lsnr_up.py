@@ -21,12 +21,13 @@ from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 oracle_home=""
 err_msg = ""
 msg = ""
-debugme = False
+debuggme = False
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
+affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
 # [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
 # Service "tstdb.ccci.org" has 2 instance(s).
@@ -87,9 +88,9 @@ def add_to_msg(a_msg):
 def debugg(db_msg):
     """if debugging is on add this to msg"""
     global msg
-    global debugme
+    global debuggme
 
-    if debugme:
+    if debuggme:
         add_to_msg(db_msg)
 
 
@@ -298,7 +299,8 @@ def main ():
     global sleep_time
     global default_ttw
     global default_expected_num_reg_lsnrs
-    global debugme
+    global debuggme
+    global affirm
 
     ansible_facts={}
 
@@ -318,8 +320,8 @@ def main ():
     vttw        = module.params["ttw"]
     vdebug      = module.params["debugging"]
 
-    if vdebug:
-        debugme = vdebug
+    if vdebug in affirm:
+        debuggme = True
 
     if not num_entries:
         v_entries = default_expected_num_reg_lsnrs

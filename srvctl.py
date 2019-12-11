@@ -927,6 +927,7 @@ def main ():
   global msg
   global ansible_facts
   global module
+  global istrue
 
   # local vars
   custom_err_msg = ""
@@ -955,8 +956,8 @@ def main ():
   vobj          = module.params["obj"]
   vdebugging    = module.params["debugging"]
 
-  if to_bool(vdebugging):
-    debugme = vdebugging
+  if vdebugging in istrue:
+    debugme = True
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
   else:
