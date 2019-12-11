@@ -673,7 +673,10 @@ def main ():
             comp = ""
             db_home = ""
             comp = ansible_facts[refname]['compatible']
-            db_home = comp[:-(len(comp.split(".")[4])+1):]
+            if len(comp.split(".")) > 4:
+                db_home = comp[:-(len(comp.split(".")[4])+1):]
+            else:
+                db_home = comp
             home = '/app/oracle/%s/%s' %  ( db_home, db_home_name)
             debugg("-------- > home=%s" % (home))
             # this splits compatible 11.2.0.4.0 then takes len of the last item adds 1 for the decimal '-' drops the last two chars
