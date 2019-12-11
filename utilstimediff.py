@@ -157,10 +157,11 @@ def main(argv):
     if vdebug in affirm:
         debugg("=====>>> vdebug: %s" % (vdebug))
         vdebugme = True
-        if vdebug == "log":
+    elif vdebug == "log":
             vlogit = True
+            vdebugme = True
 
-    debugg("vdebug = {} | vdebugme = {} and vlogit = {} vdebugme = {}".format(vdebug or "None", vdebugme or "None", vlogit or "None", vdebugme or "None"))
+    debugg("vdebug = {0} vdebugme = {1} and vlogit = {2}".format(vdebug or "None", vdebugme or "None", vlogit or "None") )
 
     if vrefname:
         refname = vrefname
@@ -168,7 +169,7 @@ def main(argv):
     # if a refname was passed in use it, else use the default ( 'timediff' )
     ansible_facts = { refname: { } }
 
-    _elapsedtime = ( time.time() - vstart_time )
+    _elapsedtime = ( time.time() - float(vstart_time ))
     _hours = int( ( _elapsedtime / 60.0 ) / 60.0 )
     _minutes = int( ( _elapsedtime / 60.0 ) - ( _hours * 60.0 ) )
     _seconds = int( _elapsedtime - ( _hours * 60 * 60 ) - ( _minutes * 60.0 ) )
