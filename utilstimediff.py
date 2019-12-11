@@ -68,7 +68,7 @@ EXAMPLES = '''
             =====================================================================
 
                       Utils {{ fx }} run time:
-                          ( HR:MI:SS )
+                          ( HR:MI:SS.MS )
                             {{ '%02d' | format( timediff.hrs|int ) }}:{{ '%02d' | format( timediff.min|int ) }}:{{ '%02d' | format( timediff.sec|int ) }}
 
                        or
@@ -92,7 +92,7 @@ EXAMPLES = '''
 
 '''
 
-msg=""
+msg = ""
 vdebugme = False
 vlogit = False
 refname = "timediff"
@@ -135,8 +135,6 @@ def main(argv):
     global vlogit
     global refname
     global affirm
-    divider = "="
-    weekday = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
     ansible_facts={}
 
@@ -157,28 +155,29 @@ def main(argv):
     vdebug       = module.params.get('debugging')
 
     if vdebug in affirm:
-        add_to_msg("=====>>> vdebug: %s" % (vdebug))
+        debugg("=====>>> vdebug: %s" % (vdebug))
         vdebugme = True
         if vdebug == "log":
             vlogit = True
 
-    debugg("vdebug = {} | vdebugme = {} and vlogit = {} vdebugme = {}".format(vdebug, vdebugme, vlogit, vdebugme))
+    debugg("vdebug = {} | vdebugme = {} and vlogit = {} vdebugme = {}".format(vdebug or "None", vdebugme or "None", vlogit or "None", vdebugme or "None"))
 
     if vrefname:
         refname = vrefname
 
+    # if a refname was passed in use it, else use the default ( 'timediff' )
     ansible_facts = { refname: { } }
 
     _elapsedtime = ( time.time() - vstart_time )
-    hours = int( ( _elapsedtime / 60.0 ) / 60.0 )
-    minutes = int( ( _elapsedtime / 60.0 ) - ( hours * 60.0 ) )
-    seconds = int( _elapsedtime - ( hours * 60 * 60 ) - ( minutes * 60.0 ) )
-    hseconds = int( ( _elapsedtime - ( hours * 60 * 60 ) - ( minutes * 60.0 ) - seconds ) * 100 )
-    tot_run = '%02d:%02d:%02d.%02d' % (hours, minutes, seconds, hseconds)
+    _hours = int( ( _elapsedtime / 60.0 ) / 60.0 )
+    _minutes = int( ( _elapsedtime / 60.0 ) - ( _hours * 60.0 ) )
+    _seconds = int( _elapsedtime - ( _hours * 60 * 60 ) - ( _minutes * 60.0 ) )
+    _hseconds = int( ( _elapsedtime - ( _hours * 60 * 60 ) - ( _minutes * 60.0 ) - _seconds ) * 100 )
+    _tot_run = '%02d:%02d:%02d.%02d' % (_hours, _minutes, _seconds, _hseconds)
 
-    ansible_facts[refname].update( { 'hrs': hours, 'min': minutes, 'sec': seconds, 'total': tot_run } )
+    ansible_facts[refname].update( { 'hrs': _hours, 'min': _minutes, 'sec': _seconds, 'total': _tot_run } )
 
-    add_to_msg("Checkpoint time difference : %s " % (tot_run))
+    add_to_msg("Checkpoint time difference : %s " % (_tot_run))
 
     add_to_msg("utilstimediff completed successfully.")
 
