@@ -27,7 +27,7 @@ default_ttw = 2
 default_expected_num_reg_lsnrs = 1
 grid_home = ""
 node_number = ""
-affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
+affirm = ['TRUE', 'True', 'true', 'YES', 'Yes', 'yes', 'T', 't', 'Y', 'y']
 # number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
 # [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
 # Service "tstdb.ccci.org" has 2 instance(s).
