@@ -953,6 +953,7 @@ def rac_running_homes():
     global ora_home
     global grid_home
     global node_number
+    global is_rac
     grid_ver = ""
     tempstat = ""
     tempdb = ""
@@ -965,7 +966,10 @@ def rac_running_homes():
 
     debugg("rac_running_homes() ...starting...")
 
-    if not node_number:
+    if not is_rac:
+        is_rac_host()
+
+    if is_rac and not node_number:
         node_number = get_node_num()
 
     # Get a list of running instances
@@ -1095,7 +1099,11 @@ def rac_running_homes():
 
     for vdatabase in srvctl_dbs:
       debugg("for vdatabase=%s in srvctl_dbs")
-      vnextdb = vdatabase + str(node_number)
+      if is_rac:
+          vnextdb = vdatabase + str(node_number)
+      else:
+          vnextdb = vdatabase
+          
       if vnextdb not in dbs:
 
           msg = msg + "srvctl dbs %s" % (vnextdb)
