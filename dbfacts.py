@@ -91,7 +91,7 @@ vparams=[ "cluster_database",
 msg = ""
 debugme = False
 defrefname = "dbfacts"
-true_bool = ['True','T','true','t','True','Yes','y']
+true_bool = ['True','T','true','t','Yes','yes','y','Y']
 db_home_name = "dbhome_1"
 
 
