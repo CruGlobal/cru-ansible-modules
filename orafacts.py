@@ -1088,6 +1088,7 @@ def listener_info():
     except:
       err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
+    # add lsnrctl alert log to lsnrfax
     if temp:
       lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
     else:
@@ -1099,14 +1100,22 @@ def listener_info():
     except:
       err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
+    # add lsnrctl version to lsnrfax
     if temp:
       lsnrfax['version'] = temp
     else:
       lsnrfax['version'] = "Listener version could not be determined."
 
+     # add the oracle home this ran out of.
+     if ora_home:
+         lsnrfax['home'] = ora_home
+     else:
+         lsnrfax['home'] = "unknown"
+
     return(lsnrfax)
 
   else:
+
     return({"lsnrctl": "No listener running"})
 
 
