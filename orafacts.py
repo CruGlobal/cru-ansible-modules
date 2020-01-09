@@ -1103,7 +1103,7 @@ def rac_running_homes():
           vnextdb = vdatabase + str(node_number)
       else:
           vnextdb = vdatabase
-          
+
       if vnextdb not in dbs:
 
           msg = msg + "srvctl dbs %s" % (vnextdb)

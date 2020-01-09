@@ -62,7 +62,8 @@ EXAMPLES = '''
         oracle_home: "{{ oracle_home }}"
         refname: "{{ refname_str }} (5)"
         ignore: True (6)
-        debugging: False (7)
+        force_logs: True (7)
+        debugging: False (8)
       become_user: "{{ utils_local_user }}"
       register: sys_facts
 
@@ -82,7 +83,9 @@ EXAMPLES = '''
           source database fails the module will not throw a fatal error
           to stop the play and continue.
 
-      (7) debugging  - (optional) - if 'True' will add debugging statements to the output msg.
+      (7) force_logs - Force archive logs to write to disk. Helpful when working with new db that hasn't.
+
+      (8) debugging  - (optional) - if 'True' will add debugging statements to the output msg.
 
 '''
 
@@ -113,7 +116,7 @@ default_ora_base = "/app/oracle/"
 defualt_ora_home = "dbhome_1"
 default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
 default_refname = "sysdbafacts"
-true_bool = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
+true_bool = ['True','TRUE','true', True, 'YES','Yes','yes','t','T','y','Y']
 
 
 def add_to_msg(mytext):
@@ -182,6 +185,7 @@ def main ():
         src_passwd_dir  =dict(required=False),
         share_dir       =dict(required=False),
         ignore          =dict(required=False),
+        force_logs      =dict(required=False),
         debugging       =dict(required=False)
       ),
       supports_check_mode=True,
@@ -199,6 +203,7 @@ def main ():
   vshare_dir        = module.params.get('share_dir')
   voracle_home      = module.params.get('oracle_home')
   vdebugging        = module.params.get('debugging')
+  vforce_logs       = module.params.get('force_logs')
 
   if vdebugging:
       debugme = vdebugging
@@ -526,6 +531,28 @@ def main ():
 
     ansible_facts[refname]['dirs'] = dirs
 
+    # Force log switch to force archvielogs to write
+    log_switch =False
+    if vforce_logs in true_bool:
+        try:
+          cur.execute("ALTER SYSTEM CHECKPOINT")
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore not in true_bool:
+              module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+
+        log_switch = True
+
+        try:
+            cur.execute("ALTER SYSTEM SWITCH LOGFILE")
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            if vignore not in true_bool:
+                module.fail_json(msg='Error getting sourcedb home, Error: %s' % (error.message), changed=False)
+
+        ansible_facts[refname]['archive_log_switch'] = log_switch
+    else:
+        ansible_facts[refname]['archive_log_switch'] = log_switch
 
     # BCT path
     try:
