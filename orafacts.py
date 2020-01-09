@@ -479,7 +479,7 @@ def get_installed_ora_homes2():
 def strip_version(vorahome):
     """Strip the oracle version from an oracle_home entry"""
 
-    all_items = vorahome.split("/").strip()
+    all_items = vorahome.split("/")
 
     for item in all_items:
         if item and item[0].isdigit():
