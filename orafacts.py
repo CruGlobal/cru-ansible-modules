@@ -1107,10 +1107,10 @@ def listener_info():
       lsnrfax['version'] = "Listener version could not be determined."
 
      # add the oracle home this ran out of.
-     if ora_home:
-         lsnrfax['home'] = ora_home
-     else:
-         lsnrfax['home'] = "unknown"
+    if ora_home:
+     lsnrfax['home'] = ora_home
+    else:
+     lsnrfax['home'] = "unknown"
 
     return(lsnrfax)
 
