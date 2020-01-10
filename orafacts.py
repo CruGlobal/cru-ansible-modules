@@ -331,7 +331,7 @@ def strip_version(vorahome):
     """Strip the oracle version from an oracle_home entry"""
     debugg("strip_version().....called with : [ %s ] " % (vorahome))
 
-    all_items = vorahome.strip().split("/")
+    all_items = vorahome.split("/")
 
     for item in all_items:
         if item and item[0].isdigit():
@@ -904,8 +904,12 @@ def rac_running_homes():
     vmetadata={}
 
     for vdatabase in srvctl_dbs:
-      debugg("    vdatabase=%s" % (str(vdatabase)))
-      vnextdb = vdatabase + str(node_number)
+      debugg("for vdatabase=%s in srvctl_dbs")
+      if is_rac:
+          vnextdb = vdatabase + str(node_number)
+      else:
+          vnextdb = vdatabase
+
       if vnextdb not in dbs:
 
           msg = msg + "srvctl dbs %s" % (vnextdb)
