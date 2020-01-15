@@ -76,6 +76,7 @@ def_ref_name = "sectblcount"
 msg = ""
 debugme = False
 cru_domain = ".ccci.org"
+affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y', 'yes']
 
 def add_to_msg(inStr):
     """Add strings to msg"""
@@ -99,7 +100,7 @@ def convertToTuple(inStr):
     return(tuple(tmp))
 
 
-def is_rac_host():
+def is_rac():
     """Determine if the host this is running on is
        part of a RAC installation with other nodes
        or a single instance host.
@@ -155,24 +156,25 @@ def run_on_host(cmd_str=None):
 # =================================== MAIN =====================================
 # ==============================================================================
 def main ():
-  """ Return the number of security tables owned by the PS Admin schema"""
+    """ Return the number of security tables owned by the PS Admin schema"""
 
-  global msg
-  global def_ref_name
-  global debugme
-  global cru_domain
+    global msg
+    global def_ref_name
+    global debugme
+    global cru_domain
+    global affirm
 
-  vchanged = False
-  ansible_facts={}
+    vchanged = False
+    ansible_facts={}
 
-  # Name to call facts dictionary being passed back to Ansible
-  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-  refname = ""
+    # Name to call facts dictionary being passed back to Ansible
+    # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+    refname = ""
 
-  os.system("/usr/bin/scl enable python27 bash")
-  # os.system("scl enable python27 bash")
+    os.system("/usr/bin/scl enable python27 bash")
+    # os.system("scl enable python27 bash")
 
-  module = AnsibleModule(
+    module = AnsibleModule(
       argument_spec = dict(
         ps_admin        =dict(required=True),
         systempwd       =dict(required=True),
@@ -183,65 +185,74 @@ def main ():
         ignore          =dict(required=False)
       ),
       supports_check_mode=False,
-  )
+    )
 
-  # Get arguements passed from Ansible playbook
-  vpsadmin  = module.params.get('ps_admin')
-  vdbpass   = module.params.get('systempwd')
-  vtblList  = module.params.get('table_list')
-  vdb       = module.params.get('db_name')
-  vdbhost   = module.params.get('host')
-  vrefname  = module.params.get('refname')
-  vignore   = module.params.get('ignore')
-  vdebugme  = module.params.get('debugme')
+    # Get arguements passed from Ansible playbook
+    vpsadmin  = module.params.get('ps_admin')
+    vdbpass   = module.params.get('systempwd')
+    vtblList  = module.params.get('table_list')
+    vdb       = module.params.get('db_name')
+    vdbhost   = module.params.get('host')
+    vrefname  = module.params.get('refname')
+    vignore   = module.params.get('ignore')
+    vdebugme  = module.params.get('debugme')
 
-  if vignore is None:
+    if vignore in affirm:
+      vignore = True
+    else:
       vignore = False
 
-  if '.org' in vdbhost:
-    vdbhost = vdbhost.replace('.ccci.org','')
+    if '.org' in vdbhost:
+        vdbhost = vdbhost.replace(cru_domain,'')
 
-  if not cx_Oracle_found:
-    module.fail_json(msg="Error: cx_Oracle module not found")
+    if not cx_Oracle_found:
+        module.fail_json(msg="Error: cx_Oracle module not found")
 
-  if not vrefname:
-    refname = def_ref_name
-  else:
-    refname = vrefname
+    if not vrefname:
+        refname = def_ref_name
+    else:
+        refname = vrefname
 
-  if vtblList is None:
-    module.fail_json(msg="Error: a string containing tables must be provided: \"table1,table2\" etc. ")
-  else:
-    secTblList = convertToTuple(vtblList)
+    if vtblList is None:
+        module.fail_json(msg="Error: a string containing tables must be provided: \"table1,table2\" etc. ")
+    else:
+        secTblList = convertToTuple(vtblList)
 
-  debugg("secTblList = %s" % (str(secTblList)))
+    debugg("secTblList = %s" % (str(secTblList)))
 
-  # check vars passed in are not NULL. All are needed to connect to source db
-  if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None) and (vpsadmin is not None):
+    # check vars passed in are not NULL. All are needed to connect to source db
+    if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None) and (vpsadmin is not None):
+
+        # vdb = vdb + vdbhost[-1:]
+        # can use: service_name = db.ccci.org or sid = db1
+        if is_rac():
+            vsid = vdb + vdbhost[-1:]
+        else:
+            vsid = vdb
+
+        if cru_domain not in vdbhost:
+            vdbhost = vdbhost + cru_domain
 
         try:
-          vdb = vdb + vdbhost[-1:]
-          if cru_domain not in vdb:
-              vdb = vdb + cru_domain
-          dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+            dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
         except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if vignore:
+            error, = exc.args
+            if vignore:
               msg = "Failed to create dns_tns: %s" %s (error.message)
-          else:
-              module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+            else:
+              module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vsid, vdbhost), changed=False)
 
         try:
-          con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+            con = cx_Oracle.connect('system', vdbpass, dsn_tns)
         except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if vignore:
-              add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
-              if debugme:
-                  add_to_msg(" vignore: %s " % (vignore))
-              module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
-          else:
-              module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+            error, = exc.args
+            if vignore:
+                add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
+                if debugme:
+                    add_to_msg(" vignore: %s " % (vignore))
+                    module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+            else:
+                module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vsid, vdbhost), changed=False)
 
         cur = con.cursor()
 
@@ -264,7 +275,7 @@ def main ():
 
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
-  else:
+    else:
 
         if vdb is None:
             add_to_msg("Required parameter database name not defined.")
