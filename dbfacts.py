@@ -407,7 +407,7 @@ def main ():
 
         # Determine if SIEBEL or PS Database
         try:
-          cur.execute('select username from dba_users where username in (\'SYSADM\',\'FINADM\',\'SIEBEL\''))
+          cur.execute("select username from dba_users where username in ('SYSADM','FINADM','SIEBEL')")
         except cx_Oracle.DatabaseError as exc:
           error, = exc.args
           if vignore:
@@ -416,21 +416,19 @@ def main ():
           else:
               module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
 
-        special_user = ""
+        special_case = ""
         if not ignore_err_flag:
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             if vtemp == 'SIEBEL':
-                special_case = 'siebel'
+                ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
             elif vtemp == "FINADM":
-                special_case = "finadm"
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True' } )
             elif vtemp == "SYSADM":
-                special_case = "sysadm"
-
-            if special_user:
-                ansible_facts[refname].update( { 'special_case' : { 'special_case': 'True', 'special_user' : special_user } } )
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True' } )
             else:
-                ansible_facts[refname].update( { 'special_case' : { 'special_case': 'False', 'special_user' : "None" } } )
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+                
         ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
