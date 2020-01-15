@@ -214,7 +214,7 @@ def main ():
         ignore          =dict(required=False),
         debugging       =dict(required=False)
       ),
-      supports_check_mode=False,
+      supports_check_mode=True,
     )
 
     # Get arguements passed from Ansible playbook
@@ -403,6 +403,34 @@ def main ():
             else:
               vtemp = 'False'
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
+        ignore_err_flag = False
+
+        # Determine if SIEBEL or PS Database
+        try:
+          cur.execute('select username from dba_users where username in (\'SYSADM\',\'FINADM\',\'SIEBEL\''))
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+
+        special_user = ""
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            if vtemp == 'SIEBEL':
+                special_case = 'siebel'
+            elif vtemp == "FINADM":
+                special_case = "finadm"
+            elif vtemp == "SYSADM":
+                special_case = "sysadm"
+
+            if special_user:
+                ansible_facts[refname].update( { 'special_case' : { 'special_case': 'True', 'special_user' : special_user } } )
+            else:
+                ansible_facts[refname].update( { 'special_case' : { 'special_case': 'False', 'special_user' : "None" } } )
         ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
