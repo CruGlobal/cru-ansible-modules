@@ -1208,10 +1208,8 @@ def get_version(local_db):
 
     oracle_version = output.strip()
 
-    if "12" in oracle_version:
-        return("12")
-    elif "11" in oracle_version:
-        return("11")
+    if oracle_version:
+        return(oracle_version.split(".")[0])
     else:
         return("unk")
 
