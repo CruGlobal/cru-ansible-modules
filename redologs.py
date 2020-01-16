@@ -110,6 +110,9 @@ g_vignore = False
 ansible_facts = {}
 module_fail = False
 module_exit = False
+israc = False
+affirm = ['True','TRUE','true', True, 'YES','Yes','yes','t','T','y','Y']
+cru_domain = ".ccci.org"
 
 
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
@@ -188,22 +191,29 @@ def add_to_msg(add_string):
         msg = add_string
 
 
-def create_tns(vdbhost,vdb):
+def create_tns(vdbhost,vsid):
     global msg
     global g_vignore
     global module_fail
+    global israc
+    global cru_domain
+    global affirm
 
-    debugg("Connecting to %s on host %s" % (vdb,vdbhost))
+    debugg("create_tns db={} host={} israc={}".format(vsid, vdbhost, israc))
 
+    if cru_domain not in vdbhost:
+        vdbhost = vdbhost + cru_domain
+
+    add_to_msg("creating dns with sid={} host={}".format(vsid, vdbhost))
     try:
-      dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+      dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       if g_vignore:
           add_to_msg("create_tns() : Failed to create dns_tns: %s" %s (error.message))
           module_exit = True
       else:
-          add_to_msg('create_tns() : TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost))
+          add_to_msg('create_tns() : TNS generation error: %s, db name: %s host: %s' % (error.message, vsid, vdbhost))
           module_fail = True
 
     debugg("exit create_tns with : %s " % (dsn_tns))
@@ -404,15 +414,31 @@ def prep_host(vhost):
         return(vhost)
 
 
-def prep_db(vdb,vhost):
-    debugg("prep_db(%s,%s)" % (vdb,vhost))
-    if vdb[-1:].isdigit():
-        debugg("prep_db exiting with vdb: %s" % (vdb))
-        return(vdb)
+def prep_sid(vdb,vhost):
+    global affirm
+    global israc
+
+    if cru_domain in vhost:
+        vhost = vhost.replace(cru_domain, "")
+
+    if israc in affirm:
+        if vhost[-1:].isdigit():
+            node_num = vhost[-1:]
+
+        if not vdb[-1:].isdigit():
+            sid = vdb + vhost[-1:]
     else:
-        dbinst = vdb + vhost[-1:]
-        debugg("prep_db exiting with vdb: %s" % (dbinst))
-        return(dbinst)
+        sid = vdb
+
+    debugg("prep_db({},{}) sid={}".format(vdb, vhost, sid))
+    return(sid)
+    # if vdb[-1:].isdigit():
+    #     debugg("prep_db exiting with vdb: %s" % (vdb))
+    #     return(vdb)
+    # else:
+    #     dbinst = vdb + vhost[-1:]
+    #     debugg("prep_db exiting with vdb: %s" % (dbinst))
+    #     return(dbinst)
 
 # ==============================================================================
 # =================================== MAIN =====================================
@@ -423,6 +449,8 @@ def main ():
     global msg
     global debugme
     global g_vignore
+    global israc
+    global affirm
 
     ansible_facts={}
 
@@ -442,6 +470,7 @@ def main ():
             function        =dict(required=True),
             size            =dict(required=False),
             units           =dict(required=False),
+            israc           =dict(required=False),
             ignore          =dict(required=False),
             refname         =dict(required=False),
             debugme         =dict(required=False)
@@ -457,14 +486,25 @@ def main ():
     vfx            = module.params.get('function')
     vsize          = module.params.get('size')
     vunits         = module.params.get('units')
+    visrac         = module.params.get('israc')
     vignore        = module.params.get('ignore')
     vrefname       = module.params.get('refname')
     vdebugme       = module.params.get('debugme')
 
-    if vdebugme:
-        debugme = vdebugme
+
+    if vdebugme in affirm:
+        debugme = True
+    else:
+        debugme = False
+
 
     debugg("Start parameter checks")
+    if visrac in affirm:
+        israc = True
+    else:
+        israc = False
+    debugg(" israc={} ".format(israc))
+
     # if the user passed a reference name use it
     if vrefname:
         refname = vrefname
@@ -535,8 +575,8 @@ def main ():
 
     vdbhost = prep_host(vdbhost)
 
-    debugg("before call to prep_db(%s,%s)" % (vdb,vdbhost))
-    vdb = prep_db(vdb,vdbhost)
+    debugg("before call to prep_db({},{})".format(vdb, vdbhost))
+    vdb = prep_sid(vdb, vdbhost)
 
     debugg("before calling create_tns(%s,%s)" % (vdbhost,vdb))
     dsn_tns = create_tns(vdbhost,vdb)
