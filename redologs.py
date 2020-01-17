@@ -81,6 +81,8 @@ EXAMPLES = '''
         units:
         ignore: true
         refname:
+        debugmode:
+        debuglog:
     become_user: "{{ local_user }}"
     register: redo_run
 
@@ -95,6 +97,8 @@ EXAMPLES = '''
         units: m
         ignore: false
         refname:
+        debugmode:
+        debuglog:
     become_user: "{{ local_user }}"
     register: redo_run
 
@@ -105,6 +109,10 @@ EXAMPLES = '''
     units are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
     ignore - tells the module whether to fail on error and raise it or pass on error
              and continue with the play. Default is to fail.
+    debugmode and debuglog - optional, but required for debugging.
+             all debugging information will be written to debuglog if provided.
+             otherwise if debugmode is True it, but no debuglog provided it will
+             be written to the output msg if the module runs to completion.
 
 '''
 # Global Vars:
@@ -112,13 +120,13 @@ itemsToMatch = 0
 msg = ""
 error_msg = ""
 debugme = False
-debuglog = "/Users/samkohler/Ansible/cru-ansible-oracle/bin/.utils/debug.log"
+debuglog = ""
 g_vignore = False
 ansible_facts = {}
 module_fail = False
 module_exit = False
 israc = False
-affirm = ['True','TRUE','true', True, 'YES','Yes','yes','t','T','y','Y']
+affirm = ['True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes', 't', 'T', 'y', 'Y', 'ON', 'on', 'On']
 cru_domain = ".ccci.org"
 # Name to call facts dictionary being passed back to Ansible
 # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
@@ -556,6 +564,7 @@ def main ():
     """ Return Oracle database parameters from a database not in the specified group"""
     global msg
     global debugme
+    global debuglog
     global g_vignore
     global israc
     global affirm
@@ -579,7 +588,8 @@ def main ():
             israc           =dict(required=False),
             ignore          =dict(required=False),
             refname         =dict(required=False),
-            debugme         =dict(required=False)
+            debugmode       =dict(required=False),
+            debuglog        =dict(required=False)
         ),
        supports_check_mode=False,
     )
@@ -595,14 +605,16 @@ def main ():
     visrac         = module.params.get('israc')
     vignore        = module.params.get('ignore')
     vrefname       = module.params.get('refname')
-    vdebugme       = module.params.get('debugme')
-
+    vdebugme       = module.params.get('debugmode')
+    vdebuglog      = module.params.get('debuglog')
 
     if vdebugme in affirm:
         debugme = True
     else:
         debugme = False
 
+    if vdebuglog:
+        debuglog = vdebuglog
 
     debugg("Start parameter checks")
     if visrac in affirm:
