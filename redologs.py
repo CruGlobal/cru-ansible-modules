@@ -22,6 +22,12 @@
 #  don't have access to the "module" that was created in the main body of the
 #  program
 #
+#  Revisions:
+#       January 17, 2020 - When running against JFD using flush function
+#       the module looped continuously for over 7 min and had to be killed.
+#       This version implements a new way of comparing starting state
+#       to current state and terminates when complete.
+#
 
 import ansible.module_utils
 from ansible.module_utils.basic import *
@@ -106,6 +112,7 @@ itemsToMatch = 0
 msg = ""
 error_msg = ""
 debugme = False
+debuglog = "/Users/samkohler/Ansible/cru-ansible-oracle/bin/.utils/debug.log"
 g_vignore = False
 ansible_facts = {}
 module_fail = False
@@ -113,13 +120,17 @@ module_exit = False
 israc = False
 affirm = ['True','TRUE','true', True, 'YES','Yes','yes','t','T','y','Y']
 cru_domain = ".ccci.org"
-
-
+# Name to call facts dictionary being passed back to Ansible
+# This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+refname = "redologs"
+def_con_as_user = "system"
+num_start_objs = 0
+#
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
 # ------------ ------------ ------------ ---------------- ---   ----------------------------------------------------------------------
 #	   1		    1	          50         ACTIVE		  YES   +FRA/TSTDB/ONLINELOG/group_1.28504.1006772175
 #
-# So a dictionary like this should be passed into class redoLog
+# A dictionary like this should be passed into class redoLog
 # { 'thread':1,'GROUP': 1, 'SIZE_MB':50, 'STATUS':'INACTIVE','ARCHIVED': 'YES','MEMBER': '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'}
 class redoLogClass:
     def __init__(self, redo_t):
@@ -133,6 +144,8 @@ class redoLogClass:
         self.__archivedStatus__ = redo_t[4]
         self.__member__ = redo_t[5]
         self.__startObj__ = False
+        self.__changeflag__ = False
+        self.__finished__ = False
         self.setStartStatus()
 
     def setStartStatus(self):
@@ -140,6 +153,8 @@ class redoLogClass:
             self.__startObj__ = True
         else:
             self.__startObj__ = False
+        # member will be +FRA or +DATA1 etc. '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'
+        self.__member__ = self.__member__.split("/")[0]
 
     def startingObj(self):
         return(self.__startObj__)
@@ -172,13 +187,96 @@ class redoLogClass:
     def getArchived(self):
         return(self.__archivedStatus__)
 
+    def same_obj(self, obj_info):
+        """ checking that the obj_info is for this object:
+            { 'thread': Thread#, 'group': Group#, 'member': Member ( +DATA or +FRA ), 'status': current or inactive, 'arc': no or yes }
+        """
+        if obj_info.get('thread', None) == self.__redoThread__:
+            if obj_info.get('group') == self.__redoGroup__:
+                if obj_info.get('member', None) == self.__member__:
+                    return(True)
+                else:
+                    return(False)
+            else:
+                return(False)
+        else:
+            return(False)
+
+    def changed(self, obj_state):
+        """ current state of this obj passed in:
+            { 'thread': Thread#, 'group': Group#, 'member': Member ( +DATA or +FRA ), 'status': current or inactive, 'arc': no or yes }
+            if __startObj__ and current_state != __startingStatus__
+            change is reached. So next time current_state == __startingStatus__
+            the cycle is finished. This fx only tracks change.
+        """
+        # if obj_state is not for this obj return
+        if not self.same_obj(obj_state):
+            return
+
+        # if this is a start obj and its finished, nothing to do
+        if self.__startObj__ and self.__finished__:
+            return
+
+        # if start obj and change hasnt happened yet..
+        if self.__startObj__ and not self.__changeflag__:
+            if self.__startingStatus__ != obj_state.get('status', None):
+                self.__changeflag__ = True
+        # elif start obj and current state == start state and change flag is set
+        elif self.__changeflag__ and obj_state.get('status', None) == self.__startingStatus__:
+            self.__finished__ = True
+
+    def finished(self):
+        """ This returns finished state
+        """
+        return(self.__finished__)
+
+    def debugg(self, _debugfile=None, _num=None):
+        """ If debugfile passed flush contents of this
+            object to debugfile
+        """
+        if _debugfile:
+            with open(_debugfile, 'a') as f:
+                f.write("====================================\n")
+                f.write(" _num: {} \n \
+                            redoThread={}\n \
+                            redoGroup={}\n \
+                            redoStatus={}\n \
+                            prevStatus={}\n \
+                            startingStatus={}\n \
+                            redoSize={}\n \
+                            redoUnits={}\n \
+                            archivedStatus={}\n \
+                            member={}\n \
+                            startObj={}\n <<<<<< \
+                            changeflag={}\n \
+                            finished={}\n \
+                         ".format(_num,
+                                    self.__redoThread__,
+                                    self.__redoGroup__,
+                                    self.__redoStatus__,
+                                    self.__prevStatus__,
+                                    self.__startingStatus__,
+                                    self.__redoSize__,
+                                    self.__redoUnits__,
+                                    self.__archivedStatus__,
+                                    self.__member__,
+                                    self.__startObj__,
+                                    self.__changeflag__,
+                                    self.__finished__
+                                     ))
+
 
 def debugg(a_str):
     global msg
     global error_msg
+    global debuglog
 
     if debugme:
-        add_to_msg(a_str)
+        if not debuglog:
+            add_to_msg(a_str)
+        else:
+            with open(debuglog, 'a') as f:
+                f.write(a_str+"\n")
 
 
 def add_to_msg(add_string):
@@ -188,7 +286,7 @@ def add_to_msg(add_string):
     if msg:
         msg = msg + " " + add_string
     else:
-        msg = add_string
+        msg = add_string + " "
 
 
 def create_tns(vdbhost,vsid):
@@ -204,7 +302,7 @@ def create_tns(vdbhost,vsid):
     if cru_domain not in vdbhost:
         vdbhost = vdbhost + cru_domain
 
-    add_to_msg("creating dns with sid={} host={}".format(vsid, vdbhost))
+    debugg("creating dns with sid={} host={}".format(vsid, vdbhost))
     try:
       dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
     except cx_Oracle.DatabaseError as exc:
@@ -249,31 +347,122 @@ def create_con(vdbpass, dsn_tns, vconn_as):
         cur = con.cursor()
         return(cur)
 
-# ==============================================================================
 
 def redoFlushMain(cur):
     global msg
     global module_fail
     global module_exit
+    cur_count = 0
     startingPoint = []
     statusNow = []
 
-    debugg("redoFlushMain")
+    debugg("redoFlushMain()...starting...")
 
-    startingPoint = curStatus(cur)
+    start_state = curStatus(cur)
+    final_count = start_obj_count(start_state) # get the number of items that have to finish
 
-    # start forcing redo changes until this same redo thread group is current again.
-    while not backToStartingPoint(statusNow, startingPoint) and not module_exit and not module_fail:
+    debugg("redoFlushMain() ..while loop starting....cur_count={} final_count={}".format(cur_count, final_count))
+    while cur_count != final_count:
+        debugg("redoFlushMain()...advanceLogs()...")
         advanceLogs(cur)
-        time.sleep(2)
-        statusNow = curStatus(cur)
+        # get the current redo log status ( list of dictionaries )
+        cur_state = getstatusnow(cur)
+        # compare it with the original and see how many have finished
+        cur_count = compare_states(start_state, cur_state)
+        time.sleep(1)
 
 
-def curStatus(cur):
-    """Get current status of all redo logs and pass back a list of redoLogClass objects"""
+def compare_states(start_state, cur_state):
+    """ compare the starting state with the current state
+        see if the threads to watch have finished
+    """
+    fin_count = 0
+    debugg("compare_states()....starting.....")
+
+    for i in range(len(start_state)):
+        start_state[i].changed(cur_state[i])
+        if start_state[i].finished():
+            debugg("compare_states()..index {} returning True ( actual {} )".format(str(i), start_state[i].startingObj()))
+            fin_count += 1
+
+    debugg("compare_states()....finished.....returning fin_count={}".format(fin_count))
+    return(fin_count)
+
+
+def start_obj_count(orig_obj_list):
+    """ Return the number of objects that are start Objects
+    """
+    global num_start_objs
+    count = 0
+    debugg("start_obj_count()...starting...num_start_objs={}".format(num_start_objs))
+
+    if int(num_start_objs) != 0:
+        return(num_start_objs)
+
+    debugg("start_obj_count()...count loop..len(orig_obj_list) = {}".format(str(len(orig_obj_list))))
+    for obj in orig_obj_list:
+        debugg("start_obj_count()...checking obj={}".format(str(count)))
+        if obj.startingObj():
+            count += 1
+            debugg("     startobj={} count = {}".format(str(obj.startingObj()), str(count)))
+
+    num_start_objs = count
+    debugg("start_obj_count()...exiting...returning num_start_objs={}".format(str(num_start_objs)))
+    return(num_start_objs)
+
+
+def getstatusnow(cur):
+    """ Implementing new way to terminate log switches.
+        observed log switching going on for 7 min.
+        cycling over and over without terminating.
+        Initial state is captured by curStatus()
+    """
     global g_vignore
     global module_fail
     global module_exit
+    redoLog_l = []
+    temp_list = []
+    temp_dict = {}
+
+    debugg("getstatusnow()...starting....")
+
+    try:
+        cmd_str = 'select l.thread#,l.group#,l.bytes/1024/1024 SIZE_MB,l.status,l.archived,lf.member from v$logfile lf, v$log l where lf.group#=l.group# order by l.thread#,group#'
+        cur.execute(cmd_str)
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+        add_to_msg('curStatus() : Error redo logs and status, Error: %s' % (error.message))
+        response = { 'status':'Fail', 'Error': error.message, 'changed':'False'}
+        if g_vignore:
+            module_exit = True
+        else:
+            module_fail = True
+
+    if not module_exit and not module_fail:
+        allRedoLogs_l =  cur.fetchall() # Returns list of tuples
+        # [(1, 1, 50, 'CURRENT', 'NO', '+DATA2/JFD/ONLINELOG/group_1.289.1024229571'), ... ]
+        # create a list of dictionary objects and prep it to pass to orig_obj_list
+        for oneLog in allRedoLogs_l:
+            debugg("oneLog = {}".format(str(oneLog)))
+            # (1, 1, 50, 'CURRENT', 'NO', '+DATA2/JFD/ONLINELOG/group_1.289.1024229571')
+            temp_membr = oneLog[5].split("/")[0]
+            temp_dict = { 'thread': oneLog[0], 'group': oneLog[1], 'member': temp_membr, 'status': oneLog[3], 'arc': oneLog[4]}
+            temp_list.append(temp_dict)
+
+    debugg("getstat()...exiting....returning = {}".format(str(temp_list)))
+    return(temp_list)
+
+
+def curStatus(cur):
+    """ Get current status of all redo logs and pass back a list of redoLogClass objects
+        Used to capture the starting state before looping.
+    """
+    global g_vignore
+    global module_fail
+    global module_exit
+    global debuglog
+    local_debugging = True
+
     redoLog_l = []
 
     debugg("curStatus()")
@@ -291,13 +480,16 @@ def curStatus(cur):
 
     if not module_exit and not module_fail:
         allRedoLogs_l =  cur.fetchall() # Returns list of tuples
-
         # allRedoLogs_d = convert_to_dict(allRedoLogs_l)  # Dicts will provide flexiblity loading class objects
-
+        debug_idx = 0
         # create a list of redoLog Objects
         for oneLog in allRedoLogs_l:
             # debugg("%s type: %s" % (str(oneLog),type(oneLog)))
             redoLog_l.append(redoLogClass(oneLog))
+            if local_debugging:
+                # def debugg(self, _debugfile=None, _num=None):
+                redoLog_l[debug_idx].debugg(debuglog, debug_idx+1 )
+                debug_idx += 1
 
         debugg("exit curStatus() list of objects: %s" % (str(len(redoLog_l))))
         return(redoLog_l)
@@ -323,84 +515,6 @@ def advanceLogs(cur):
         else:
             module_fail = True
     debugg("exiting AdvanceLogs()")
-
-
-def backToStartingPoint(statusNow_l, origStartingPoint_l):
-    """startingPoint is list of dictionaries containing the Thread#,Group#'s that had the status ARC=NO, STATUS=CURRENT at start
-       force archive will continue until the starting point is reached. ( A complete circle is made and all redo logs
-       are flushed. )"""
-    global itemsToMatch
-    global module_fail
-    global module_exit
-
-    itemsThatMatch = 0
-    debugg("backToStartingPoint()")
-
-    if not module_fail and not module_exit:
-        # startFlag skips first run when objects would not have changed.
-        if len(statusNow_l) > 0:
-            # on two node rac with min redo of 2 should have to match 4 objects
-            if itemsToMatch == 0:
-                for item in origStartingPoint_l:
-                    if item.startingObj():
-                        debugg("startObject found => Group: %s" % (str(item.getGroup())))
-                        itemsToMatch += 1
-
-            for item in origStartingPoint_l:
-                if item.startingObj():
-                    curGroupState = sameGroupNow(item, statusNow_l)   # Find same item in statusNow_list of redoLog objects
-                    if item.getStartingStatus() == curGroupState.getStatus():
-                        debugg("")
-                        itemsThatMatch += 1
-
-            if itemsThatMatch == itemsToMatch:
-                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: True" % (itemsThatMatch, itemsToMatch))
-                return(True)
-            else:
-                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: False" % (itemsThatMatch, itemsToMatch))
-                return(False)
-
-
-def sameGroupNow(originalItem, curStatusList):
-
-    for item in curStatusList:
-        if item.getGroup() == originalItem.getGroup():
-            debugg("sameGroupNow returning matching Group from curStatusList Group: %s" % (item.getGroup()))
-            return(item)
-
-
-def findCurrentThread(redoLogObj_list):
-    startingPoint = []
-
-    for redolog in redoLogObj_list:
-        if redolog.getArchived() == "NO" and redolog.getStatus() == "CURRENT":
-            startingPoint.append({'thread': redolog.getThread(), 'group': redolog.getGroup() })
-
-    return(startingPoint)
-
-
-def convert_to_dict(redoLogs_l):
-    newRedoLogDict = {}
-    # (1, 1, 52428800, 'INACTIVE', 'YES', '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175')
-    # thread, group, size(bytes),status,archived,member
-    for item in redoLogs_l:
-        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5]})
-        tmp = hbytes(newRedoLogDict['size'])
-        newRedoLogDict['size'], newRedoLogDict['units'] = tmp.split("_")
-
-    return(newRedoLogDict)
-
-
-def hbytes(num):
-    for x in ['bytes','KB','MB','GB']:
-        if num < 1024.0:
-            return "%d_%s" % (round(num), x)
-        num /= 1024.0
-    return "%d_%s" % (round(num), 'TB')
-
-
-def redo_resize(cur, arg_size, arg_units):
-    pass
 
 
 def prep_host(vhost):
@@ -432,13 +546,7 @@ def prep_sid(vdb,vhost):
 
     debugg("prep_db({},{}) sid={}".format(vdb, vhost, sid))
     return(sid)
-    # if vdb[-1:].isdigit():
-    #     debugg("prep_db exiting with vdb: %s" % (vdb))
-    #     return(vdb)
-    # else:
-    #     dbinst = vdb + vhost[-1:]
-    #     debugg("prep_db exiting with vdb: %s" % (dbinst))
-    #     return(dbinst)
+
 
 # ==============================================================================
 # =================================== MAIN =====================================
@@ -451,12 +559,10 @@ def main ():
     global g_vignore
     global israc
     global affirm
+    global refname
+    global def_con_as_user
 
     ansible_facts={}
-
-    # Name to call facts dictionary being passed back to Ansible
-    # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-    refname = "redologs"
 
     os.system("/usr/bin/scl enable python27 bash")
     # os.system("scl enable python27 bash")
@@ -505,14 +611,15 @@ def main ():
         israc = False
     debugg(" israc={} ".format(israc))
 
-    # if the user passed a reference name use it
+    # if the user passed a reference name use it else use default ( redologs )
     if vrefname:
         refname = vrefname
 
+    # if user name to connect as was passed, use it, else default ( system )
     if vconnect_as:
         vconas = vconnect_as
     else:
-        vconas = "system"
+        vconas = def_con_as_user
 
     if not vdbpass:
         error_msg = 'REDOLOGS MODULE ERROR: No password provided.' %s (arg_param_name)
@@ -609,12 +716,12 @@ def main ():
               else:
                   module.fail_json(msg=msg, meta=response)
 
-            add_to_msg("Custom module dbfacts succeeded for %s database." % (vdb))
+            add_to_msg("Redologs module succeeded for %s database. %s function" % (vdb, vfx.lower()))
 
             vchanged="False"
 
     if module_fail:
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message or "Not available", 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
