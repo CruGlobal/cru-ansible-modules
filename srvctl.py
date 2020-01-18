@@ -130,6 +130,25 @@ debug_path = '/tmp/mod_debug.log'
 rac_nums = 10
 
 
+def remote_cmd(cmd_str):
+    """ execute command on remote host """
+    debugg("run_remote_cmd() :: ...starting...cmd_str={}".format(cmd_str))
+    try:
+        p = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       debugg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+       debugg("run_remote_cmd() :: Error running cmd_str={} on remote host = {}".format(cmd_str,remote_host))
+       return
+
+    debugg("run_cmd() :: returning output = %s" % (str(output)))
+
+    if output:
+        return(output.strip())
+    else:
+        return("")
+
+
 def to_bool(in_str):
     """Given an input string return True of False:
        Expected intput:
@@ -214,7 +233,7 @@ def debugg_to_file(info_str):
 
 
 def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
-    """Execute a command string and fail if necessary"""
+    """ Execute a command string and fail if necessary """
     global module
     global msg
     # global oracle_sid
@@ -377,7 +396,7 @@ def get_orahome_procid(db_name):
     # get the pmon process id for the running database.
     # 10189  tstdb1
     # cmd_str = "/bin/pgrep -lf _pmon_" + db_name + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
-    cmd_str = "ps -ef | grep _pmon_tstdb | grep -v grep | awk '{ print $2 \" \" $8 }' | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
+    cmd_str = "ps -ef | grep _pmon_%s | grep -v grep | awk '{ print $2 \" \" $8 }' | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed" % (db_name)
     output = popen_cmd_str(cmd_str)
     debugg("get_orahome_procid(db_name) output = %s" % (output))
     # if the database is down, but it possibly had an entry in /etc/oratab try this:
@@ -411,6 +430,28 @@ def get_orahome_procid(db_name):
     else:
         debugg("get_orahome_procid()...exiting...returning ora_home=%s" % (ora_home))
     return(ora_home)
+
+
+def ora_home_by_procid(db):
+    """ given a database, get its oracle_home by using its process id """
+    global oracle_home
+
+    if not oracle_home:
+        debugg("ora_home_by_procid()...starting...db = %s" % (db))
+        cmd_str = "ps -ef | grep _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed | grep -v grep | awk '{ print $2 \" \" $8}' | grep %s" % (db)
+        debugg("ora_home_by_procid()...cmd_str = %s" % (cmd_str))
+        output = remote_cmd(cmd_str)
+        debugg("ora_home_by_procid()...proc id = %s" % (output))
+
+        cmd_str = "sudo ls -l /proc/%s/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq".format(output)
+        debugg("ora_home_by_procid()...cmd_str = %s" % (cmd_str))
+        output = remote_cmd(cmd_str)
+        debugg("ora_home_by_procid()...oracle_home = %s" % (output))
+
+        oracle_home = output
+
+    return
+
 
 
 def get_db_state(db_name):
@@ -911,10 +952,9 @@ def extract_maj_version(ora_home):
 
 
 # ===================================================================================================
-#                                          MAIN
+# ============================================= MAIN ================================================
 # ===================================================================================================
 # Note use -eval with srvctl command to implement Ansible --check ??
-
 def main ():
   """ Execute srvctl commands """
   # global vars
@@ -955,6 +995,7 @@ def main ():
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
   vdebugging    = module.params["debugging"]
+  # rest of the parameters are read-in below:
 
   if vdebugging in istrue:
     debugme = True
