@@ -416,7 +416,6 @@ def get_orahome_procid(db_name):
         add_to_msg("Error[ get_orahome_procid(db_name) ] error parsing process id for database: %s Full output: [%s]" % (db_name, output))
         module_fail("get_orahome_procid() failed splitting output to get procid.")
 
-
     # get Oracle home the db process is running out of
     # (0, ' /app/oracle/12.1.0.2/dbhome_1/')
     cmd_str = "sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/\/bin\/oracle//' "
@@ -426,9 +425,15 @@ def get_orahome_procid(db_name):
     ora_home = output.strip()
 
     if not ora_home:
-        debugg("get_orahome_procid() - No ora_home to return using running process id. db may not be running...")
+        try:
+            ora_home_by_procid(db_name)
+        except:
+            debugg("get_orahome_procid() - No ora_home to return using running process id. db may not be running...")
+        return
     else:
         debugg("get_orahome_procid()...exiting...returning ora_home=%s" % (ora_home))
+
+    oracle_home = ora_home
     return(ora_home)
 
 
@@ -443,14 +448,14 @@ def ora_home_by_procid(db):
         output = remote_cmd(cmd_str)
         debugg("ora_home_by_procid()...proc id = %s" % (output))
 
-        cmd_str = "sudo ls -l /proc/%s/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq".format(output)
+        cmd_str = "sudo ls -l /proc/%s/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq" % (output)
         debugg("ora_home_by_procid()...cmd_str = %s" % (cmd_str))
         output = remote_cmd(cmd_str)
         debugg("ora_home_by_procid()...oracle_home = %s" % (output))
 
         oracle_home = output
 
-    return
+    return( oracle_home )
 
 
 
