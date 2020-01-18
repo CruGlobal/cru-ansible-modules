@@ -117,17 +117,52 @@ msg = ""
 custom_err_msg = ""
 # debugging
 global_debug_msg = ""
-debug_log = ""
+#debug_log = '/Users/samkohler/Ansible/cru-ansible-oracle/bin/.utils/debug.log'
+debug_log = "/tmp/mod_debug.log"
 truism = [True,False,'true','false','Yes','yes']
 debug_dir = ""
-utils_dir = os.path.expanduser("~/.utils")
+utils_settings_file = os.path.expanduser("~/.utils")
 module = None
-istrue = ['True','TRUE','T','true','YES','Yes','yes','y']
+affirm = ['True', 'TRUE', 'T', True, 'true', 'YES', 'Yes', 'yes', 'y', 'Y', 'ON', 'On', 'on']
 rac = None
 cru_domain = ".ccci.org"
-
-debug_path = '/tmp/mod_debug.log'
 rac_nums = 10
+
+
+def run_sub(cmd_str):
+    """ Run a command on the local host using the subprocess module.
+    """
+    try:
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except subprocess.CalledProcessError as e:
+        err_msg = "common::run_command() : [ERROR]: output = %s, error code = %s\n".format(e.output, e.returncode)
+        debugg(df, "Error running global run_sub. cmd_str={} Error: {}".format(cmd_str,err_msg))
+
+    results = output.decode('ascii').strip()
+    debugg(df,"run_sub()...exiting....output={} code={}".format(results, code))
+    return(results)
+
+
+def get_set_debuglog():
+    """ Get debug directory from ~/.utils """
+    global utils_settings_file
+    global debug_log
+    global debugme
+
+    if not debug_log:
+        cmd_str = "cat {} | grep ans_dir".format(utils_settings_file)
+        try:
+            output = run_sub(cmd_str)
+        except:
+            print("unable to set debug log")
+            continue
+        # ans_dir=/Users/samkohler/Ansible/cru-ansible-oracle
+        if output:
+            debug_log = output.split("=")[1] + "/bin/.utils/debug.log"
+            debugme = True
+    debugg("get_set_debuglog()...exiting...debug_log={}".format(debug_log))
+    return
 
 
 def to_bool(in_str):
@@ -135,7 +170,7 @@ def to_bool(in_str):
        Expected intput:
         Y,y,yes,N,n,no,No,True,true,t,False,false,f,F
     """
-    affirm = ['True','true','t','T','Yes','yes','y','Y']
+    global affirm
 
     if in_str in affirm:
         return(True)
@@ -196,7 +231,6 @@ def add_to_msg(msg_str):
 def debugg(debug_str):
     """add debugging info to msg if debugging=true"""
     global debugme
-    global debug_path
 
     if debugme:
         add_to_msg(debug_str)
@@ -205,12 +239,10 @@ def debugg(debug_str):
 
 def debugg_to_file(info_str):
     """write debugging to /tmp/mod_debug.log on remote host"""
-    global debug_path
+    global debug_log
 
-    f =  open(debug_path, 'a')
-    for aline in info_str.split("\n"):
+    with open(debug_log, 'a') as f:
         f.write(aline + "\n")
-    f.close()
 
 
 def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
@@ -250,6 +282,9 @@ def db_registered(db_name):
     # preferred method is get oracle home from running database process id.
     if not oracle_home:
         oracle_home = get_orahome_procid(db_name)
+
+    if not oracle_home:
+
 
     debugg("db_registered()...calling popen_cmd_str() with >>>>>> oracle_home=%s" % (oracle_home))
 
@@ -911,10 +946,9 @@ def extract_maj_version(ora_home):
 
 
 # ===================================================================================================
-#                                          MAIN
+# =========================================  MAIN  ==================================================
 # ===================================================================================================
-# Note use -eval with srvctl command to implement Ansible --check ??
-
+# Note use -eval with srvctl command to implement Ansible --check compatible ??
 def main ():
   """ Execute srvctl commands """
   # global vars
@@ -927,7 +961,7 @@ def main ():
   global msg
   global ansible_facts
   global module
-  global istrue
+  global affirm
 
   # local vars
   custom_err_msg = ""
@@ -954,9 +988,14 @@ def main ():
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
+  vinst_no      = module.params["inst_no"]
+  vstopt        = module.params["stopt"]
+  vparam        = module.params['param']
+  vttw          = module.params["ttw"]
   vdebugging    = module.params["debugging"]
 
-  if vdebugging in istrue:
+  if vdebugging in affirm:
+    get_set_debuglog()
     debugme = True
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
