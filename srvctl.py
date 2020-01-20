@@ -101,7 +101,7 @@ vparam   = ""
 # default time to wait in minutes for db state to change
 default_ttw = 5
 # Time to wait in seconds beteen db state checks
-loop_sleep_time = 2
+loop_sleep_time = 2 # seconds
 # domain pattern used to strip off hostname
 vdomain  = ".ccci.org"
 # environmentals
@@ -125,6 +125,16 @@ module = None
 istrue = ['True','TRUE','T','true','YES','Yes','yes','y']
 rac = None
 cru_domain = ".ccci.org"
+# True valid, False invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
+# This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
+valid_stop_12c = ('normal','immediate','abort','local','transactional')
+valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"', 'read only', 'read write') # ,'force'
+# https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
+# https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
+valid_stop_11g = ('normal','immediate','abort','transactional')
+# https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
+# https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
+valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force', 'read only', 'read write') # ,'force'
 
 debug_path = '/tmp/mod_debug.log'
 rac_nums = 10
@@ -438,7 +448,9 @@ def get_orahome_procid(db_name):
 
 
 def ora_home_by_procid(db):
-    """ given a database, get its oracle_home by using its process id """
+    """ given a database, get its oracle_home by using its process id
+	this is the same as get_orahome_procid(). Slightly more consolidated.
+    """
     global oracle_home
 
     if not oracle_home:
@@ -604,34 +616,23 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
 
 
 def is_opt_valid(vopt,vcmd,majver):
-    """Check that a given -stopoption | -startoption is valid. return 0 valid, 1 invalid."""
-
+    """Check that a given -stop option | -start option is valid. return True / False"""
+    global valid_start_11g
+    global valid_stop_11g
+    global valid_start_12c
+    global valid_stop_12c
     debugg("is_opt_valid()...starting...vopt=%s vcmd=%s majver=%s" % (vopt,vcmd,majver))
-    # 0 valid, 1 invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
-    # This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
-    valid_stop_12c = ('normal','immediate','abort','local','transactional')
-    valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"') # ,'force'
-    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
-    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
-    valid_stop_11g = ('normal','immediate','abort','transactional')
-    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
-    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
-    valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force') # ,'force'
-
     if majver == "12":
-        if vcmd.lower() == "start":
-            if vopt in valid_start_12c:
+        if vcmd.lower() == "start" and vopt in valid_start_12c:
                 return(True)
-        elif vcmd.lower() == "stop":
-            if vopt in valid_stop_12c:
+        elif vcmd.lower() == "stop" and vopt in valid_stop_12c:
                 return(True)
     elif majver == "11":
-        if vcmd.lower() == "start":
-            if vopt in valid_start_11g:
+        if vcmd.lower() == "start" and vopt in valid_start_11g:
                 return(True)
-        elif vcmd.lower() == "stop":
-            if vopt in valid_stop_11g:
+        elif vcmd.lower() == "stop" and vopt in valid_stop_11g:
                 return(True)
+
     debugg("is_opt_valid() exiting....returning False")
     return(False)
 
