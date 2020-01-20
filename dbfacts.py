@@ -91,8 +91,27 @@ vparams=[ "cluster_database",
 msg = ""
 debugme = False
 defrefname = "dbfacts"
-true_bool = ['True','T','true','t','Yes','yes','y','Y']
+affirm = ['True','TRUE', 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
+debug_log = ""
+utils_settings_file = os.path.expanduser("~/.utils")
+
+def set_debug_log():
+    """ Set the debug_log value to write debugging messages to """
+    global utils_settings_file
+    try:
+        with open(utils_settings_file, 'r') as f1:
+            line = f1.readline()
+            while line:
+                if 'ans_dir' in line:
+                    tmp = line.split("=")[1]
+                    debug_log = tmp + "/bin/.utils/debug.log"
+                    return
+                else:
+                    line = f1.readline()
+    except:
+        print("ans_dir not set in ~/.utils unable to write debug info to file")
+        return
 
 
 def add_to_msg(a_msg):
@@ -107,11 +126,13 @@ def add_to_msg(a_msg):
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
-    global msg
-    global debugme
+    # global msg
+    global debug_log
 
-    if debugme:
-        add_to_msg(db_msg)
+    # if debugme:
+    #     add_to_msg(db_msg)
+    with open(debug_log, 'a') as f:
+        f.write(db_msg + "\n")
 
 
 def convert_size(arg_size_bytes, vunit):
@@ -196,6 +217,7 @@ def main ():
     global db_home_name
     ansible_facts={}
     is_rac = None
+    global affirm
     ignore_err_flag = False
 
     # Name to call facts dictionary being passed back to Ansible
@@ -214,7 +236,7 @@ def main ():
         ignore          =dict(required=False),
         debugging       =dict(required=False)
       ),
-      supports_check_mode=False,
+      supports_check_mode=True,
     )
 
     # Get arguements passed from Ansible playbook
@@ -225,7 +247,7 @@ def main ():
     vignore    = module.params.get('ignore')
     vdebug     = module.params.get('debugging')
 
-    if vdebug in true_bool:
+    if vdebug in affirm:
       debugme = True
     else:
       debugme = False
@@ -403,6 +425,37 @@ def main ():
             else:
               vtemp = 'False'
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
+        ignore_err_flag = False
+
+        # Determine if SIEBEL or PS Database
+        try:
+          cur.execute("select username from dba_users where username in ('SYSADM','FINADM','SIEBEL')")
+          debugg("cmd_str = {}".format("select username from dba_users where username in ('SYSADM','FINADM','SIEBEL')"))
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+
+        special_case = ""
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            debugg("determine if ps or seibel....vtemp={}".format(str(vtemp)))
+            if not vtemp:
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+            else:
+                vtemp = vtemp[0][0]
+                if vtemp == 'SIEBEL':
+                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+                elif vtemp == "FINADM":
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True' } )
+                elif vtemp == "SYSADM":
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True' } )
+                else:
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+
         ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
