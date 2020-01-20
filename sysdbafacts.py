@@ -203,7 +203,7 @@ def main ():
   vshare_dir        = module.params.get('share_dir')
   voracle_home      = module.params.get('oracle_home')
   vdebugging        = module.params.get('debugging')
-  vforce_switch       = module.params.get('force_switch')
+  vforce_switch     = module.params.get('force_switch')
 
   if vdebugging:
       debugme = vdebugging
