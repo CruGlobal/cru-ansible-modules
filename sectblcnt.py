@@ -25,7 +25,7 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 
 DOCUMENTATION = '''
 ---
-module: psadmsectblcnt
+module: sectblcnt
 short_description: PS Admin Security Table Count
 
 notes: Returned the value of security tables in the PS Admin schema
@@ -75,6 +75,8 @@ EXAMPLES = '''
 def_ref_name = "sectblcount"
 msg = ""
 debugme = False
+cru_domain = ".ccci.org"
+affirm = [ 'True', 'TRUE', 'true', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y', 'yes']
 
 def add_to_msg(inStr):
     """Add strings to msg"""
@@ -97,15 +99,70 @@ def convertToTuple(inStr):
     tmp = inStr.split(",")
     return(tuple(tmp))
 
+
+def is_rac():
+    """Determine if the host this is running on is
+       part of a RAC installation with other nodes
+       or a single instance host.
+       return True or False
+    """
+    global israc
+
+    debugg("is_rac_host() ...starting...")
+    cmd_str = "/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l"
+
+    results = run_on_host(cmd_str)
+
+    debugg("is_rac_host() results = %s" % (results))
+
+    if int(results) > 0:
+        debugg("is_rac_host()...exiting....returning True")
+        israc = True
+        return(True)
+    else:
+        debugg("is_rac_host()...exiting....returning False")
+        israc = False
+        return(False)
+
+
+def run_on_host(cmd_str=None):
+    """
+       Encapsulate the error handling in this function.
+       Run the command (cmd_str) on the remote host and return results.
+    """
+    global err_msg
+
+    debugg("run_on_host()....start...cmd_str=%s" % (cmd_str))
+
+    if cmd_str:
+
+        try:
+          process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+          output, code = process.communicate()
+        except:
+           err_msg = err_msg + ' Error: srvctl module get_node_num() error - retrieving node_number excpetion: %s' % (sys.exc_info()[0])
+           err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+           raise Exception (err_msg)
+
+        debugg("run_on_host()....exiting....output=%s" % (str(output)))
+        return(output.strip())
+
+    else:
+        debugg("run_on_host()....exiting....return=None")
+        return(None)
+
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
 def main ():
   """ Return the number of security tables owned by the PS Admin schema"""
 
-  global msg
-  global def_ref_name
-  global debugme
+    global msg
+    global def_ref_name
+    global debugme
+    global cru_domain
+    global affirm
 
   vchanged = False
   ansible_facts={}
@@ -140,11 +197,13 @@ def main ():
   vignore   = module.params.get('ignore')
   vdebugme  = module.params.get('debugme')
 
-  if vignore is None:
+    if vignore in affirm:
+      vignore = True
+    else:
       vignore = False
 
-  if '.org' in vdbhost:
-    vdbhost = vdbhost.replace('.ccci.org','')
+    if '.org' in vdbhost:
+        vdbhost = vdbhost.replace(cru_domain,'')
 
   if not cx_Oracle_found:
     module.fail_json(msg="Error: cx_Oracle module not found")
@@ -164,27 +223,36 @@ def main ():
   # check vars passed in are not NULL. All are needed to connect to source db
   if ( vdbpass is not None) and (vdb is not None) and (vdbhost is not None) and (vpsadmin is not None):
 
+        # vdb = vdb + vdbhost[-1:]
+        # can use: service_name = db.ccci.org or sid = db1
+        if is_rac():
+            vsid = vdb + vdbhost[-1:]
+        else:
+            vsid = vdb
+
+        if cru_domain not in vdbhost:
+            vdbhost = vdbhost + cru_domain
+
         try:
-          vdb = vdb + vdbhost[-1:]
-          dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+            dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
         except cx_Oracle.DatabaseError as exc:
           error, = exc.args
           if vignore:
               msg = "Failed to create dns_tns: %s" %s (error.message)
-          else:
-              module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+            else:
+              module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vsid, vdbhost), changed=False)
 
         try:
           con = cx_Oracle.connect('system', vdbpass, dsn_tns)
         except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if vignore:
-              add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
-              if debugme:
-                  add_to_msg(" vignore: %s " % (vignore))
-              module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
-          else:
-              module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+            error, = exc.args
+            if vignore:
+                add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
+                if debugme:
+                    add_to_msg(" vignore: %s " % (vignore))
+                    module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+            else:
+                module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vsid, vdbhost), changed=False)
 
         cur = con.cursor()
 
