@@ -190,6 +190,8 @@ def add_snippet(_snip, _str):
 
     if _str:
         _str = _str + " " + _snip
+    else:
+	_str = _snip
 
     return(_str)
 
