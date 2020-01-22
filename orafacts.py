@@ -110,7 +110,7 @@ EXAMPLES = '''
 
 '''
 
-debugme = True
+debugme = False
 host_debug_path="/tmp/debug.log"
 ora_home = ""
 global_ora_home = ""
