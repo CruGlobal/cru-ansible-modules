@@ -99,6 +99,8 @@ utils_settings_file = os.path.expanduser("~/.utils")
 def set_debug_log():
     """ Set the debug_log value to write debugging messages to """
     global utils_settings_file
+    global debug_log
+
     try:
         with open(utils_settings_file, 'r') as f1:
             line = f1.readline()
@@ -128,11 +130,14 @@ def debugg(db_msg):
     """if debugging is on add this to msg"""
     # global msg
     global debug_log
+    global debugme
 
-    # if debugme:
-    #     add_to_msg(db_msg)
-    with open(debug_log, 'a') as f:
-        f.write(db_msg + "\n")
+    if debugme:
+        try:
+            with open(debug_log, 'a') as f:
+                f.write(db_msg + "\n")
+        except:
+            pass
 
 
 def convert_size(arg_size_bytes, vunit):
