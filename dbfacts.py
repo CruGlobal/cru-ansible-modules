@@ -9,6 +9,7 @@ import json
 import re
 import math
 import commands
+from subprocess import (PIPE, Popen)
 
 try:
     import cx_Oracle
@@ -455,17 +456,17 @@ def main ():
             vtemp = cur.fetchall()
             debugg("determine if ps or seibel....vtemp={}".format(str(vtemp)))
             if not vtemp:
-                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
             else:
                 vtemp = vtemp[0][0]
                 if vtemp == 'SIEBEL':
-                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
+                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
                 elif vtemp == "FINADM":
                     ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True', 'ps_owner': 'finadm' } )
                 elif vtemp == "SYSADM":
                     ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True', 'ps_owner': 'sysadm' } )
                 else:
-                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
 
         ignore_err_flag = False
 
