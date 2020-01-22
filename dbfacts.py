@@ -99,19 +99,25 @@ utils_settings_file = os.path.expanduser("~/.utils")
 def set_debug_log():
     """ Set the debug_log value to write debugging messages to """
     global utils_settings_file
+    global debug_log
+    global debugme
+
+    if not debugme:
+        return
+
     try:
         with open(utils_settings_file, 'r') as f1:
             line = f1.readline()
             while line:
                 if 'ans_dir' in line:
-                    tmp = line.split("=")[1]
+                    tmp = line.strip().split("=")[1]
                     debug_log = tmp + "/bin/.utils/debug.log"
                     return
-                else:
-                    line = f1.readline()
+
+                line = f1.readline()
     except:
         print("ans_dir not set in ~/.utils unable to write debug info to file")
-        return
+        pass
 
 
 def add_to_msg(a_msg):
@@ -126,13 +132,17 @@ def add_to_msg(a_msg):
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
-    # global msg
     global debug_log
+    global debugme
 
-    # if debugme:
-    #     add_to_msg(db_msg)
-    with open(debug_log, 'a') as f:
-        f.write(db_msg + "\n")
+    if not debugme or not debug_log:
+        return
+
+    try:
+        with open(debug_log, 'a') as f:
+            f.write(db_msg + "\n")
+    except:
+        pass
 
 
 def convert_size(arg_size_bytes, vunit):
@@ -183,7 +193,7 @@ def israc(host_str=None):
     #     return(True)
     # else:
     #     debugg("israc() returning False")
-        return(False)
+    return(False)
 
 
 def run_cmd(cmd_str):
@@ -249,6 +259,7 @@ def main ():
 
     if vdebug in affirm:
       debugme = True
+      set_debug_log()
     else:
       debugme = False
 
@@ -444,17 +455,17 @@ def main ():
             vtemp = cur.fetchall()
             debugg("determine if ps or seibel....vtemp={}".format(str(vtemp)))
             if not vtemp:
-                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
             else:
                 vtemp = vtemp[0][0]
                 if vtemp == 'SIEBEL':
-                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
                 elif vtemp == "FINADM":
-                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True' } )
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True', 'ps_owner': 'finadm' } )
                 elif vtemp == "SYSADM":
-                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True' } )
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True', 'ps_owner': 'sysadm' } )
                 else:
-                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False' } )
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': None } )
 
         ignore_err_flag = False
 
