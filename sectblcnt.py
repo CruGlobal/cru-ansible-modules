@@ -42,12 +42,13 @@ EXAMPLES = '''
     # deleting the database, so that they can be restored after refresh.
 
     - local_action:
-        module: psadmsectblcnt
+        module: sectblcnt
         ps_admin: "{{ ps_admin }}" (1)
         table_list: "{{ security_table_list }}" (1)
         systempwd: "{{ database_passwords[source_db_name].system }}"
         db_name: "{{ dest_db_name }}"
         host: "{{ dest_host }}"
+        rac: "{{ is_rac }}" or "{{ sourcefacts['cluster_database'] }}"
         refname: "{{ refname_str }}" (2)
         ignore: True (3)
         debugmode: True
