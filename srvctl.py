@@ -122,7 +122,7 @@ truism = [True,False,'true','false','Yes','yes']
 debug_dir = ""
 utils_dir = os.path.expanduser("~/.utils")
 module = None
-istrue = ['True','TRUE','T','true','YES','Yes','yes','y']
+istrue = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
 rac = None
 cru_domain = ".ccci.org"
 # True valid, False invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
@@ -382,13 +382,17 @@ def get_orahome_oratab(db_name):
     debugg("get_orahome_oratab()..start....db_name=%s" % (db_name))
 
     debugg("get_orahome_oratab() calling popen_cmd_str()")
-    output = popen_cmd_str("/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'")
+    cmd_str = "/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'"
+    # output = popen_cmd_str("/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'")
+    output = remote_cmd(cmd_str)
 
     ora_home = output.strip()
 
+    debugg("ora_home={} cmd_str={}".format(ora_home, cmd_str))
     if not ora_home:
         module_fail('Error[ get_orahome_oratab(%s) ] ora_home null after f(x) execution for db_name: %s.' % (db_name,db_name))
 
+    # set global oracle_home before exiting
     oracle_home = ora_home
     debugg("get_orahome_oratab()...exiting...returning ora_home=%s" % (ora_home))
     return(ora_home)
@@ -988,7 +992,8 @@ def main ():
         inst_no   = dict(required=False),       # instance number if object is an instance
         stopt     = dict(required=False),       # -startoption / -stopoption : open | mount | nomount
         param     = dict(required=False),       # extra parameter for stop (last running instance etc.): -force
-        ttw       = dict(required=False),        # Time To Wait (ttw) for srvctl command to change database state
+        orahome   = dict(required=False),        # ORACLE_HOME as obtained from sourcefacts
+        ttw       = dict(required=False),       # Time To Wait (ttw) for srvctl command to change database state
         debugging = dict(required=False)        # Turn on debugging output
       ),
       supports_check_mode = False               # srvctl has '-eval' parameter. Use it to implement ???
@@ -1000,6 +1005,7 @@ def main ():
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
+  vorahome      = module.params['orahome']
   vdebugging    = module.params["debugging"]
   # rest of the parameters are read-in below:
 
@@ -1018,6 +1024,16 @@ def main ():
       module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   debugg("MAIN() DB WAS REGISTERED...Check and ensure if object is an instance and instance number wasn't defined raise exception. oracle_home = %s" % (oracle_home))
+
+  # Try to set oracle_home
+  if vorahome:
+      oracle_home = vorahome
+  else:
+      try:
+          results = get_orahome_procid(vdb_name)
+      except:
+          add_to_msg("ERROR: Unable to determine ORACLE_HOME.")
+          module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   # Ensure if object is an instance and instance number wasn't defined raise exception
   if vobj is not None and vobj.lower() == "instance":
