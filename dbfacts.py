@@ -485,7 +485,7 @@ def main ():
 
         if not ignore_err_flag:
             vtemp = cur.fetchall()
-            vtemp = vtemp[0][0]
+            vtemp = str(vtemp[0][0]) + "G"
             ansible_facts[refname].update( { 'db_size' : vtemp } )
         ignore_err_flag = False
 
