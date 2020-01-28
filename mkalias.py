@@ -48,7 +48,6 @@ EXAMPLES = '''
 
 '''
 #Global variables
-istrue = ['True','TRUE','true','YES','Yes','yes','t','T','y','Y']
 affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 oracle_home=""
 err_msg = ""
@@ -268,7 +267,6 @@ def main ():
     global msg
     global err_msg
     global grid_home
-    global istrue
     global debugme
     global affirm
 
@@ -307,7 +305,7 @@ def main ():
         else:
             vasm_sid = asm_db
 
-    if visrac in istrue:
+    if visrac in affirm:
         if not vdb[-1].isdigit():
             voracle_sid = vdb + vnode_num
         else:

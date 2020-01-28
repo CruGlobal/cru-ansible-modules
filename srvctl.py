@@ -101,7 +101,7 @@ vparam   = ""
 # default time to wait in minutes for db state to change
 default_ttw = 5
 # Time to wait in seconds beteen db state checks
-loop_sleep_time = 2
+loop_sleep_time = 2 # seconds
 # domain pattern used to strip off hostname
 vdomain  = ".ccci.org"
 # environmentals
@@ -122,12 +122,41 @@ truism = [True,False,'true','false','Yes','yes']
 debug_dir = ""
 utils_dir = os.path.expanduser("~/.utils")
 module = None
-istrue = ['True','TRUE','T','true','YES','Yes','yes','y']
+istrue = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
 rac = None
 cru_domain = ".ccci.org"
+# True valid, False invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
+# This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
+valid_stop_12c = ('normal','immediate','abort','local','transactional')
+valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"', 'read only', 'read write') # ,'force'
+# https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
+# https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
+valid_stop_11g = ('normal','immediate','abort','transactional')
+# https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
+# https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
+valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force', 'read only', 'read write') # ,'force'
 
 debug_path = '/tmp/mod_debug.log'
 rac_nums = 10
+
+
+def remote_cmd(cmd_str):
+    """ execute command on remote host """
+    debugg("run_remote_cmd() :: ...starting...cmd_str={}".format(cmd_str))
+    try:
+        p = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       debugg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+       debugg("run_remote_cmd() :: Error running cmd_str={} on remote host = {}".format(cmd_str,remote_host))
+       return
+
+    debugg("run_cmd() :: returning output = %s" % (str(output)))
+
+    if output:
+        return(output.strip())
+    else:
+        return("")
 
 
 def to_bool(in_str):
@@ -214,7 +243,7 @@ def debugg_to_file(info_str):
 
 
 def popen_cmd_str(cmd_str, oracle_home=None, oracle_sid=None):
-    """Execute a command string and fail if necessary"""
+    """ Execute a command string and fail if necessary """
     global module
     global msg
     # global oracle_sid
@@ -353,13 +382,17 @@ def get_orahome_oratab(db_name):
     debugg("get_orahome_oratab()..start....db_name=%s" % (db_name))
 
     debugg("get_orahome_oratab() calling popen_cmd_str()")
-    output = popen_cmd_str("/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'")
+    cmd_str = "/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'"
+    # output = popen_cmd_str("/bin/cat /etc/oratab | /bin/grep -m 1 " + db_name + " | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'")
+    output = remote_cmd(cmd_str)
 
     ora_home = output.strip()
 
+    debugg("ora_home={} cmd_str={}".format(ora_home, cmd_str))
     if not ora_home:
         module_fail('Error[ get_orahome_oratab(%s) ] ora_home null after f(x) execution for db_name: %s.' % (db_name,db_name))
 
+    # set global oracle_home before exiting
     oracle_home = ora_home
     debugg("get_orahome_oratab()...exiting...returning ora_home=%s" % (ora_home))
     return(ora_home)
@@ -377,7 +410,7 @@ def get_orahome_procid(db_name):
     # get the pmon process id for the running database.
     # 10189  tstdb1
     # cmd_str = "/bin/pgrep -lf _pmon_" + db_name + " | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
-    cmd_str = "ps -ef | grep _pmon_tstdb | grep -v grep | awk '{ print $2 \" \" $8 }' | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed"
+    cmd_str = "ps -ef | grep _pmon_%s | grep -v grep | awk '{ print $2 \" \" $8 }' | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | /bin/grep -v sed" % (db_name)
     output = popen_cmd_str(cmd_str)
     debugg("get_orahome_procid(db_name) output = %s" % (output))
     # if the database is down, but it possibly had an entry in /etc/oratab try this:
@@ -397,7 +430,6 @@ def get_orahome_procid(db_name):
         add_to_msg("Error[ get_orahome_procid(db_name) ] error parsing process id for database: %s Full output: [%s]" % (db_name, output))
         module_fail("get_orahome_procid() failed splitting output to get procid.")
 
-
     # get Oracle home the db process is running out of
     # (0, ' /app/oracle/12.1.0.2/dbhome_1/')
     cmd_str = "sudo ls -l /proc/" + vprocid + "/exe | awk -F'>' '{ print $2 }' | sed 's/\/bin\/oracle//' "
@@ -407,10 +439,40 @@ def get_orahome_procid(db_name):
     ora_home = output.strip()
 
     if not ora_home:
-        debugg("get_orahome_procid() - No ora_home to return using running process id. db may not be running...")
+        try:
+            ora_home_by_procid(db_name)
+        except:
+            debugg("get_orahome_procid() - No ora_home to return using running process id. db may not be running...")
+        return
     else:
         debugg("get_orahome_procid()...exiting...returning ora_home=%s" % (ora_home))
+
+    oracle_home = ora_home
     return(ora_home)
+
+
+def ora_home_by_procid(db):
+    """ given a database, get its oracle_home by using its process id
+	this is the same as get_orahome_procid(). Slightly more consolidated.
+    """
+    global oracle_home
+
+    if not oracle_home:
+        debugg("ora_home_by_procid()...starting...db = %s" % (db))
+        cmd_str = "ps -ef | grep _pmon_ | /bin/sed 's/ora_pmon_/ /; s/asm_pmon_/ /' | grep -v sed | grep -v grep | awk '{ print $2 \" \" $8}' | grep %s" % (db)
+        debugg("ora_home_by_procid()...cmd_str = %s" % (cmd_str))
+        output = remote_cmd(cmd_str)
+        debugg("ora_home_by_procid()...proc id = %s" % (output))
+
+        cmd_str = "sudo ls -l /proc/%s/exe | awk -F'>' '{ print $2 }' | sed 's/bin\/oracle$//' | sort | uniq" % (output)
+        debugg("ora_home_by_procid()...cmd_str = %s" % (cmd_str))
+        output = remote_cmd(cmd_str)
+        debugg("ora_home_by_procid()...oracle_home = %s" % (output))
+
+        oracle_home = output
+
+    return( oracle_home )
+
 
 
 def get_db_state(db_name):
@@ -558,34 +620,23 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
 
 
 def is_opt_valid(vopt,vcmd,majver):
-    """Check that a given -stopoption | -startoption is valid. return 0 valid, 1 invalid."""
-
+    """Check that a given -stop option | -start option is valid. return True / False"""
+    global valid_start_11g
+    global valid_stop_11g
+    global valid_start_12c
+    global valid_stop_12c
     debugg("is_opt_valid()...starting...vopt=%s vcmd=%s majver=%s" % (vopt,vcmd,majver))
-    # 0 valid, 1 invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
-    # This is a limited list. The full functionality of srvctl start/stop options is beyond this module.
-    valid_stop_12c = ('normal','immediate','abort','local','transactional')
-    valid_start_12c = ('open','mount','restrict','nomount','"read only"','write','"read write"') # ,'force'
-    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009484
-    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve042.htm#SQPUG125
-    valid_stop_11g = ('normal','immediate','abort','transactional')
-    # https://docs.oracle.com/cd/E11882_01/rac.112/e41960/srvctladmin.htm#i1009256
-    # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
-    valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force') # ,'force'
-
     if majver == "12":
-        if vcmd.lower() == "start":
-            if vopt in valid_start_12c:
+        if vcmd.lower() == "start" and vopt in valid_start_12c:
                 return(True)
-        elif vcmd.lower() == "stop":
-            if vopt in valid_stop_12c:
+        elif vcmd.lower() == "stop" and vopt in valid_stop_12c:
                 return(True)
     elif majver == "11":
-        if vcmd.lower() == "start":
-            if vopt in valid_start_11g:
+        if vcmd.lower() == "start" and vopt in valid_start_11g:
                 return(True)
-        elif vcmd.lower() == "stop":
-            if vopt in valid_stop_11g:
+        elif vcmd.lower() == "stop" and vopt in valid_stop_11g:
                 return(True)
+
     debugg("is_opt_valid() exiting....returning False")
     return(False)
 
@@ -911,10 +962,9 @@ def extract_maj_version(ora_home):
 
 
 # ===================================================================================================
-#                                          MAIN
+# ============================================= MAIN ================================================
 # ===================================================================================================
 # Note use -eval with srvctl command to implement Ansible --check ??
-
 def main ():
   """ Execute srvctl commands """
   # global vars
@@ -942,7 +992,8 @@ def main ():
         inst_no   = dict(required=False),       # instance number if object is an instance
         stopt     = dict(required=False),       # -startoption / -stopoption : open | mount | nomount
         param     = dict(required=False),       # extra parameter for stop (last running instance etc.): -force
-        ttw       = dict(required=False),        # Time To Wait (ttw) for srvctl command to change database state
+        orahome   = dict(required=False),        # ORACLE_HOME as obtained from sourcefacts
+        ttw       = dict(required=False),       # Time To Wait (ttw) for srvctl command to change database state
         debugging = dict(required=False)        # Turn on debugging output
       ),
       supports_check_mode = False               # srvctl has '-eval' parameter. Use it to implement ???
@@ -954,7 +1005,9 @@ def main ():
   vdb_name      = module.params["db"]
   vcmd          = module.params["cmd"]
   vobj          = module.params["obj"]
+  vorahome      = module.params['orahome']
   vdebugging    = module.params["debugging"]
+  # rest of the parameters are read-in below:
 
   if vdebugging in istrue:
     debugme = True
@@ -971,6 +1024,16 @@ def main ():
       module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   debugg("MAIN() DB WAS REGISTERED...Check and ensure if object is an instance and instance number wasn't defined raise exception. oracle_home = %s" % (oracle_home))
+
+  # Try to set oracle_home
+  if vorahome:
+      oracle_home = vorahome
+  else:
+      try:
+          results = get_orahome_procid(vdb_name)
+      except:
+          add_to_msg("ERROR: Unable to determine ORACLE_HOME.")
+          module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   # Ensure if object is an instance and instance number wasn't defined raise exception
   if vobj is not None and vobj.lower() == "instance":
