@@ -73,10 +73,10 @@ EXAMPLES = '''
         function: flush
         size:
         units:
-	israc: "{{ destfacts['israc'] }}"
+	    israc: "{{ destfacts['israc'] }}"
         ignore: true
         refname:
-	debug_mode:
+	    debug_mode:
     become_user: "{{ local_user }}"
     register: redo_run
 
@@ -89,7 +89,7 @@ EXAMPLES = '''
         function: resize
         size: 500
         units: m
-	israc: "{{ destfacts['israc'] }}"
+        israc: "{{ destfacts['israc'] }}"
         ignore: false
         refname:
 	debugmode:
@@ -116,7 +116,8 @@ ansible_facts = {}
 module_fail = False
 module_exit = False
 israc = False
-affirm = ['True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes',  't', 'T', 'y', 'Y', "On', 'ON', 'on']
+def_reference_name = 'redologs'
+affirm = ['True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes',  't', 'T', 'y', 'Y', 'On', 'ON', 'on']
 cru_domain = ".ccci.org"
 new_hw = ['pldataw' + cru_domain,
           'sldataw' + cru_domain,
@@ -644,12 +645,9 @@ def main ():
     global g_vignore
     global israc
     global affirm
+    global def_reference_name
 
     ansible_facts={}
-
-    # Name to call facts dictionary being passed back to Ansible
-    # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-    refname = "redologs"
 
     os.system("/usr/bin/scl enable python27 bash")
     # os.system("scl enable python27 bash")
@@ -690,10 +688,9 @@ def main ():
     else:
         debugme = False
 
-
     debugg("Start parameter checks")
     if not visrac:
-	israc = ckrac()
+        israc = ckrac()
 
     if visrac in affirm:
         israc = True
@@ -704,6 +701,8 @@ def main ():
     # if the user passed a reference name use it
     if vrefname:
         refname = vrefname
+    else:
+        refname = def_reference_name
 
     if vconnect_as:
         vconas = vconnect_as
