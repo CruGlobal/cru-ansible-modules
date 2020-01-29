@@ -249,7 +249,7 @@ def create_tns(vdbhost, vsid):
     if cru_domain not in vdbhost:
         vdbhost = vdbhost + cru_domain
 
-    msgg("creating dns with sid={} host={}".format(vsid, vdbhost))
+    debugg("creating dns with sid={} host={}".format(vsid, vdbhost))
     try:
       dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
     except cx_Oracle.DatabaseError as exc:
@@ -690,7 +690,7 @@ def main ():
 
     debugg("Start parameter checks")
     if not visrac:
-        israc = ckrac()
+        israc = ckrac(vdbhost)
 
     if visrac in affirm:
         israc = True
@@ -781,6 +781,21 @@ def main ():
         if not module_fail and not module_exit:
             debugg("finished creating cursor")
             if vfx.lower() == "flush":
+
+                # CHECK DB IS ARCHIVELOG MODE IF NOT EXIT ================
+                cmd_str = "select LOG_MODE from v$database"
+                try:
+                    cur.execute(cmd_str)
+                except:
+                    pass
+                output = cur.fetchall()
+                if output:
+                    arch_ck = output[0][0]
+                    if 'ARCHIVELOG'.lower() != arch_ck.lower():
+                        msgg("\n** Cannot flush redo logs if db not in archivelog mode. v$database log_mode={} **\n".format(arch_ck))
+                        module.exit_json( msg=msg, ansible_facts={} , changed=False)
+                # ARCHIVELOG MODE CK END ================================
+
                 redoFlushMain(cur)
             elif vfx.lower() == "resize":
                 redoResizeMain(cur, vsize, vunits)
