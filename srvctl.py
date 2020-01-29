@@ -142,13 +142,13 @@ rac_nums = 10
 
 def remote_cmd(cmd_str):
     """ execute command on remote host """
-    debugg("run_remote_cmd() :: ...starting...cmd_str={}".format(cmd_str))
+    debugg("run_remote_cmd() :: ...starting...cmd_str=%s" % (cmd_str))
     try:
         p = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = p.communicate()
     except:
        debugg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-       debugg("run_remote_cmd() :: Error running cmd_str={} on remote host = {}".format(cmd_str,remote_host))
+       debugg("run_remote_cmd() :: Error running cmd_str=%s on remote host = %s" % (cmd_str,remote_host))
        return
 
     debugg("run_cmd() :: returning output = %s" % (str(output)))
@@ -388,7 +388,7 @@ def get_orahome_oratab(db_name):
 
     ora_home = output.strip()
 
-    debugg("ora_home={} cmd_str={}".format(ora_home, cmd_str))
+    debugg("ora_home=%s cmd_str=%s" % (ora_home, cmd_str))
     if not ora_home:
         module_fail('Error[ get_orahome_oratab(%s) ] ora_home null after f(x) execution for db_name: %s.' % (db_name,db_name))
 
@@ -596,9 +596,11 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
 
           try:
               current_meta_state = get_db_meta_state(vdb_name)
+              debugg("======== WAIT LOOP ============== vexp_state=%s != current state=%s" % (vexp_state['meta'],current_meta_state[host_name_key]))
               while (vexp_state['meta'] != current_meta_state[host_name_key]) and (time.time() < timeout):
                   time.sleep(int(loop_sleep_time))
                   current_meta_state = get_db_meta_state(vdb_name)
+                  debugg("in the wait loop :: vexp_state=%s != current state=%s" % (vexp_state['meta'],current_meta_state[host_name_key]))
           except:
               add_to_msg('Error[ wait_for_it() ]: waiting for %s current_meta_state: %s to change to expected: %s last current_meta_state: %s host_name_key: %s current time: %s time.out: %s' % (vobj, current_meta_state[host_name_key], vexp_state['meta'], current_meta_state[host_name_key], host_name_key, str(time.time()), str(timeout)))
               add_to_msg("%s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
