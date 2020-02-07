@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/python3
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
@@ -45,7 +45,7 @@ EXAMPLES = '''
     "msg": "version 11.2.0.4 was found to be less than 12.1.0.2"
 
     # Use in datapump parfile:
-    
+
         {% if compver['required'] %}
         compatible={{ compver['version'] }}
         {% endif %}
