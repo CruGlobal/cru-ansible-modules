@@ -434,19 +434,24 @@ def redoFlushMain(cur):
     global msg
     global module_fail
     global module_exit
+    global affirm
+    num_laps = 2
     startingPoint = []
     statusNow = []
 
     debugg("redoFlushMain")
 
     startingPoint = curStatus(cur)
-
+    at_start = backToStartingPoint(statusNow, startingPoint)
     # start forcing redo changes until this same redo thread group is current again.
-    while not backToStartingPoint(statusNow, startingPoint) and not module_exit and not module_fail:
+    while not at_start and not module_exit and not module_fail and int(num_laps) != 0:
         advanceLogs(cur)
-        time.sleep(2)
+        time.sleep(1)
         statusNow = curStatus(cur)
-
+        if at_start in affirm:
+            num_laps -= 1
+    return
+    
 
 def curStatus(cur):
     """Get current status of all redo logs and pass back a list of redoLogClass objects"""
