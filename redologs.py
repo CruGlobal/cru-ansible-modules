@@ -44,6 +44,7 @@ import math
 import string
 import time
 import copy
+import struct
 
 try:
     import cx_Oracle
@@ -616,7 +617,7 @@ def main ():
     if vdebuglog:
         debuglog = vdebuglog
 
-    debugg("Start parameter checks")
+    debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
     if visrac in affirm:
         israc = True
     else:
