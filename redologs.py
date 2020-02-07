@@ -579,7 +579,7 @@ def main ():
     module = AnsibleModule(
         argument_spec = dict(
             connect_as      =dict(required=False),
-            systempwd       =dict(required=True),
+            userpwd         =dict(required=True),
             db_name         =dict(required=True),
             db_host         =dict(required=True),
             function        =dict(required=True),
@@ -596,7 +596,7 @@ def main ():
 
     # Get arguements passed from Ansible playbook
     vconnect_as    = module.params.get('connect_as')
-    vdbpass        = module.params.get('systempwd')
+    vdbpass        = module.params.get('userpwd')
     vdb            = module.params.get('db_name')
     vdbhost        = module.params.get('db_host')
     vfx            = module.params.get('function')
