@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python3
 # # -*- coding: utf-8 -*-
 
 # Created: April 27, 2019
