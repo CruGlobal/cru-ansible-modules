@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - This CHANGELOG file
+- Basic CONTRIBUTING template
 
 [Unreleased]: https://github.com/olivierlacan/keep-a-changelog/compare/v1.0.0...HEAD
 [v1.0.0]: https://github.com/olivierlacan/keep-a-changelog/releases/tag/v1.0.0
