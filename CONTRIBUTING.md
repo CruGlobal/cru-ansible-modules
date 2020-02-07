@@ -34,9 +34,9 @@ git checkout -b <branch-name>
   of your changes
 
 - **Update the CHANGELOG**
-  - Determine next release version based on [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+  - Determine next release version (in the format of `vX.Y.Z`) based on [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Add release to the changelog and update markdown relative links.
-  - For more information see [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
+  - For more information see [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
 ### Commit
