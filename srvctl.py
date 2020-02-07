@@ -136,7 +136,7 @@ valid_stop_11g = ('normal','immediate','abort','transactional')
 # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
 valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force', 'read only', 'read write') # ,'force'
 
-debug_path = '/tmp/mod_debug.log'
+debug_path = '/home/oracle/.utils/debug.log'
 rac_nums = 10
 
 
@@ -610,7 +610,8 @@ def wait_for_it(vdb_name, vobj, vexp_state, vttw, vinst):
     if time.time() > timeout:
       debugg(" Error[ wait_for_it() ]: time out occurred waiting for %s %s state to change executing: %s. Time to wait (ttw): %s. Additional info vexp_state: %s and actual current_state: %s vinst: %s current_meta_state: %s" % ( vobj, vdb_name, vcmd, str(vttw), str(vexp_state), str(current_state), str(vinst), str(current_meta_state) ))
       debugg(" %s, %s, %s" % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
-      raise Exception(msg)
+      msgg("Module timed out. Database may not have reached expected state")
+      # raise Exception(msg)
     else:
         if is_rac():
             for i, ahost in enumerate(vall_hosts, start=0):
