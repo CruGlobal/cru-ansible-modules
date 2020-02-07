@@ -1,4 +1,5 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python3
+
 # # -*- coding: utf-8 -*-
 
 # Created: April 27, 2019
@@ -38,6 +39,7 @@ import math
 import string
 import time
 import copy
+import struct
 
 try:
     import cx_Oracle
@@ -451,7 +453,7 @@ def redoFlushMain(cur):
         if at_start in affirm:
             num_laps -= 1
     return
-    
+
 
 def curStatus(cur):
     """Get current status of all redo logs and pass back a list of redoLogClass objects"""
@@ -693,7 +695,7 @@ def main ():
     else:
         debugme = False
 
-    debugg("Start parameter checks")
+    debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
     if not visrac:
         israc = ckrac(vdbhost)
 
@@ -775,7 +777,7 @@ def main ():
 
     vdbhost = prep_host(vdbhost)
 
-    debugg("before call to prep_db({},{})".format(vdb, vdbhost))
+    debugg("calling prep_sid({},{})".format(vdb, vdbhost))
     vdb = prep_sid(vdb, vdbhost)
 
     debugg("before calling create_tns(%s,%s)" % (vdbhost,vdb))
