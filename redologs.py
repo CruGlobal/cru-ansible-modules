@@ -78,12 +78,13 @@ EXAMPLES = '''
         dest_db: "{{ dest_db_name }}"
         dest_host: "{{ dest_host }}"
         function: flush
+        cycles: 2
         size:
         units:
         ignore: true
         refname:
-        debugmode:
-        debuglog:
+        debugmode: True
+        debuglog: /cru-ansible-oracle/bin/.utils/debug.log
     become_user: "{{ local_user }}"
     register: redo_run
 
@@ -94,6 +95,7 @@ EXAMPLES = '''
         dest_db: "{{ dest_db_name }}"
         dest_host: "{{ dest_host }}"
         function: resize
+        cycles:
         size: 500
         units: m
         ignore: false
@@ -103,17 +105,23 @@ EXAMPLES = '''
     become_user: "{{ local_user }}"
     register: redo_run
 
-  Notes:
+  Notes: Used to flush or resize redo logs.
 
-    connect_as - Not required. default system.
-    size and units are not required for "flush" but are for resize.
-    units are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
-    ignore - tells the module whether to fail on error and raise it or pass on error
-             and continue with the play. Default is to fail.
-    debugmode and debuglog - optional, but required for debugging.
-             all debugging information will be written to debuglog if provided.
-             otherwise if debugmode is True it, but no debuglog provided it will
-             be written to the output msg if the module runs to completion.
+ connect_as - Not required. default system.
+     cycles - Only works with FLUSH function.
+              The number of times to force log switches and flush redo logs.
+              It captures starting status and cycles through to that picture
+              this number of times.
+              size and units are not required for "flush" but are for resize.
+       size - Required for resize and is a number i.e. size: 2 units: m = 2MB
+      units - Required for resize.
+              are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
+     ignore - tells the module whether to fail on error and raise it or pass on error
+              and continue with the play. Default is to fail.
+  debugmode and debuglog - optional, but required if debugging.
+              all debugging information will be written to debuglog if provided.
+              otherwise if debugmode is True it, but no debuglog provided it will
+              be written to the output msg if the module runs to completion.
 
 '''
 # Global Vars:
@@ -134,6 +142,7 @@ cru_domain = ".ccci.org"
 refname = "redologs"
 def_con_as_user = "system"
 num_start_objs = 0
+num_cycles = 1
 #
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
 # ------------ ------------ ------------ ---------------- ---   ----------------------------------------------------------------------
@@ -142,7 +151,7 @@ num_start_objs = 0
 # A dictionary like this should be passed into class redoLog
 # { 'thread':1,'GROUP': 1, 'SIZE_MB':50, 'STATUS':'INACTIVE','ARCHIVED': 'YES','MEMBER': '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'}
 class redoLogClass:
-    def __init__(self, redo_t):
+    def __init__(self, redo_t, cycles=None):
         self.__redoThread__ = redo_t[0]
         self.__redoGroup__ = redo_t[1]
         self.__redoStatus__ = redo_t[3]
@@ -155,17 +164,29 @@ class redoLogClass:
         self.__startObj__ = False
         self.__changeflag__ = False
         self.__finished__ = False
+        self.__laps_to_finish__ = 2
+        self.__lap_count__ = 0
+        self.__cycles__ = cycles
         self.setStartStatus()
 
     def setStartStatus(self):
+        """ Set the startStatus flag here. If this object meets the criteria
+            for a start object: status: current archived: no
+            then make note of the ASM member FRA or DATA#
+        """
         if self.__startingStatus__.lower() == "current" and self.__archivedStatus__.lower() == "no":
             self.__startObj__ = True
         else:
             self.__startObj__ = False
         # member will be +FRA or +DATA1 etc. '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'
         self.__member__ = self.__member__.split("/")[0]
+        # if number of laps were passed in set it. Otherwise default is 2
+        if self.__cycles__:
+            self.__laps_to_finish__ = int(self.__cycles__)
 
     def startingObj(self):
+        """ Return to whatever is calling whether this is a start object
+        """
         return(self.__startObj__)
 
     def getStatus(self):
@@ -175,6 +196,10 @@ class redoLogClass:
         return(self.__prevStatus__)
 
     def getStartingStatus(self):
+        """ Return status of this object when it was instantiated:
+                current
+                inactive
+        """
         return(self.__startingStatus__)
 
     def setStatus(self,newStatus):
@@ -182,22 +207,34 @@ class redoLogClass:
         self.__redoStatus__ = newStatus
 
     def getThread(self):
+        """ Return thread# for this object
+        """
         return(self.__redoThread__)
 
     def getGroup(self):
+        """ Return group# for this object
+        """
         return(self.__redoGroup__)
 
     def getSize(self):
+        """ Return redo size for this object
+        """
         return(self.__redoSize__)
 
     def getUnits(self):
+        """ Return unit size for this object MB, GB
+        """
         return(self.__redoUnits__)
 
     def getArchived(self):
+        """ Return archive status
+        """
         return(self.__archivedStatus__)
 
     def same_obj(self, obj_info):
-        """ checking that the obj_info is for this object:
+        """ Given a dictionary containing thread, group and member see if its a match
+            for this object:
+            checking that the obj_info is for this object:
             { 'thread': Thread#, 'group': Group#, 'member': Member ( +DATA or +FRA ), 'status': current or inactive, 'arc': no or yes }
         """
         if obj_info.get('thread', None) == self.__redoThread__:
@@ -232,7 +269,11 @@ class redoLogClass:
                 self.__changeflag__ = True
         # elif start obj and current state == start state and change flag is set
         elif self.__changeflag__ and obj_state.get('status', None) == self.__startingStatus__:
-            self.__finished__ = True
+            # To ensure all data is flushed from redo logs, reach start state twice! self.__laps_to_finish__ = 2
+            if self.__lap_count__ == self.__laps_to_finish__:
+                self.__finished__ = True
+            else:
+                self.__lap_count__ += 1
 
     def finished(self):
         """ This returns finished state
@@ -470,6 +511,7 @@ def curStatus(cur):
     global module_fail
     global module_exit
     global debuglog
+    global num_cycles
     local_debugging = True
 
     redoLog_l = []
@@ -494,7 +536,7 @@ def curStatus(cur):
         # create a list of redoLog Objects
         for oneLog in allRedoLogs_l:
             # debugg("%s type: %s" % (str(oneLog),type(oneLog)))
-            redoLog_l.append(redoLogClass(oneLog))
+            redoLog_l.append(redoLogClass(oneLog, num_cycles))
             if local_debugging:
                 # def debugg(self, _debugfile=None, _num=None):
                 redoLog_l[debug_idx].debugg(debuglog, debug_idx+1 )
@@ -538,6 +580,9 @@ def prep_host(vhost):
 
 
 def prep_sid(vdb,vhost):
+    """ See if the host is RAC or SI and return the appropriate db sid
+            dws ( no number in the sid ) or hcmd1
+    """
     global affirm
     global israc
 
@@ -571,6 +616,7 @@ def main ():
     global affirm
     global refname
     global def_con_as_user
+    global num_cycles
 
     ansible_facts={}
 
@@ -584,6 +630,7 @@ def main ():
             db_name         =dict(required=True),
             db_host         =dict(required=True),
             function        =dict(required=True),
+            cycles          =dict(required=False),
             size            =dict(required=False),
             units           =dict(required=False),
             israc           =dict(required=False),
@@ -601,6 +648,7 @@ def main ():
     vdb            = module.params.get('db_name')
     vdbhost        = module.params.get('db_host')
     vfx            = module.params.get('function')
+    vcycles        = moduel.params.get('cycles')
     vsize          = module.params.get('size')
     vunits         = module.params.get('units')
     visrac         = module.params.get('israc')
@@ -701,11 +749,15 @@ def main ():
     debugg("before calling create_tns(%s,%s)" % (vdbhost,vdb))
     dsn_tns = create_tns(vdbhost,vdb)
 
+    # ========= START MODULE MAJOR FUNCTIONS: FLUSH or RESIZE ==================
     if not module_fail and not module_exit:
         cur = create_con(vdbpass, dsn_tns, vconas)
         if not module_fail and not module_exit:
             debugg("finished creating cursor")
             if vfx.lower() == "flush":
+                if vcycles:
+                    # if flushing and a number of cycles was passed set it
+                    num_cycles = int(vcycles)
                 redoFlushMain(cur)
             elif vfx.lower() == "resize":
                 redoResizeMain(cur)
