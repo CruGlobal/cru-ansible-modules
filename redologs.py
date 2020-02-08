@@ -648,7 +648,7 @@ def main ():
     vdb            = module.params.get('db_name')
     vdbhost        = module.params.get('db_host')
     vfx            = module.params.get('function')
-    vcycles        = moduel.params.get('cycles')
+    vcycles        = module.params.get('cycles')
     vsize          = module.params.get('size')
     vunits         = module.params.get('units')
     visrac         = module.params.get('israc')
