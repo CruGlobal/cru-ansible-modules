@@ -10,7 +10,7 @@ import os
 import json
 import re
 import math
-import commands
+# import commands
 from subprocess import (PIPE, Popen)
 
 try:
