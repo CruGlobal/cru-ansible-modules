@@ -140,6 +140,17 @@ debug_path = '/home/oracle/.utils/debug.log'
 rac_nums = 10
 
 
+def msgg(info_str):
+    """ Passed a string append it to the msg string to output after module execution """
+    global msg
+
+    if msg:
+        msg = msg + " " + info_str
+    else:
+        msg = info_str
+
+    return
+
 def remote_cmd(cmd_str):
     """ execute command on remote host """
     debugg("run_remote_cmd() :: ...starting...cmd_str=%s" % (cmd_str))
