@@ -1,6 +1,4 @@
-#!/usr/bin/python3
-
-# /opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python3
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
