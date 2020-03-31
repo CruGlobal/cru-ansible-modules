@@ -64,6 +64,7 @@ short_description: Two functions: 1) flush and 2) resize
 notes: Flush used to force all redo logs to write before backup to ensure
        recovery to point in time is possible.
        Resize to resize redo logs when needed.
+       This runs on the users local machine and connects using cx_Oracle.
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
