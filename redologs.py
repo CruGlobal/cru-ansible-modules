@@ -74,35 +74,37 @@ EXAMPLES = '''
     local_action:
         module: redologs
         connect_as: system
-        system_password: "{{ database_passwords[dest_db_name].system }}"
-        dest_db: "{{ dest_db_name }}"
-        dest_host: "{{ dest_host }}"
+        userpwd: "{{ database_passwords[dest_db_name].system }}"
+        db_name: "{{ dest_db_name }}"
+        db_host: "{{ dest_host }}"
         function: flush
         cycles: 2
         size:
         units:
+	      israc: "{{ destfacts['israc'] }}"
         ignore: true
         refname:
-        debugmode: True
-        debuglog: /cru-ansible-oracle/bin/.utils/debug.log
+        debugmode: False
+        debuglog: 
     become_user: "{{ local_user }}"
     register: redo_run
 
   - name: Resize redo logs
     local_action:
         module: redologs
-        system_password: "{{ database_passwords[dest_db_name].system }}"
-        dest_db: "{{ dest_db_name }}"
-        dest_host: "{{ dest_host }}"
+        userpwd: "{{ database_passwords[dest_db_name].system }}"
+        db_name: "{{ dest_db_name }}"
+        db_host: "{{ dest_host }}"
         function: resize
         cycles:
         size: 500
         units: m
+	      israc: "{{ destfacts['israc'] }}"
         ignore: false
         refname:
+        redo_fix
         debugmode:
         debuglog:
-    become_user: "{{ local_user }}"
     register: redo_run
 
   Notes: Used to flush or resize redo logs.
@@ -127,16 +129,15 @@ EXAMPLES = '''
 # Global Vars:
 itemsToMatch = 0
 msg = ""
-error_msg = ""
+errmsg = ""
 debugme = False
 debuglog = ""
+debugFile = ""
 g_vignore = False
 ansible_facts = {}
 module_fail = False
 module_exit = False
 israc = False
-affirm = ['True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes', 't', 'T', 'y', 'Y', 'ON', 'on', 'On']
-cru_domain = ".ccci.org"
 # Name to call facts dictionary being passed back to Ansible
 # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
 refname = "redologs"
@@ -144,6 +145,15 @@ def_con_as_user = "system"
 num_start_objs = 0
 num_cycles = 1
 #
+affirm = ['True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes',  't', 'T', 'y', 'Y', "On', 'ON', 'on']
+cru_domain = ".ccci.org"
+new_hw = ['pldataw' + cru_domain,
+          'sldataw' + cru_domain,
+          'slrac1' + cru_domain,
+          'slrac2' + cru_domain,
+          'tlrac1' + cru_domain,
+          'tlrac2' + cru_domain]
+
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
 # ------------ ------------ ------------ ---------------- ---   ----------------------------------------------------------------------
 #	   1		    1	          50         ACTIVE		  YES   +FRA/TSTDB/ONLINELOG/group_1.28504.1006772175
@@ -316,10 +326,24 @@ class redoLogClass:
                                      ))
 
 
-def debugg(a_str):
+def add_snippet(_snip, _str):
+    """ Given a snippet of information as a string add it to another, longer,
+        string and return the longer string.
+    """
+
+    if _str:
+        _str = _str + " " + _snip
+    else:
+	_str = _snip
+
+    return(_str)
+
+
+def debugg(tidbit):
     global msg
     global error_msg
     global debuglog
+    global debugme
 
     if debugme:
         if not debuglog:
@@ -329,7 +353,21 @@ def debugg(a_str):
                 f.write(a_str+"\n")
 
 
-def add_to_msg(add_string):
+def write_to_file(tidbit, afile):
+    """ Write the string to the debug log if defined """
+
+    if afile:
+        try:
+            with open(afile, 'a') as f:
+                f.writeline(tidbit + "\n")
+        except:
+            print("Error: {} writing debugging information to log: {}")
+            pass
+
+    return
+
+
+def msgg(tidbit):
     """Passed a string add it to the msg to pass back to the user"""
     global msg
 
@@ -337,9 +375,16 @@ def add_to_msg(add_string):
         msg = msg + " " + add_string
     else:
         msg = add_string + " "
+    msg = add_snippet(tidbit, msg)
 
 
-def create_tns(vdbhost,vsid):
+def errmsgg(tidbit):
+    global errmsg
+
+    errmsg = add_snippet(tidbit, errmsg)
+
+
+def create_tns(vdbhost, vsid):
     global msg
     global g_vignore
     global module_fail
@@ -353,15 +398,16 @@ def create_tns(vdbhost,vsid):
         vdbhost = vdbhost + cru_domain
 
     debugg("creating dns with sid={} host={}".format(vsid, vdbhost))
+
     try:
       dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vsid)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
       if g_vignore:
-          add_to_msg("create_tns() : Failed to create dns_tns: %s" %s (error.message))
+          msgg("create_tns() : Failed to create dns_tns: %s" %s (error.message))
           module_exit = True
       else:
-          add_to_msg('create_tns() : TNS generation error: %s, db name: %s host: %s' % (error.message, vsid, vdbhost))
+          msgg('create_tns() : TNS generation error: %s, db name: %s host: %s' % (error.message, vsid, vdbhost))
           module_fail = True
 
     debugg("exit create_tns with : %s " % (dsn_tns))
@@ -385,12 +431,12 @@ def create_con(vdbpass, dsn_tns, vconn_as):
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         if g_vignore:
-            add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
+            msgg("DB CONNECTION FAILED : %s" % (error.message))
             if debugme:
-                add_to_msg(" g_vignore: %s " % (g_vignore))
+                msgg(" g_vignore: %s " % (g_vignore))
             module_exit = True
         else:
-            add_to_msg('Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost))
+            msgg('Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost))
             module_fail = True
 
     if not module_exit and not module_fail:
@@ -398,6 +444,141 @@ def create_con(vdbpass, dsn_tns, vconn_as):
         return(cur)
 
 
+def host_is_reachable(host):
+    """Ping the remote host to see if it's reachable (VPN check)"""
+
+    debugg("redologs :: host_is_reachable() ...starting...")
+
+    try:
+        cmd_str = "/sbin/ping -c 1 %s" % (host)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except OSError as e:
+        metainfo = "Error [{} - {}] attempting to reach host {}. \n Please check your network connection and vpn".format(str(e.errno), e.strerror, self.env_host_hash[self.dbComboBox.currentText()])
+        debugg("host_is_reachable() Error: running cmd_str={} meta: {}".format(cmd_str, metainfo))
+        sys.exit()
+
+    output = output.decode('utf-8')
+
+    debugg("redologs :: host_is_reachable() :\n output={}".format(output))
+
+    if 'PING' in str(output):
+        debugg("redologs :: host_is_reachable() : ...exiting....returning True")
+        return(True)
+    else:
+        debugg("redologs :: host_is_reachable() : ...exiting....returning False")
+        return(False)
+
+
+def whichsam(host):
+    """ given a database host
+        decide which user id to use sam or samk
+        for ssh commands
+        could also compare the last digit of the hostname
+        rac uses 01, or new uses 1
+        dw uses 60 or no number for new hw.
+    """
+    debugg(debugfile,"whichsam()...starting...")
+    global new_hw
+    global cru_domain
+
+    if cru_domain not in host:
+        host = host + cru_domain
+
+    if host in new_hw:
+        if debugfile: debugg(debugfile, "sam :: host={} in new_hw={}".format(host,str(new_hw)))
+        return("sam")
+    else:
+        if debugfile: debugg(debugfile, "samk :: host={} not in new_hw={}".format(host, str(new_hw)))
+        return("samk")
+
+
+def ckrac(host):
+    """ Determine if a host is running RAC or Single Instance
+        This function broken out of bkpMain and passed the class' self.
+        Other utils classes can call this and pass it self to determine if
+        envComboBox is a rac db or not.
+    """
+    debugg("bkpMain :: ckrac() : ....starting....")
+
+    cmd_str = "/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l"
+
+    output = run_remote(cmd_str, host)
+
+    if int(output) > 0:
+        # if > 0 "lck" processes running, it's RAC
+        debugg("israc() returning True")
+        return (True)
+    else:
+        debugg("israc() returning False")
+        return (False)
+
+
+def whoami():
+    """Run whoami on the localhost to
+       get the username for tailing the RMAN log later or
+       and tasks that require a local username
+    """
+    global errmsg
+    cmd_str = "whoami"
+    output = run_local(cmd_str)
+    return(output)
+
+
+def run_remote(cmd_str, host):
+    """ given a command and host string, run the command on the remote host
+    """
+
+    if not host_is_reachable(host):
+        debugg("redologs :: run_remote :: Error: host {} is not reachable".format(host))
+        msgg("Error: redologs :: run_remote() Host {} not reachable.".format(host))
+        return
+
+    _whoami = whoami()
+    if 'sam' in _whoami:
+        sshUser = whichsam(host)
+    else:
+        sshUser = _whoami
+    debugg("redologs :: run_remote() .. sshUser={}")
+
+    try:
+
+        debugg("cmd_str={} host={} sshUser={}".format(cmd_str, host, sshUser))
+        output = subprocess.run(["ssh", sshUser + "@" + host, cmd_str], shell=False, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        # output, code = process.communicate()
+    except:
+        errmsgg("Error: israc({}) :: cmd_str={}".format(sys.exc_info()[0], cmd_str))
+        errmsgg("Meta:: {}, {}, {} {}".format(sys.exc_info()[0], sys.exc_info()[1], msg, sys.exc_info()[2]))
+        raise Exception(errmsg)
+
+    if str(output):
+        output = output.stdout.decode('utf-8')
+        debugg("redologs :: run_remote() ...returning output = {}".format(output))
+        return(output)
+    else:
+        return("")
+
+
+def run_local(cmd_str):
+    """ Run a command on the local host using the subprocess module.
+    """
+
+    debugg("run_local() ...starting... with cmd_str={}".format(cmd_str))
+
+    try:
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except subprocess.CalledProcessError as e:
+        errmsgg("redologs :: run_local() : [ERROR]: output = {}, error code = {}\n".format(e.output, e.returncode))
+        debugg("redologs :: run_local() :: Error running cmd_str={} Error: {}".format(cmd_str,errmsg))
+
+    results = output.decode('ascii').strip()
+    debugg("redologs run_local()...exiting....output={} code={}".format(results, code))
+    return(results)
+
+
+# ==============================================================================
 def redoFlushMain(cur):
     global msg
     global module_fail
@@ -522,7 +703,7 @@ def curStatus(cur):
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        add_to_msg('curStatus() : Error redo logs and status, Error: %s' % (error.message))
+        msgg('curStatus() : Error redo logs and status, Error: %s' % (error.message))
         response = { 'status':'Fail', 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module_exit = True
@@ -559,7 +740,7 @@ def advanceLogs(cur):
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        add_to_msg('advanceLogs(): Error redo logs and status, Error: %s' % (error.message))
+        msgg('advanceLogs(): Error redo logs and status, Error: %s' % (error.message))
         response = { 'status':'Fail', 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module_exit = True
@@ -568,14 +749,102 @@ def advanceLogs(cur):
     debugg("exiting AdvanceLogs()")
 
 
+def backToStartingPoint(statusNow_l, origStartingPoint_l):
+    """startingPoint is list of dictionaries containing the Thread#,Group#'s that had the status ARC=NO, STATUS=CURRENT at start
+       force archive will continue until the starting point is reached. ( A complete circle is made and all redo logs
+       are flushed. )"""
+    global itemsToMatch
+    global module_fail
+    global module_exit
+
+    itemsThatMatch = 0
+    debugg("backToStartingPoint()")
+
+    if not module_fail and not module_exit:
+        # startFlag skips first run when objects would not have changed.
+        if len(statusNow_l) > 0:
+            # on two node rac with min redo of 2 should have to match 4 objects
+            if itemsToMatch == 0:
+                for item in origStartingPoint_l:
+                    if item.startingObj():
+                        debugg("startObject found => Group: %s" % (str(item.getGroup())))
+                        itemsToMatch += 1
+
+            for item in origStartingPoint_l:
+                if item.startingObj():
+                    curGroupState = sameGroupNow(item, statusNow_l)   # Find same item in statusNow_list of redoLog objects
+                    if item.getStartingStatus() == curGroupState.getStatus():
+                        debugg("")
+                        itemsThatMatch += 1
+
+            if itemsThatMatch == itemsToMatch:
+                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: True" % (itemsThatMatch, itemsToMatch))
+                return(True)
+            else:
+                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: False" % (itemsThatMatch, itemsToMatch))
+                return(False)
+
+
+def sameGroupNow(originalItem, curStatusList):
+
+    for item in curStatusList:
+        if item.getGroup() == originalItem.getGroup():
+            debugg("sameGroupNow returning matching Group from curStatusList Group: %s" % (item.getGroup()))
+            return(item)
+
+
+def findCurrentThread(redoLogObj_list):
+    startingPoint = []
+
+    for redolog in redoLogObj_list:
+        if redolog.getArchived() == "NO" and redolog.getStatus() == "CURRENT":
+            startingPoint.append({'thread': redolog.getThread(), 'group': redolog.getGroup() })
+
+    return(startingPoint)
+
+
+def convert_to_dict(redoLogs_l):
+    newRedoLogDict = {}
+    # (1, 1, 52428800, 'INACTIVE', 'YES', '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175')
+    # thread, group, size(bytes),status,archived,member
+    for item in redoLogs_l:
+        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5]})
+        tmp = hbytes(newRedoLogDict['size'])
+        newRedoLogDict['size'], newRedoLogDict['units'] = tmp.split("_")
+
+    return(newRedoLogDict)
+
+
+def hbytes(num):
+    for x in ['bytes','KB','MB','GB']:
+        if num < 1024.0:
+            return "%d_%s" % (round(num), x)
+        num /= 1024.0
+    return "%d_%s" % (round(num), 'TB')
+
+# ==============================================================================
+def redoResizeMain(cur, arg_size, arg_units):
+    """ Resize redo logs to value passed in
+        arg_size = 3
+        arg_units = m
+        resize to 3m
+        return msg with success or fail
+    """
+    msgg("redo_resize() function called..not implemented yet..exiting.. ")
+    pass
+
+
 def prep_host(vhost):
-    debugg("prep_host(%s)" % (vhost))
+    """ Given a host string add cru domain:
+            tlrac1 => tlrac1.ccci.org
+    """
+    debugg("prep_host({})".format(vhost))
     if "." in vhost:
         tmp = vhost.split(".")[0]
-        debugg("prep_host exiting with %s" % (tmp))
+        debugg("prep_host exiting with {}".format(tmp))
         return(tmp)
     else:
-        debugg("prep_host exiting with %s" % (vhost))
+        debugg("prep_host exiting with {}".format(vhost))
         return(vhost)
 
 
@@ -586,10 +855,13 @@ def prep_sid(vdb,vhost):
     global affirm
     global israc
 
+    if not israc and israc not in [ True, False]:
+        israc = ckrac(vhost)
+
     if cru_domain in vhost:
         vhost = vhost.replace(cru_domain, "")
 
-    if israc in affirm:
+    if israc:
         if vhost[-1:].isdigit():
             node_num = vhost[-1:]
 
@@ -657,7 +929,7 @@ def main ():
     vdebugme       = module.params.get('debugmode')
     vdebuglog      = module.params.get('debuglog')
 
-    if vdebugme in affirm:
+    if vdebugmode in affirm:
         debugme = True
     else:
         debugme = False
@@ -666,6 +938,7 @@ def main ():
         debuglog = vdebuglog
 
     debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
+
     if visrac in affirm:
         israc = True
     else:
@@ -683,32 +956,32 @@ def main ():
         vconas = def_con_as_user
 
     if not vdbpass:
-        error_msg = 'REDOLOGS MODULE ERROR: No password provided.' %s (arg_param_name)
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No password provided.' %s (arg_param_name)
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
 
     if not vdb:
-        error_msg = 'REDOLOGS MODULE ERROR: No db_name provided.' %s (arg_param_name)
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No db_name provided.' %s (arg_param_name)
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
 
     if not vdbhost:
-        error_msg = 'REDOLOGS MODULE ERROR: No databae host provided for required function parameter.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No databae host provided for required function parameter.'
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
 
     if not vfx:
-        error_msg = 'REDOLOGS MODULE ERROR: No function provided.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No function provided.'
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
@@ -718,24 +991,24 @@ def main ():
         g_vignore = vignore
 
     if not vsize and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No size provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No size provided. Required for resize function.'
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
 
     if not vunits and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No units provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: No units provided. Required for resize function.'
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
 
     if vfx.lower() not in ("resize", "flush"):
-        error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+        errmsg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
+        response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
@@ -760,10 +1033,10 @@ def main ():
                     num_cycles = int(vcycles)
                 redoFlushMain(cur)
             elif vfx.lower() == "resize":
-                redoResizeMain(cur)
+                redoResizeMain(cur, vsize, vunits)
             else:
-                add_to_msg('REDOLOG MODULE ERROR: choosing function')
-                response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+                msgg('REDOLOG MODULE ERROR: choosing function')
+                response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
                 if g_vignore:
                     module.exit_json( msg=msg, ansible_facts=response , changed=False)
                 else:
@@ -774,25 +1047,27 @@ def main ():
                 cur.close()
             except cx_Oracle.DatabaseError as exc:
               error, = exc.args
-              add_to_msg("Error closing cursor during redologs module %s META: %s" % (vfx, error.message))
-              response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
+              msgg("Error closing cursor during redologs module %s META: %s" % (vfx, error.message))
+              response = { 'status':'Fail', 'errmsg': errmsg, 'Error': error.message, 'changed':'False'}
               if g_vignore:
                   module.exit_json( msg=msg, ansible_facts=response , changed=False)
               else:
                   module.fail_json(msg=msg, meta=response)
 
-            add_to_msg("Redologs module succeeded for %s database. %s function" % (vdb, vfx.lower()))
+            msgg("Custom module dbfacts succeeded for %s database.%s function" % (vdb, vfx.lower()))
 
             vchanged="False"
 
     if module_fail:
+
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message or "Not available", 'changed':'False'}
+
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
     elif module_exit:
-        add_to_msg("An Error occurred and the module is exiting without stopping the play since ignore was set to True")
+        msgg("An Error occurred and the module is exiting without stopping the play since ignore was set to True")
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=False)
     else:
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)

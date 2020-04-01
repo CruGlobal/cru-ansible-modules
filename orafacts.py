@@ -689,7 +689,10 @@ def get_meta_data(local_db):
     if not output and 'mgmt' not in local_db.lower():
         try:
             local_ora_home = get_orahome_procid(local_db)
-            spcl_state = get_more_db_info(local_db, local_ora_home)
+            if local_ora_home:
+                spcl_state = get_more_db_info(local_db, local_ora_home)
+            else:
+                spcl_state = "UNK"
         except:
             err_msg = ' Error: get_meta_data(): call to get_more_db_info(): local_db: %s local_ora_home: %s spcl_state: %s' % (local_db, local_ora_home, spcl_state)
             err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
@@ -748,6 +751,9 @@ def get_more_db_info(vtmpdb, vtmporahome):
     global err_msg
     global os_path
     dbstate = ""
+
+    if not vtmporahome:
+        return("unknown")
 
     if not node_number:
         node_number = get_node_num()
@@ -1209,10 +1215,8 @@ def get_version(local_db):
 
     oracle_version = output.strip()
 
-    if "12" in oracle_version:
-        return("12")
-    elif "11" in oracle_version:
-        return("11")
+    if oracle_version:
+        return(oracle_version.split(".")[0])
     else:
         return("unk")
 

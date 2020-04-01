@@ -1,5 +1,16 @@
 #!/opt/rh/python27/root/usr/bin/python
 # -*- coding: utf-8 -*-
+
+# Author: Sam Kohler
+#   Date: Jan 21, 2020
+#
+# Module name: setcntrlfile ( Set Control File )
+#
+# Usage: Given ASM diskgroup and database name it looks for the control file
+#        in ASM, then opens the database in nomount state and sets
+#        the control file parameter.
+#
+
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 from ansible.module_utils._text import to_native

@@ -9,6 +9,7 @@ import json
 import re
 import math
 import commands
+from subprocess import (PIPE, Popen)
 
 try:
     import cx_Oracle
@@ -91,8 +92,33 @@ vparams=[ "cluster_database",
 msg = ""
 debugme = False
 defrefname = "dbfacts"
-true_bool = ['True','T','true','t','Yes','yes','y','Y']
+affirm = ['True','TRUE', 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
+debug_log = ""
+utils_settings_file = os.path.expanduser("~/.utils")
+
+def set_debug_log():
+    """ Set the debug_log value to write debugging messages to """
+    global utils_settings_file
+    global debug_log
+    global debugme
+
+    if not debugme:
+        return
+
+    try:
+        with open(utils_settings_file, 'r') as f1:
+            line = f1.readline()
+            while line:
+                if 'ans_dir' in line:
+                    tmp = line.strip().split("=")[1]
+                    debug_log = tmp + "/bin/.utils/debug.log"
+                    return
+
+                line = f1.readline()
+    except:
+        print("ans_dir not set in ~/.utils unable to write debug info to file")
+        pass
 
 
 def add_to_msg(a_msg):
@@ -107,11 +133,17 @@ def add_to_msg(a_msg):
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
-    global msg
+    global debug_log
     global debugme
 
-    if debugme:
-        add_to_msg(db_msg)
+    if not debugme or not debug_log:
+        return
+
+    try:
+        with open(debug_log, 'a') as f:
+            f.write(db_msg + "\n")
+    except:
+        pass
 
 
 def convert_size(arg_size_bytes, vunit):
@@ -162,7 +194,7 @@ def israc(host_str=None):
     #     return(True)
     # else:
     #     debugg("israc() returning False")
-        return(False)
+    return(False)
 
 
 def run_cmd(cmd_str):
@@ -196,6 +228,7 @@ def main ():
     global db_home_name
     ansible_facts={}
     is_rac = None
+    global affirm
     ignore_err_flag = False
 
     # Name to call facts dictionary being passed back to Ansible
@@ -214,7 +247,7 @@ def main ():
         ignore          =dict(required=False),
         debugging       =dict(required=False)
       ),
-      supports_check_mode=False,
+      supports_check_mode=True,
     )
 
     # Get arguements passed from Ansible playbook
@@ -225,8 +258,9 @@ def main ():
     vignore    = module.params.get('ignore')
     vdebug     = module.params.get('debugging')
 
-    if vdebug in true_bool:
+    if vdebug in affirm:
       debugme = True
+      set_debug_log()
     else:
       debugme = False
 
@@ -403,6 +437,56 @@ def main ():
             else:
               vtemp = 'False'
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
+        ignore_err_flag = False
+
+        # Determine if SIEBEL or PS Database
+        try:
+          cur.execute("select username from dba_users where username in ('SYSADM','FINADM','SIEBEL')")
+          debugg("cmd_str = {}".format("select username from dba_users where username in ('SYSADM','FINADM','SIEBEL')"))
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+
+        special_case = ""
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            debugg("determine if ps or seibel....vtemp={}".format(str(vtemp)))
+            if not vtemp:
+                ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
+            else:
+                vtemp = vtemp[0][0]
+                if vtemp == 'SIEBEL':
+                    ansible_facts[refname].update( { 'siebel': 'True','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
+                elif vtemp == "FINADM":
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'True', 'ps': 'True', 'ps_owner': 'finadm' } )
+                elif vtemp == "SYSADM":
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'True', 'ps_fin' : 'False', 'ps': 'True', 'ps_owner': 'sysadm' } )
+                else:
+                    ansible_facts[refname].update( { 'siebel': 'False','ps_hr': 'False', 'ps_fin' : 'False', 'ps': 'False', 'ps_owner': 'None' } )
+
+        ignore_err_flag = False
+
+        # get db_size
+        cmd_str = "select round(sum(used.bytes) / 1024 / 1024 / 1024 ) as db_size from (select bytes from v$datafile union all select bytes from v$tempfile union all select bytes from v$log) used, (select sum(bytes) as p from dba_free_space) free group by free.p"
+        try:
+          cur.execute(cmd_str)
+          debugg("get db_size :: cmd_str = {}".format(cmd_str))
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = str(vtemp[0][0]) + "G"
+            ansible_facts[refname].update( { 'db_size' : vtemp } )
         ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
