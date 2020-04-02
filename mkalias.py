@@ -351,7 +351,7 @@ def main ():
 
     debugg("[4] Check Alias")
 
-    add_to_msg("Module mkalias exiting successfully. Created alias: %s/%s/%s => %s " % (vasm_dg,vdb,spfile,spfile))
+    add_to_msg("Module mkalias exiting successfully. Created alias: %s/%s/%s => %s " % (vasm_dg,vdb,spfile[0],spfile[1]))
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)

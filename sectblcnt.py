@@ -9,7 +9,7 @@ import json
 import re
 import math
 import string
-import commands
+# import commands
 from subprocess import (PIPE, Popen)
 
 try:
@@ -348,10 +348,10 @@ def main ():
         table_list      =dict(required=True),
         db_name         =dict(required=True),
         host            =dict(required=True),
-        rac             =dict(required=True),
+        is_rac          =dict(required=True),
         refname         =dict(required=False),
         ignore          =dict(required=False),
-        debugmode      =dict(required=False)
+        debugmode       =dict(required=False)
       ),
       supports_check_mode=False,
     )
@@ -362,7 +362,7 @@ def main ():
     vtblList  = module.params.get('table_list')
     vdb       = module.params.get('db_name')
     vdbhost   = module.params.get('host')
-    vrac      = module.params.get('rac')
+    vrac      = module.params.get('is_rac')
     vrefname  = module.params.get('refname')
     vignore   = module.params.get('ignore')
     vdebugme  = module.params.get('debugmode')

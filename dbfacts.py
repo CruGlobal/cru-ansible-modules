@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python3
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
@@ -8,7 +8,7 @@ import os
 import json
 import re
 import math
-import commands
+# import commands
 from subprocess import (PIPE, Popen)
 
 try:
@@ -353,9 +353,11 @@ def main ():
                 if vtemp.upper() == 'TRUE':
                     is_rac = True
                     ansible_facts[refname].update({'cluster_database': 'True' })
+                    ansible_facts[refname].update({'is_rac': 'True' })
                 else:
                     is_rac = False
                     ansible_facts[refname].update({ 'cluster_database': 'False' })
+                    ansible_facts[refname].update({ 'is_rac': 'False' })
                 debugg( ">>>> In PARAM FOR LOOP : is_rac = %s" % (is_rac) )
             else:
                 try:
@@ -470,24 +472,24 @@ def main ():
 
         ignore_err_flag = False
 
-        # get db_size
-        cmd_str = "select round(sum(used.bytes) / 1024 / 1024 / 1024 ) as db_size from (select bytes from v$datafile union all select bytes from v$tempfile union all select bytes from v$log) used, (select sum(bytes) as p from dba_free_space) free group by free.p"
-        try:
-          cur.execute(cmd_str)
-          debugg("get db_size :: cmd_str = {}".format(cmd_str))
-        except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if vignore:
-              ignore_err_flag = True
-              add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
-          else:
-              module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
-
-        if not ignore_err_flag:
-            vtemp = cur.fetchall()
-            vtemp = str(vtemp[0][0]) + "G"
-            ansible_facts[refname].update( { 'db_size' : vtemp } )
-        ignore_err_flag = False
+        # # get db_size
+        # cmd_str = "select round(sum(used.bytes) / 1024 / 1024 / 1024 ) as db_size from (select bytes from v$datafile union all select bytes from v$tempfile union all select bytes from v$log) used, (select sum(bytes) as p from dba_free_space) free group by free.p"
+        # try:
+        #   cur.execute(cmd_str)
+        #   debugg("get db_size :: cmd_str = {}".format(cmd_str))
+        # except cx_Oracle.DatabaseError as exc:
+        #   error, = exc.args
+        #   if vignore:
+        #       ignore_err_flag = True
+        #       add_to_msg("Error selecting dba_data_files count: %s " % (error.message))
+        #   else:
+        #       module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
+        #
+        # if not ignore_err_flag:
+        #     vtemp = cur.fetchall()
+        #     vtemp = str(vtemp[0][0]) + "G"
+        #     ansible_facts[refname].update( { 'db_size' : vtemp } )
+        # ignore_err_flag = False
 
         # Get dbid for active db duplication without target, backup only
         try:

@@ -41,7 +41,7 @@
 #
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
-import commands
+# import commands
 import json
 import sys
 import os

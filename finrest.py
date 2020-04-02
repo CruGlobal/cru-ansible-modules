@@ -51,6 +51,7 @@ EXAMPLES = '''
 msg=""
 vdebugme = False
 vlogit = False
+debug_log = "/home/oracle/.utils/debug.log"
 
 def add_to_msg(in_str):
     """Add an input string to the global msg string"""
@@ -65,10 +66,12 @@ def add_to_msg(in_str):
 def debugg(in_str):
     global vdebugme
     global vlogit
+    global debug_log
+
     if vdebugme:
         add_to_msg(in_str)
     if vlogit:
-        with open("/u01/oracle/finrest.log","a") as f:
+        with open(debug_log,"a") as f:
             f.write("%s\n" % (in_str))
             f.close()
 
@@ -88,7 +91,7 @@ def main(argv):
       argument_spec = dict(
         oracle_sid     = dict(required=True),
         oracle_home    = dict(required=True),
-        debug          = dict(required=False)
+        debug_mode     = dict(required=False)
       ),
       supports_check_mode=False,
     )
@@ -96,7 +99,7 @@ def main(argv):
     # Get arguements passed from Ansible playbook
     voracle_sid  = module.params.get('oracle_sid')
     voracle_home = module.params.get('oracle_home')
-    vdebug       = module.params.get('debug')
+    vdebug       = module.params.get('debug_mode')
 
     if vdebug or vdebug == "logit":
         vdebugme = True
