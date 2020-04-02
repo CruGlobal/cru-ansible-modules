@@ -193,7 +193,7 @@ def main ():
         syspwd          =dict(required=True),
         db_name         =dict(required=True),
         host            =dict(required=True),
-        israc           =dict(required=True),
+        is_rac          =dict(required=True),
         refname         =dict(required=True),
         oracle_home     =dict(required=True),
         pfile_name      =dict(required=False),
