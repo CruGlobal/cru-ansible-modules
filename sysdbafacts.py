@@ -30,9 +30,11 @@ except ImportError:
 #                    whatevertheusercalledit['key'] which returns associated value - the ref name : "sourcefacts" was created in this module
 #     example:    {{ sysdbafact['control_files'] }} => +DATA3/TSTDB/CONTROLFILE/current.570.1002968751, +FRA/TSTDB/CONTROLFILE/current.22751.1002968751
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'Cru DBA team',
-                    'version': '0.1'}
+ANSIBLE_METADATA = {
+    'status': ['stableinterface'],
+    'supported_by': 'Cru DBA team',
+    'version': '0.1'
+}
 
 DOCUMENTATION = '''
 ---
@@ -49,46 +51,59 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
-    # When cloning a database source database password file use is recommended.
-    - local_action:
-        module: sysdbafacts
-        syspwd: "{{ database_passwords[source_db_name].sys }}"
-        db_name: "{{ source_db_name }}"
-        host: "{{ source_host }}"
-        israc: "{{ sourcefacts['cluster_database']|bool }}" (1)
-        pfile_name: "pfile.ora" (2)
-        share_dir: "{{ share_dir }}" (3)
-        src_passwd_dir: "{{ /oracle_home/dbs }}" (4)
-        oracle_home: "{{ oracle_home }}"
-        refname: "{{ refname_str }} (5)"
-        ignore: True (6)
-        force_switch: True (7)
-        debugging: False (8)
-      become_user: "{{ utils_local_user }}"
-      register: sys_facts
+# When cloning a database source database password file use is recommended.
+- local_action:
+    module: sysdbafacts
+    syspwd: "{{ database_passwords[source_db_name].sys }}"
+    db_name: "{{ source_db_name }}"
+    host: "{{ source_host }}"
+    israc: "{{ sourcefacts['cluster_database']|bool }}" (1)
+    pfile_name: "pfile.ora" (2)
+    share_dir: "{{ share_dir }}" (3)
+    src_passwd_dir: "{{ /oracle_home/dbs }}" (4)
+    oracle_home: "{{ oracle_home }}"
+    refname: "{{ refname_str }} (5)"
+    ignore: True (6)
+    force_switch: True (7)
+    debugging: False (8)
+  become_user: "{{ utils_local_user }}"
+  register: sys_facts
 
-      (1) israc      - (required) is RAC - this matters when the module puts together the db sid
+  (1) israc      - (required) is RAC - this matters when the module puts together the db sid
 
-      (2) pfile_name - optional. If provided a pfile by that name will be created to that share directory/filename
-                       if not provided pfile.ora will be used. ( using default is recommended )
+  (2) pfile_name - optional. If provided a pfile by that name will be created to that share directory/filename
+                   if not provided pfile.ora will be used. ( using default is recommended )
 
-      (3) share_dir  - location thats accessible to both source db and dest db
+  (3) share_dir  - location thats accessible to both source db and dest db
 
-      (4) src_passwd_dir - location of the source db password file : $ORACLE_HOME/dbs
+  (4) src_passwd_dir - location of the source db password file : $ORACLE_HOME/dbs
 
-      (5) refname        - (optional) name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
+  (5) refname        - (optional) name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts, sysdbafacts )
 
-      (6) ignore     - (optional) (connection errors). If you know the source
-          database may be down set ignore: True. If connection to the
-          source database fails the module will not throw a fatal error
-          to stop the play and continue.
+  (6) ignore     - (optional) (connection errors). If you know the source
+      database may be down set ignore: True. If connection to the
+      source database fails the module will not throw a fatal error
+      to stop the play and continue.
 
-      (7) force_switch - Force archive logs to write to disk. Helpful when working with new db that hasn't.
+  (7) force_switch - Force archive logs to write to disk. Helpful when working with new db that hasn't.
 
-      (8) debugging  - (optional) - if 'True' will add debugging statements to the output msg.
+  (8) debugging  - (optional) - if 'True' will add debugging statements to the output msg.
 
 '''
 
+RETURN = '''
+
+original_message:
+    description: The original name param that was passed in
+    type: str
+    returned: always
+
+message:
+    description: The output message that the test module generates
+    type: str
+    returned: always
+
+'''
 # Add anything from v$parameter table to retrieve here and it will be available
 # for reference when this module runs.
 vparams=[ "compatible",
@@ -195,7 +210,7 @@ def main ():
   vdbpass           = module.params.get('syspwd')
   vdb               = module.params.get('db_name')
   vdbhost           = module.params.get('host')
-  visrac            = module.params.get('israc')
+  visrac            = module.params.get('is_rac')
   vrefname          = module.params.get('refname')
   vignore           = module.params.get('ignore')
   vpfile            = module.params.get('pfile_name')

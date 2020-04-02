@@ -634,7 +634,7 @@ def main ():
             cycles          =dict(required=False),
             size            =dict(required=False),
             units           =dict(required=False),
-            israc           =dict(required=False),
+            is_rac          =dict(required=False),
             ignore          =dict(required=False),
             refname         =dict(required=False),
             debugmode       =dict(required=False),
@@ -652,7 +652,7 @@ def main ():
     vcycles        = module.params.get('cycles')
     vsize          = module.params.get('size')
     vunits         = module.params.get('units')
-    visrac         = module.params.get('israc')
+    visrac         = module.params.get('is_rac')
     vignore        = module.params.get('ignore')
     vrefname       = module.params.get('refname')
     vdebugme       = module.params.get('debugmode')
