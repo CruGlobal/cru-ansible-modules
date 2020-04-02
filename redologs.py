@@ -81,7 +81,8 @@ EXAMPLES = '''
         function: flush
         cycles: 2
         size:
-        units:
+        units
+        is_rac: "{{ destfacts['is_rac'] }}"
         ignore: true
         refname:
         debugmode: True
@@ -99,6 +100,7 @@ EXAMPLES = '''
         cycles:
         size: 500
         units: m
+	is_rac: "{{ destfacts['is_rac'] }}"
         ignore: false
         refname:
         debugmode:
@@ -131,6 +133,7 @@ msg = ""
 error_msg = ""
 debugme = False
 debuglog = ""
+debugFile = ""
 g_vignore = False
 ansible_facts = {}
 module_fail = False
@@ -145,6 +148,16 @@ def_con_as_user = "system"
 num_start_objs = 0
 num_cycles = 1
 #
+cru_domain = ".ccci.org"
+new_hw = ['pldataw' + cru_domain,
+	  'plrac1' + cru_domain,
+	  'plrac2' + cru_domain,
+          'sldataw' + cru_domain,
+          'slrac1' + cru_domain,
+          'slrac2' + cru_domain,
+          'tlrac1' + cru_domain,
+          'tlrac2' + cru_domain]
+
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
 # ------------ ------------ ------------ ---------------- ---   ----------------------------------------------------------------------
 #	   1		    1	          50         ACTIVE		  YES   +FRA/TSTDB/ONLINELOG/group_1.28504.1006772175
@@ -321,6 +334,7 @@ def debugg(a_str):
     global msg
     global error_msg
     global debuglog
+    global debugme
 
     if debugme:
         if not debuglog:
@@ -399,6 +413,141 @@ def create_con(vdbpass, dsn_tns, vconn_as):
         return(cur)
 
 
+def host_is_reachable(host):
+    """Ping the remote host to see if it's reachable (VPN check)"""
+
+    debugg("redologs :: host_is_reachable() ...starting...")
+
+    try:
+        cmd_str = "/sbin/ping -c 1 %s" % (host)
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except OSError as e:
+        metainfo = "Error [{} - {}] attempting to reach host {}. \n Please check your network connection and vpn".format(str(e.errno), e.strerror, self.env_host_hash[self.dbComboBox.currentText()])
+        debugg("host_is_reachable() Error: running cmd_str={} meta: {}".format(cmd_str, metainfo))
+        sys.exit()
+
+    output = output.decode('utf-8')
+
+    debugg("redologs :: host_is_reachable() :\n output={}".format(output))
+
+    if 'PING' in str(output):
+        debugg("redologs :: host_is_reachable() : ...exiting....returning True")
+        return(True)
+    else:
+        debugg("redologs :: host_is_reachable() : ...exiting....returning False")
+        return(False)
+
+
+def whichsam(host):
+    """ given a database host
+        decide which user id to use sam or samk
+        for ssh commands
+        could also compare the last digit of the hostname
+        rac uses 01, or new uses 1
+        dw uses 60 or no number for new hw.
+    """
+    debugg(debugfile,"whichsam()...starting...")
+    global new_hw
+    global cru_domain
+
+    if cru_domain not in host:
+        host = host + cru_domain
+
+    if host in new_hw:
+        if debugfile: debugg(debugfile, "sam :: host={} in new_hw={}".format(host,str(new_hw)))
+        return("sam")
+    else:
+        if debugfile: debugg(debugfile, "samk :: host={} not in new_hw={}".format(host, str(new_hw)))
+        return("samk")
+
+
+def ckrac(host):
+    """ Determine if a host is running RAC or Single Instance
+        This function broken out of bkpMain and passed the class' self.
+        Other utils classes can call this and pass it self to determine if
+        envComboBox is a rac db or not.
+    """
+    debugg("bkpMain :: ckrac() : ....starting....")
+
+    cmd_str = "/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l"
+
+    output = run_remote(cmd_str, host)
+
+    if int(output) > 0:
+        # if > 0 "lck" processes running, it's RAC
+        debugg("israc() returning True")
+        return (True)
+    else:
+        debugg("israc() returning False")
+        return (False)
+
+
+def whoami():
+    """Run whoami on the localhost to
+       get the username for tailing the RMAN log later or
+       and tasks that require a local username
+    """
+    global errmsg
+    cmd_str = "whoami"
+    output = run_local(cmd_str)
+    return(output)
+
+
+def run_remote(cmd_str, host):
+    """ given a command and host string, run the command on the remote host
+    """
+
+    if not host_is_reachable(host):
+        debugg("redologs :: run_remote :: Error: host {} is not reachable".format(host))
+        msgg("Error: redologs :: run_remote() Host {} not reachable.".format(host))
+        return
+
+    _whoami = whoami()
+    if 'sam' in _whoami:
+        sshUser = whichsam(host)
+    else:
+        sshUser = _whoami
+    debugg("redologs :: run_remote() .. sshUser={}")
+
+    try:
+
+        debugg("cmd_str={} host={} sshUser={}".format(cmd_str, host, sshUser))
+        output = subprocess.run(["ssh", sshUser + "@" + host, cmd_str], shell=False, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        # output, code = process.communicate()
+    except:
+        errmsgg("Error: israc({}) :: cmd_str={}".format(sys.exc_info()[0], cmd_str))
+        errmsgg("Meta:: {}, {}, {} {}".format(sys.exc_info()[0], sys.exc_info()[1], msg, sys.exc_info()[2]))
+        raise Exception(errmsg)
+
+    if str(output):
+        output = output.stdout.decode('utf-8')
+        debugg("redologs :: run_remote() ...returning output = {}".format(output))
+        return(output)
+    else:
+        return("")
+
+
+def run_local(cmd_str):
+    """ Run a command on the local host using the subprocess module.
+    """
+
+    debugg("run_local() ...starting... with cmd_str={}".format(cmd_str))
+
+    try:
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except subprocess.CalledProcessError as e:
+        errmsgg("redologs :: run_local() : [ERROR]: output = {}, error code = {}\n".format(e.output, e.returncode))
+        debugg("redologs :: run_local() :: Error running cmd_str={} Error: {}".format(cmd_str,errmsg))
+
+    results = output.decode('ascii').strip()
+    debugg("redologs run_local()...exiting....output={} code={}".format(results, code))
+    return(results)
+
+
+# ==============================================================================
 def redoFlushMain(cur):
     global msg
     global module_fail
@@ -569,8 +718,96 @@ def advanceLogs(cur):
     debugg("exiting AdvanceLogs()")
 
 
+def backToStartingPoint(statusNow_l, origStartingPoint_l):
+    """startingPoint is list of dictionaries containing the Thread#,Group#'s that had the status ARC=NO, STATUS=CURRENT at start
+       force archive will continue until the starting point is reached. ( A complete circle is made and all redo logs
+       are flushed. )"""
+    global itemsToMatch
+    global module_fail
+    global module_exit
+
+    itemsThatMatch = 0
+    debugg("backToStartingPoint()")
+
+    if not module_fail and not module_exit:
+        # startFlag skips first run when objects would not have changed.
+        if len(statusNow_l) > 0:
+            # on two node rac with min redo of 2 should have to match 4 objects
+            if itemsToMatch == 0:
+                for item in origStartingPoint_l:
+                    if item.startingObj():
+                        debugg("startObject found => Group: %s" % (str(item.getGroup())))
+                        itemsToMatch += 1
+
+            for item in origStartingPoint_l:
+                if item.startingObj():
+                    curGroupState = sameGroupNow(item, statusNow_l)   # Find same item in statusNow_list of redoLog objects
+                    if item.getStartingStatus() == curGroupState.getStatus():
+                        debugg("")
+                        itemsThatMatch += 1
+
+            if itemsThatMatch == itemsToMatch:
+                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: True" % (itemsThatMatch, itemsToMatch))
+                return(True)
+            else:
+                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: False" % (itemsThatMatch, itemsToMatch))
+                return(False)
+
+
+def sameGroupNow(originalItem, curStatusList):
+
+    for item in curStatusList:
+        if item.getGroup() == originalItem.getGroup():
+            debugg("sameGroupNow returning matching Group from curStatusList Group: %s" % (item.getGroup()))
+            return(item)
+
+
+def findCurrentThread(redoLogObj_list):
+    startingPoint = []
+
+    for redolog in redoLogObj_list:
+        if redolog.getArchived() == "NO" and redolog.getStatus() == "CURRENT":
+            startingPoint.append({'thread': redolog.getThread(), 'group': redolog.getGroup() })
+
+    return(startingPoint)
+
+
+def convert_to_dict(redoLogs_l):
+    newRedoLogDict = {}
+    # (1, 1, 52428800, 'INACTIVE', 'YES', '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175')
+    # thread, group, size(bytes),status,archived,member
+    for item in redoLogs_l:
+        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5]})
+        tmp = hbytes(newRedoLogDict['size'])
+        newRedoLogDict['size'], newRedoLogDict['units'] = tmp.split("_")
+
+    return(newRedoLogDict)
+
+
+def hbytes(num):
+    for x in ['bytes','KB','MB','GB']:
+        if num < 1024.0:
+            return "%d_%s" % (round(num), x)
+        num /= 1024.0
+    return "%d_%s" % (round(num), 'TB')
+
+# ==============================================================================
+def redoResizeMain(cur, arg_size, arg_units):
+    """ Resize redo logs to value passed in
+        arg_size = 3
+        arg_units = m
+        resize to 3m
+        return msg with success or fail
+    """
+    msgg("redo_resize() function called..not implemented yet..exiting.. ")
+    pass
+
+
 def prep_host(vhost):
-    debugg("prep_host(%s)" % (vhost))
+    """ Given a host string add cru domain:
+            tlrac1 => tlrac1.ccci.org
+    """
+    debugg("prep_host({})".format(vhost))
     if "." in vhost:
         tmp = vhost.split(".")[0]
         debugg("prep_host exiting with %s" % (tmp))
