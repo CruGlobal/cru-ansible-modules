@@ -126,6 +126,7 @@ oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 israc = None
 spcl_case_dbs = ['orcl11g','orcl12c','orcl19']
+affirm = ['Y', 'y', 'Yes', 'YES', 'yes', 'True', 'TRUE', 'true', True, 'T', 't']
 
 
 def msgg(add_string):
@@ -471,6 +472,11 @@ def get_ora_homes():
            err_msg = err_msg + ' ERROR: get_ora_homes() - cluster name: (%s)' % (sys.exc_info()[0])
 
          tempHomes.update({'cluster_name': clu_name})
+
+         if is_rac():
+             tempHomes.update( {'is_rac': 'True'} )
+         else:
+             tempHomes.update( {'is_rac': 'False'} )
 
          # node names in the cluster
          try:
