@@ -353,9 +353,11 @@ def main ():
                 if vtemp.upper() == 'TRUE':
                     is_rac = True
                     ansible_facts[refname].update({'cluster_database': 'True' })
+                    ansible_facts[refname].update({'is_rac': 'True' })
                 else:
                     is_rac = False
                     ansible_facts[refname].update({ 'cluster_database': 'False' })
+                    ansible_facts[refname].update({ 'is_rac': 'False' })
                 debugg( ">>>> In PARAM FOR LOOP : is_rac = %s" % (is_rac) )
             else:
                 try:
