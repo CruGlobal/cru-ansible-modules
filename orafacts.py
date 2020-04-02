@@ -703,6 +703,7 @@ def get_meta_data(local_db):
             err_msg = ' Error: get_meta_data(): call to get_more_db_info(): local_db: %s local_ora_home: %s spcl_state: %s' % (local_db, local_ora_home, spcl_state)
             err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
             debugg("post get_more_db_info()..called with local_db = %s  local_ora_home = %s  err_msg = %s" % (local_db, local_ora_home, err_msg))
+            spcl_state = "possibly residual info in srvctl or /etc/oratab entry but no db"
             # raise Exception (err_msg)
 
         metadata = {'STATE': spcl_state,'TARGET': 'unknown','STATE_DETAILS': 'unknown', 'status': 'unknown'}
