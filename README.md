@@ -352,7 +352,8 @@ Module to create an alias in the ASM diskgroup for the spfile
       
 ```
 
-### redologs - Redo Logs (FLUSH or RESIZE)
+### redologs - Redo Logs (FLUSH or RESIZE) RESIZE IS NOW OBSOLETE.
+The resize function has been moved to the utils GUI app. Download from the Cru DBA Team drive.
 
 This module is used to flush redo logs prior to taking a backup, or to resize redo logs. 
 
@@ -381,29 +382,7 @@ Resizes redo logs to whatever size is provided in the parameters.
     become_user: "{{ local_user }}"
     register: redo_run
 
-  Call from Ansible playbook: 
-  - name: Resize redo logs
-    local_action:
-        module: redologs
-        system_password: "{{ database_passwords[dest_db_name].system }}"
-        dest_db: "{{ dest_db_name }}"
-        dest_host: "{{ dest_host }}"
-        function: resize
-        size: 500
-        units: m
-        ignore: false
-        refname:
-    become_user: "{{ local_user }}"
-    register: redo_run
-    
-    
-    size and units are not required for "flush" but are for resize.
-    
-    units are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
-    ignore - tells the module whether to fail on error and raise it or pass on error
-             and continue with the play. Default is to fail.
 ```
-
 
 ### rmandbid - RMAN Database ID
 
