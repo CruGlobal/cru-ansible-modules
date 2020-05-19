@@ -237,7 +237,7 @@ Gather Oracle facts on the host(s) you're running your playbook against.
                 "ip1": "<internal ip removed>",
                 "ip2": "<internal ip removed>",
                 "ip3": "<internal ip removed>",
-                "scan_listener": "plrac-scan.ccci.org"
+                "scan_listener": "<scan-listener.domain here>"
             },
             "tns_admin": "/app/19.0.0/grid/network/admin",
             "tnsnames": "/app/19.0.0/grid/network/admin/tnsnames.ora"
