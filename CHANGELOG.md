@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - This CHANGELOG file
 - Basic CONTRIBUTING template
 - Removed redo resize functionality from redologs.py module since this is
-  more dynamic than Ansible is. The functionality was moved to utils GUI app
+  more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
 [Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.1.0...HEAD
