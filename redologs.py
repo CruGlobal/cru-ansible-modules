@@ -60,11 +60,9 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 DOCUMENTATION = '''
 ---
 module: redologs
-short_description: Two functions: 1) flush and 2) resize
+short_description: One functions, to flush redo logs.
 notes: Flush used to force all redo logs to write before backup to ensure
        recovery to point in time is possible.
-       Resize to resize redo logs when needed.
-       This runs on the users local machine and connects using cx_Oracle.
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
@@ -79,9 +77,6 @@ EXAMPLES = '''
         dest_db: "{{ dest_db_name }}"
         dest_host: "{{ dest_host }}"
         function: flush
-        cycles: 2
-        size:
-        units
         is_rac: "{{ destfacts['is_rac'] }}"
         ignore: true
         refname:
@@ -90,34 +85,13 @@ EXAMPLES = '''
     become_user: "{{ local_user }}"
     register: redo_run
 
-  - name: Resize redo logs
-    local_action:
-        module: redologs
-        system_password: "{{ database_passwords[dest_db_name].system }}"
-        dest_db: "{{ dest_db_name }}"
-        dest_host: "{{ dest_host }}"
-        function: resize
-        cycles:
-        size: 500
-        units: m
-	is_rac: "{{ destfacts['is_rac'] }}"
-        ignore: false
-        refname:
-        debugmode:
-        debuglog:
-    become_user: "{{ local_user }}"
-    register: redo_run
-
-  Notes: Used to flush or resize redo logs.
+  Notes: Used to flush redo logs.
 
  connect_as - Not required. default system.
      cycles - Only works with FLUSH function.
               The number of times to force log switches and flush redo logs.
               It captures starting status and cycles through to that picture
               this number of times.
-              size and units are not required for "flush" but are for resize.
-       size - Required for resize and is a number i.e. size: 2 units: m = 2MB
-      units - Required for resize.
               are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
      ignore - tells the module whether to fail on error and raise it or pass on error
               and continue with the play. Default is to fail.
@@ -1099,8 +1073,6 @@ def main ():
             db_host         =dict(required=True),
             function        =dict(required=True),
             cycles          =dict(required=False),
-            size            =dict(required=False),
-            units           =dict(required=False),
             is_rac          =dict(required=False),
             ignore          =dict(required=False),
             refname         =dict(required=False),
@@ -1117,8 +1089,6 @@ def main ():
     vdbhost        = module.params.get('db_host')
     vfx            = module.params.get('function')
     vcycles        = module.params.get('cycles')
-    vsize          = module.params.get('size')
-    vunits         = module.params.get('units')
     visrac         = module.params.get('is_rac')
     vignore        = module.params.get('ignore')
     vrefname       = module.params.get('refname')
@@ -1133,7 +1103,7 @@ def main ():
     if vdebuglog:
         debuglog = vdebuglog
 
-    debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
+    # debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
     if visrac in affirm:
         israc = True
     else:
@@ -1193,24 +1163,8 @@ def main ():
     if vignore:
         g_vignore = vignore
 
-    if not vsize and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No size provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
-        if g_vignore:
-            module.exit_json( msg=msg, ansible_facts=response , changed=False)
-        else:
-            module.fail_json(msg=msg, meta=response)
-
-    if not vunits and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No units provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
-        if g_vignore:
-            module.exit_json( msg=msg, ansible_facts=response , changed=False)
-        else:
-            module.fail_json(msg=msg, meta=response)
-
-    if vfx.lower() not in ("resize", "flush"):
-        error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
+    if vfx.lower() != "flush":
+        error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be flush' % (vfx)
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
@@ -1235,9 +1189,6 @@ def main ():
                     # if flushing and a number of cycles was passed set it
                     num_cycles = int(vcycles)
                 redoFlushMain(cur)
-            elif vfx.lower() == "resize":
-                # def redoResizeMain(cur, arg_size, arg_units)
-                redoResizeMain(cur, vsize, vunits)
             else:
                 add_to_msg('REDOLOG MODULE ERROR: choosing function')
                 response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
