@@ -255,13 +255,21 @@ Gather Oracle facts on the host(s) you're running your playbook against.
           "{{ orafacts['11g']['home'] }}"
      to return value:
           "/app/oracle/11.2.0.4/dbhome_1"
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> fbcd9975cb95e21d7cbf5cc7ded9f3e467b7d097
   or for example, if your dest_db_name = credsp
      use this reference in Ansible:
            "{{ database_details[dest_db_name]['oracle_home'] }}
      to return value:
             "/app/oracle/11.2.0.4/dbhome_1"
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> fbcd9975cb95e21d7cbf5cc7ded9f3e467b7d097
 ```
 
 ### sourcefacts
@@ -655,9 +663,17 @@ Resizes redo logs to whatever size is provided in the parameters.
         debuglog: /path/to/debug.log
     become_user: "{{ local_user }}"
     register: redo_run
+<<<<<<< HEAD
 
     ignore - tells the module whether to fail on error and raise it or pass on error
              and continue with the play. Default is to fail.
+=======
+
+    ignore - tells the module whether to fail on error and raise it or pass on error
+             and continue with the play. Default is to fail.
+
+```
+>>>>>>> fbcd9975cb95e21d7cbf5cc7ded9f3e467b7d097
 
 ```
 
