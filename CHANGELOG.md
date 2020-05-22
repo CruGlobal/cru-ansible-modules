@@ -7,10 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [v1.2.0] - 2020-05-19
-- Removed resize functionality from redologs module and moved it to utils GUI
+  - Removed resize functionality from redologs module and moved it to utils GUI
 
-- Added functionality in orfacts module to determine ORACLE_HOME using running
-  processes if a database is running with no /etc/oratab entry.
+  - Added functionality in orfacts module to determine ORACLE_HOME using running
+    processes if a database is running with no /etc/oratab entry.
 
 ## [v1.1.0] - 2020-04-22
   ### Added
