@@ -6,8 +6,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.0.0] - 2020-02-07
-
 ## [v1.1.0] - 2020-04-22
 ### Added
 - New module `splitout`
@@ -20,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added functionality in orfacts module to determine ORACLE_HOME using running
   processes if a database is running with no /etc/oratab entry.
+
+## [v1.0.0] - 2020-02-07
 
 ### Added
 - This CHANGELOG file
