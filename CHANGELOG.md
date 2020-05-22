@@ -27,6 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed redo resize functionality from redologs.py module since this is
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
-
+[v1.2.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.1.0...v1.2.0
 [v1.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.0.0...v1.1.0
 [v1.0.0]: https://github.com/CruGlobal/cru-ansible-modules/releases/tag/v1.0.0
