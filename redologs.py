@@ -60,14 +60,18 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 DOCUMENTATION = '''
 ---
 module: redologs
-short_description: One functions, to flush redo logs.
+short_description: Two functions: 1) flush and 2) resize
 notes: Flush used to force all redo logs to write before backup to ensure
        recovery to point in time is possible.
+       Resize to resize redo logs when needed.
+       This runs on the users local machine and connects using cx_Oracle.
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
 
 EXAMPLES = '''
+
+  * For resize functionality see utils GUI app on the DBA team drive.
 
   - name: Flush redo logs
     local_action:
@@ -77,7 +81,7 @@ EXAMPLES = '''
         dest_db: "{{ dest_db_name }}"
         dest_host: "{{ dest_host }}"
         function: flush
-        is_rac: "{{ destfacts['is_rac'] }}"
+        cycles: 2
         ignore: true
         refname:
         debugmode: True
@@ -87,19 +91,23 @@ EXAMPLES = '''
 
   Notes: Used to flush redo logs.
 
- connect_as - Not required. default system.
-     cycles - Only works with FLUSH function.
-              The number of times to force log switches and flush redo logs.
-              It captures starting status and cycles through to that picture
-              this number of times.
+ connect_as - Not required. default is 'system' user.
+     cycles - When this module runs it captures the which redo logs are 'current'
+              and takes this to be the starting point. It then issues commands
+              to advance redologs until it reaches the starting point again.
+              This is considered 1 cycle. So to flush all redo logs to disk
+              one time, cycles: 1
               are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
-     ignore - tells the module whether to fail on error and raise it or pass on error
-              and continue with the play. Default is to fail.
-  debugmode and debuglog - optional, but required if debugging.
+     ignore - ignore module failures: true/false
+              tells the module whether to fail the play on module error and raise
+              an exception or print the error and continue the play.
+              The default is to fail the play. To continue, 'ignore: true'
+  debugmode and debuglog - optional, but required if debugging this module.
               all debugging information will be written to debuglog if provided.
-              otherwise if debugmode is True it, but no debuglog provided it will
+              otherwise if debugmode is True, but no debuglog provided it will
               be written to the output msg if the module runs to completion.
-
+                    'debugmode: true'
+                    'debuglog: /dir/to/debug/output/debug.log'
 '''
 # Global Vars:
 itemsToMatch = 0
@@ -107,7 +115,6 @@ msg = ""
 error_msg = ""
 debugme = False
 debuglog = ""
-debugFile = ""
 g_vignore = False
 ansible_facts = {}
 module_fail = False
@@ -118,226 +125,17 @@ cru_domain = ".ccci.org"
 # Name to call facts dictionary being passed back to Ansible
 # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
 refname = "redologs"
+available_fxs = ['flush']
 def_con_as_user = "system"
 num_start_objs = 0
 num_cycles = 1
 #
-cru_domain = ".ccci.org"
-new_hw = ['pldataw' + cru_domain,
-	  'plrac1' + cru_domain,
-	  'plrac2' + cru_domain,
-          'sldataw' + cru_domain,
-          'slrac1' + cru_domain,
-          'slrac2' + cru_domain,
-          'tlrac1' + cru_domain,
-          'tlrac2' + cru_domain]
-
-
-def prep_resize_script(v_sz, v_unit):
-    """ Passed a number ( v_sz i.e. 1, 2, 3 )
-        and a unit ( v_unit i.e. G, M, K )
-        format the redo logs resize script using that size => 1G
-        and pass it back
-    """
-
-    if not v_sz or not v_unit:
-        msgg("Error: not enought paramters to continue: redo size = {} and units = {}".format(v_sz or "None!", v_unit or "None!"))
-        return
-
-    redo_resize = """
-    prompt Purpose: Resize redo logfiles.
-    set serveroutput on;
-    DECLARE
-
-         -- >>>>> DEFINE REDO LOG SIZE HERE <<<<<<<<
-         -- to call this script :  @redo_resize 1 G
-         -- This is set to resize the redo logs to 1GB
-         -- v_sz is a number i.e.  1
-         -- v_val is units i.e. M, G
-         v_sz NUMBER := {};
-         v_val VARCHAR2(1) := {};
-
-         CURSOR c1
-         IS
-         SELECT l.thread#, l.group#
-           FROM v$logfile lf, gv$log l
-         WHERE lf.group#=l.group#
-         GROUP BY l.thread#, l.group#;
-
-         stmt   VARCHAR2(2048);
-
-         v_asm_grp VARCHAR2(5);
-
-         v_code NUMBER;
-         v_errm VARCHAR2(64);
-
-         -- Find the ASM group the redo resides in +DATA1, +DATA2 etc
-         FUNCTION asm_groups (v_group IN NUMBER)
-         RETURN VARCHAR2
-         AS
-    	CURSOR c9
-    	IS
-    	SELECT member
-    	FROM v$logfile
-    	WHERE group# = v_group
-    	ORDER BY member;
-
-            v_pos1 number;
-            v_pos2 number;
-
-            v_code NUMBER;
-            v_errm VARCHAR2(64);
-
-         BEGIN
-
-            FOR mbrRec IN c9
-    	LOOP
-                -- dbms_output.put_line('asm_groups called with v_group : '||v_group);
-    	    v_pos2 := INSTR(mbrRec.member,'/',1) - 2;
-    	    -- dbms_output.put_line('v_pos2: '||v_pos2);
-    	    IF (SUBSTR(mbrRec.member,2,v_pos2) <> 'FRA') THEN
-    	       -- dbms_output.put_line(' returning asm_groups : '||SUBSTR(mbrRec.member,2,v_pos2));
-    	       return SUBSTR(mbrRec.member,2,v_pos2);
-                END IF;
-
-    	END LOOP;
-
-        EXCEPTION
-    	WHEN OTHERS THEN
-                 v_code := SQLCODE;
-                 v_errm := SUBSTR(SQLERRM, 1 , 64);
-                 DBMS_OUTPUT.PUT_LINE('asm_groups error code is ' || v_code || '- ' || v_errm);
-        END asm_groups;
-
-         FUNCTION redo_status (v_group IN NUMBER)
-         RETURN NUMBER
-         AS
-
-      	v_status v$log.status%TYPE;
-
-         BEGIN
-
-           -- dbms_output.put_line('in the redo_status function');
-           select unique(status) into v_status
-            from v$log
-    	where group# = v_group;
-
-            -- dbms_output.put_line('redo_status for group '||v_group||' : '||v_status);
-
-    	-- Status cannot be ACTIVE or CURRENT - return 0 when status is INACTIVE
-    	IF (v_status = 'INACTIVE' OR v_status = 'UNUSED') THEN
-    		-- dbms_output.put_line('redo_status returning: 1 '|| v_status);
-    		return 1;
-    	ELSE
-    		-- dbms_output.put_line('redo_status returning: 0 '||v_status);
-    		return 0;
-    	END IF;
-
-         EXCEPTION
-    	WHEN OTHERS THEN
-                 v_code := SQLCODE;
-                 v_errm := SUBSTR(SQLERRM, 1 , 64);
-                 DBMS_OUTPUT.PUT_LINE('redo_status error code is ' || v_code || '- ' || v_errm);
-         END redo_status;
-
-         PROCEDURE drop_n_add (v_thread IN NUMBER, v_group IN NUMBER, v_asm_grp IN VARCHAR2, v_sz IN NUMBER, v_val IN VARCHAR2)
-         IS
-         BEGIN
-
-             -- dbms_output.put_line('drop_n_add called with : thread : '||v_thread||', group : '||v_group||', asm_group : '||v_asm_grp||', v_sz : '||v_sz||', v_val : '||v_val);
-             stmt := 'ALTER DATABASE DROP LOGFILE GROUP '||v_group;
-             -- DBMS_OUTPUT.PUT_LINE ('drop_n_add : '||stmt);
-             EXECUTE IMMEDIATE stmt;
-             stmt := 'ALTER DATABASE ADD LOGFILE THREAD '||v_thread||' GROUP '||v_group||' ('''||'+'||v_asm_grp||''',''+FRA'') SIZE '||v_sz||v_val||'';
-             -- DBMS_OUTPUT.PUT_LINE ('drop_n_add : '||stmt);
-             EXECUTE IMMEDIATE stmt;
-    	 dbms_lock.sleep(5);
-
-         EXCEPTION
-    	WHEN OTHERS THEN
-                 v_code := SQLCODE;
-                 v_errm := SUBSTR(SQLERRM, 1 , 64);
-                 DBMS_OUTPUT.PUT_LINE('drop_n_add: error code is ' || v_code || '- ' || v_errm);
-         END drop_n_add;
-
-         PROCEDURE change_status (v_thread IN NUMBER, v_group IN NUMBER)
-         IS
-            -- while status is other than INACTIVE or UNUSED work to change it
-    	v_other NUMBER := 0;
-
-         BEGIN
-
-           -- dbms_output.put_line('change_status called');
-           WHILE(v_other = 0)
-           LOOP
-
-    	   EXECUTE IMMEDIATE 'ALTER SYSTEM CHECKPOINT GLOBAL';
-               EXECUTE IMMEDIATE 'ALTER SYSTEM SWITCH LOGFILE';
-
-    	   v_other := redo_status(v_group);
-               -- dbms_output.put_line('Current status - wait 5 sec (1 means INACTIVE) :'||v_other);
-
-               -- if the status hasn't changed wait 5 seconds and try again.
-    	   dbms_lock.sleep(5);
-
-           END LOOP;
-
-           -- dbms_output.put_line('change_status now : '||v_other);
-
-         EXCEPTION
-    	WHEN OTHERS THEN
-                 v_code := SQLCODE;
-                 v_errm := SUBSTR(SQLERRM, 1 , 64);
-                 DBMS_OUTPUT.PUT_LINE('The error code is ' || v_code || '- ' || v_errm);
-         END change_status;
-
-    BEGIN
-
-         FOR rlcRec IN c1
-         LOOP
-    	   -- dbms_output.put_line('top of the loop in the main program');
-    	   -- FRA is assumed, the other ASM group is determined here:
-               v_asm_grp := asm_groups(rlcRec.group#);
-               -- dbms_output.put_line('v_asm_grp: '||v_asm_grp);
-
-    	  -- If the redo log status is "INACTIVE / 1". drop and recreate it.
-    	  IF (redo_status(rlcRec.group#) = 1 ) THEN
-
-    	      -- dbms_output.put_line('First IF calling drop_n_add');
-    	      drop_n_add(rlcRec.thread#,rlcRec.group#, v_asm_grp, v_sz, v_val);
-
-    	   -- else execute switches and checkpoints until it is.
-              ELSE
-
-    	      -- dbms_output.put_line('ELSE calling change_status');
-    	      change_status(rlcRec.thread#,rlcRec.group#);
-
-    	      drop_n_add(rlcRec.thread#,rlcRec.group#, v_asm_grp, v_sz, v_val);
-
-    	  END IF;
-
-         END LOOP;
-
-    EXCEPTION
-    	WHEN OTHERS THEN
-                 v_code := SQLCODE;
-                 v_errm := SUBSTR(SQLERRM, 1 , 64);
-                 DBMS_OUTPUT.PUT_LINE('main program error code is ' || v_code || '- ' || v_errm);
-    END;
-    /
-    """.format(v_sz, v_unit)
-
-    return(redo_resize)
-
 #      THREAD#	   GROUP#      SIZE_MB       STATUS		  ARC     MEMBER
 # ------------ ------------ ------------ ---------------- ---   ----------------------------------------------------------------------
 #	   1		    1	          50         ACTIVE		  YES   +FRA/TSTDB/ONLINELOG/group_1.28504.1006772175
 #
 # A dictionary like this should be passed into class redoLog
 # { 'thread':1,'GROUP': 1, 'SIZE_MB':50, 'STATUS':'INACTIVE','ARCHIVED': 'YES','MEMBER': '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175'}
-# ------
-#                         0        1    2      3         4      5
-# but now using list [ thread, group, size, status, archived, member  ]
 class redoLogClass:
     def __init__(self, redo_t, cycles=None):
         self.__redoThread__ = redo_t[0]
@@ -345,7 +143,7 @@ class redoLogClass:
         self.__redoStatus__ = redo_t[3]
         self.__prevStatus__ = ""
         self.__startingStatus__ = redo_t[3]
-        self.__redoSize__ = redo_t[2]
+        self.__redoSize__ = redo_t[2] or ""
         self.__redoUnits__ = 'm'
         self.__archivedStatus__ = redo_t[4]
         self.__member__ = redo_t[5]
@@ -502,13 +300,13 @@ class redoLogClass:
                                     self.__changeflag__,
                                     self.__finished__
                                      ))
+                f.write("====================================\n")
 
 
 def debugg(a_str):
     global msg
     global error_msg
     global debuglog
-    global debugme
 
     if debugme:
         if not debuglog:
@@ -529,11 +327,6 @@ def add_to_msg(add_string):
 
 
 def create_tns(vdbhost,vsid):
-    """ Given a host ( tlrac1.ccci.org )
-        and a sid ( samdb1 )
-        generate the cx_Oracle dsn_tns string:
-        (DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=tlrac1.ccci.org)(PORT=1521))(CONNECT_DATA=(SID=samdb1)))
-    """
     global msg
     global g_vignore
     global module_fail
@@ -592,141 +385,6 @@ def create_con(vdbpass, dsn_tns, vconn_as):
         return(cur)
 
 
-def host_is_reachable(host):
-    """Ping the remote host to see if it's reachable (VPN check)"""
-
-    debugg("redologs :: host_is_reachable() ...starting...")
-
-    try:
-        cmd_str = "/sbin/ping -c 1 %s" % (host)
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except OSError as e:
-        metainfo = "Error [{} - {}] attempting to reach host {}. \n Please check your network connection and vpn".format(str(e.errno), e.strerror, self.env_host_hash[self.dbComboBox.currentText()])
-        debugg("host_is_reachable() Error: running cmd_str={} meta: {}".format(cmd_str, metainfo))
-        sys.exit()
-
-    output = output.decode('utf-8')
-
-    debugg("redologs :: host_is_reachable() :\n output={}".format(output))
-
-    if 'PING' in str(output):
-        debugg("redologs :: host_is_reachable() : ...exiting....returning True")
-        return(True)
-    else:
-        debugg("redologs :: host_is_reachable() : ...exiting....returning False")
-        return(False)
-
-
-def whichsam(host):
-    """ given a database host
-        decide which user id to use sam or samk
-        for ssh commands
-        could also compare the last digit of the hostname
-        rac uses 01, or new uses 1
-        dw uses 60 or no number for new hw.
-    """
-    debugg(debugfile,"whichsam()...starting...")
-    global new_hw
-    global cru_domain
-
-    if cru_domain not in host:
-        host = host + cru_domain
-
-    if host in new_hw:
-        if debugfile: debugg(debugfile, "sam :: host={} in new_hw={}".format(host,str(new_hw)))
-        return("sam")
-    else:
-        if debugfile: debugg(debugfile, "samk :: host={} not in new_hw={}".format(host, str(new_hw)))
-        return("samk")
-
-
-def ckrac(host):
-    """ Determine if a host is running RAC or Single Instance
-        This function broken out of bkpMain and passed the class' self.
-        Other utils classes can call this and pass it self to determine if
-        envComboBox is a rac db or not.
-    """
-    debugg("bkpMain :: ckrac() : ....starting....")
-
-    cmd_str = "/bin/ps -ef | /bin/grep lck | /bin/grep -v grep | wc -l"
-
-    output = run_remote(cmd_str, host)
-
-    if int(output) > 0:
-        # if > 0 "lck" processes running, it's RAC
-        debugg("israc() returning True")
-        return (True)
-    else:
-        debugg("israc() returning False")
-        return (False)
-
-
-def whoami():
-    """Run whoami on the localhost to
-       get the username for tailing the RMAN log later or
-       and tasks that require a local username
-    """
-    global errmsg
-    cmd_str = "whoami"
-    output = run_local(cmd_str)
-    return(output)
-
-
-def run_remote(cmd_str, host):
-    """ given a command and host string, run the command on the remote host
-    """
-
-    if not host_is_reachable(host):
-        debugg("redologs :: run_remote :: Error: host {} is not reachable".format(host))
-        add_to_msg("Error: redologs :: run_remote() Host {} not reachable.".format(host))
-        return
-
-    _whoami = whoami()
-    if 'sam' in _whoami:
-        sshUser = whichsam(host)
-    else:
-        sshUser = _whoami
-    debugg("redologs :: run_remote() .. sshUser={}")
-
-    try:
-
-        debugg("cmd_str={} host={} sshUser={}".format(cmd_str, host, sshUser))
-        output = subprocess.run(["ssh", sshUser + "@" + host, cmd_str], shell=False, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        # output, code = process.communicate()
-    except:
-        debugg("Error: israc({}) :: cmd_str={}".format(sys.exc_info()[0], cmd_str))
-        debugg("Meta:: {}, {}, {} {}".format(sys.exc_info()[0], sys.exc_info()[1], msg, sys.exc_info()[2]))
-        raise Exception(errmsg)
-
-    if str(output):
-        output = output.stdout.decode('utf-8')
-        debugg("redologs :: run_remote() ...returning output = {}".format(output))
-        return(output)
-    else:
-        return("")
-
-
-def run_local(cmd_str):
-    """ Run a command on the local host using the subprocess module.
-    """
-
-    debugg("run_local() ...starting... with cmd_str={}".format(cmd_str))
-
-    try:
-        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
-        output, code = process.communicate()
-    except subprocess.CalledProcessError as e:
-        debugg("redologs :: run_local() : [ERROR]: output = {}, error code = {}\n".format(e.output, e.returncode))
-        debugg("redologs :: run_local() :: Error running cmd_str={} Error: {}".format(cmd_str,errmsg))
-
-    results = output.decode('ascii').strip()
-    debugg("redologs run_local()...exiting....output={} code={}".format(results, code))
-    return(results)
-
-
-# ==============================================================================
 def redoFlushMain(cur):
     global msg
     global module_fail
@@ -897,117 +555,8 @@ def advanceLogs(cur):
     debugg("exiting AdvanceLogs()")
 
 
-def backToStartingPoint(statusNow_l, origStartingPoint_l):
-    """startingPoint is list of dictionaries containing the Thread#,Group#'s that had the status ARC=NO, STATUS=CURRENT at start
-       force archive will continue until the starting point is reached. ( A complete circle is made and all redo logs
-       are flushed. )"""
-    global itemsToMatch
-    global module_fail
-    global module_exit
-
-    itemsThatMatch = 0
-    debugg("backToStartingPoint()")
-
-    if not module_fail and not module_exit:
-        # startFlag skips first run when objects would not have changed.
-        if len(statusNow_l) > 0:
-            # on two node rac with min redo of 2 should have to match 4 objects
-            if itemsToMatch == 0:
-                for item in origStartingPoint_l:
-                    if item.startingObj():
-                        debugg("startObject found => Group: %s" % (str(item.getGroup())))
-                        itemsToMatch += 1
-
-            for item in origStartingPoint_l:
-                if item.startingObj():
-                    curGroupState = sameGroupNow(item, statusNow_l)   # Find same item in statusNow_list of redoLog objects
-                    if item.getStartingStatus() == curGroupState.getStatus():
-                        debugg("")
-                        itemsThatMatch += 1
-
-            if itemsThatMatch == itemsToMatch:
-                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: True" % (itemsThatMatch, itemsToMatch))
-                return(True)
-            else:
-                debugg("Exiting backToStartingPoint() itemsThatMatch: %s == itemsToMatch: %s returning: False" % (itemsThatMatch, itemsToMatch))
-                return(False)
-
-
-def sameGroupNow(originalItem, curStatusList):
-
-    for item in curStatusList:
-        if item.getGroup() == originalItem.getGroup():
-            debugg("sameGroupNow returning matching Group from curStatusList Group: %s" % (item.getGroup()))
-            return(item)
-
-
-def findCurrentThread(redoLogObj_list):
-    startingPoint = []
-
-    for redolog in redoLogObj_list:
-        if redolog.getArchived() == "NO" and redolog.getStatus() == "CURRENT":
-            startingPoint.append({'thread': redolog.getThread(), 'group': redolog.getGroup() })
-
-    return(startingPoint)
-
-
-def convert_to_dict(redoLogs_l):
-    newRedoLogDict = {}
-    # (1, 1, 52428800, 'INACTIVE', 'YES', '+FRA/TSTDB/ONLINELOG/group_1.28504.1006772175')
-    # thread, group, size(bytes),status,archived,member
-    for item in redoLogs_l:
-        newRedoLogDict.update({'thread': item[0],'group':item[1],'size':item[2],'status':item[3],'archived':item[4],'member':item[5]})
-        tmp = hbytes(newRedoLogDict['size'])
-        newRedoLogDict['size'], newRedoLogDict['units'] = tmp.split("_")
-
-    return(newRedoLogDict)
-
-
-def hbytes(num):
-    for x in ['bytes','KB','MB','GB']:
-        if num < 1024.0:
-            return "%d_%s" % (round(num), x)
-        num /= 1024.0
-    return "%d_%s" % (round(num), 'TB')
-
-
-def create_con_str():
-    """ Generate the connect string needed by sqlplus to run the resize script
-    """
-
-
-# ==============================================================================
-def redoResizeMain(connstr, arg_size, arg_units):
-    """ Resize redo logs to value passed in
-        arg_size = 3
-        arg_units = m
-        resize to 3m
-        return msg with success or fail
-    """
-    global redo_resize
-    add_to_msg("redo_resize() function called....arg_size={} arg_units={}".format(arg_size, arg_units))
-
-    rz_script = prep_resize_script(arg_size, arg_units)
-    debugg("redo_resize with numbers={}".format(redo_resize))
-
-    con_str = create_con_str()
-
-    sqlplus = Popen(['sqlplus','-S', connstr], stdin=PIPE, stdout=PIPE, stderr=PIPE)
-    sqlplus.stdin.write(rz_script)
-    try:
-        output, error = sqlplus.communicate()
-    except:
-        debugg(output + " " + error)
-
-    msgg(output)
-
-    return
-
 def prep_host(vhost):
-    """ Given a host string add cru domain:
-            tlrac1 => tlrac1.ccci.org
-    """
-    debugg("prep_host({})".format(vhost))
+    debugg("prep_host(%s)" % (vhost))
     if "." in vhost:
         tmp = vhost.split(".")[0]
         debugg("prep_host exiting with %s" % (tmp))
@@ -1055,10 +604,8 @@ def main ():
     global refname
     global def_con_as_user
     global num_cycles
-    global v_host
-    global v_user
-    global v_db
-    global v_pwd
+    global available_fxs
+    orig_db_param = ""
 
     ansible_facts={}
 
@@ -1103,7 +650,7 @@ def main ():
     if vdebuglog:
         debuglog = vdebuglog
 
-    # debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
+    debugg("Start parameter checks...this pyhton code is {} bit...python {}".format(struct.calcsize("P") * 8, sys.executable))
     if visrac in affirm:
         israc = True
     else:
@@ -1120,8 +667,6 @@ def main ():
     else:
         vconas = def_con_as_user
 
-    v_user = vconas
-
     if not vdbpass:
         error_msg = 'REDOLOGS MODULE ERROR: No password provided.' %s (arg_param_name)
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
@@ -1129,8 +674,6 @@ def main ():
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
         else:
             module.fail_json(msg=msg, meta=response)
-
-    v_pwd = vdbpass
 
     if not vdb:
         error_msg = 'REDOLOGS MODULE ERROR: No db_name provided.' %s (arg_param_name)
@@ -1140,7 +683,7 @@ def main ():
         else:
             module.fail_json(msg=msg, meta=response)
 
-    v_db = vdb
+    orig_db_param = vdb
 
     if not vdbhost:
         error_msg = 'REDOLOGS MODULE ERROR: No databae host provided for required function parameter.'
@@ -1150,10 +693,8 @@ def main ():
         else:
             module.fail_json(msg=msg, meta=response)
 
-    v_host = vdbhost
-
-    if not vfx:
-        error_msg = 'REDOLOGS MODULE ERROR: No function provided.'
+    if not vfx or vfx not in available_fxs:
+        error_msg = 'REDOLOGS MODULE ERROR: No function, or unknown fx provided.'
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
@@ -1163,8 +704,8 @@ def main ():
     if vignore:
         g_vignore = vignore
 
-    if vfx.lower() != "flush":
-        error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be flush' % (vfx)
+    if vfx.lower() not in available_fxs:
+        error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
@@ -1189,6 +730,8 @@ def main ():
                     # if flushing and a number of cycles was passed set it
                     num_cycles = int(vcycles)
                 redoFlushMain(cur)
+            elif vfx.lower() == "resize":
+                redoResizeMain(cur)
             else:
                 add_to_msg('REDOLOG MODULE ERROR: choosing function')
                 response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
@@ -1209,7 +752,7 @@ def main ():
               else:
                   module.fail_json(msg=msg, meta=response)
 
-            add_to_msg("Redologs module succeeded for %s database. %s function" % (vdb, vfx.lower()))
+            add_to_msg("Redologs module succeeded for %s database. %s function" % (orig_db_param, vfx.lower()))
 
             vchanged="False"
 
