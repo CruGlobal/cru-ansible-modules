@@ -125,7 +125,7 @@ grid_home = ""
 oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
 israc = None
-spcl_case_dbs = ['orcl11g','orcl12c','orcl19']
+spcl_case = ['9'] # ['orcl11g','orcl12c','orcl19']
 affirm = ['Y', 'y', 'Yes', 'YES', 'yes', 'True', 'TRUE', 'true', True, 'T', 't']
 
 
@@ -344,7 +344,7 @@ def strip_version(vorahome):
 def get_db_home_n_vers(local_db):
     """Using /etc/oratab return the Oracle Home for the database"""
     global err_msg
-    global spcl_case_dbs
+    global spcl_case
     return_info = {}
 
     if local_db[-1].isdigit() and local_db not in spcl_case_dbs:
@@ -559,7 +559,7 @@ def get_db_status(local_vdb):
     global grid_home
     global msg
     global debugme
-    global spcl_case_dbs
+    global spcl_case
     node_number = ""
     err_msg = ""
     node_status = []
@@ -584,7 +584,7 @@ def get_db_status(local_vdb):
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.asm | grep STATE"
     elif "MGMTDB" in local_vdb.upper():
         tmp_cmd = grid_home + "/bin/crsctl status resource ora.mgmtdb | grep STATE"
-    elif local_vdb[-1].isdigit() and local_vdb not in spcl_case_dbs:
+    elif local_vdb[-1].isdigit() and local_vdb[-1] not in spcl_case: # sfk
         tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb[:-1] + ".db | grep STATE"
     else:
         tmp_cmd = grid_home + "/bin/crsctl status resource ora." + local_vdb + ".db | grep STATE"
@@ -640,7 +640,7 @@ def get_meta_data(local_db):
     global grid_home
     global my_msg
     global msg
-    global spcl_case_dbs
+    global spcl_case #sfk
 
     local_ora_home = ""
     spcl_state = ""
@@ -673,7 +673,7 @@ def get_meta_data(local_db):
         return({})
 
     # the next command takes db name without instance number, so remove it if it exists
-    if local_db[-1].isdigit() and local_db not in spcl_case_dbs:
+    if local_db[-1].isdigit() and local_db[-1] not in spcl_case: #sfk
         local_db = local_db[:-1]
 
     if 'mgmt' in local_db.lower():
@@ -799,7 +799,7 @@ def rac_running_homes():
     global ora_home
     global grid_home
     global node_number
-    global spcl_case_dbs
+    global spcl_case # sfk
     tempstat = ""
     tempdb = ""
     local_cmd = ""
@@ -864,7 +864,7 @@ def rac_running_homes():
         # tmpnodenum = int(node_number) - 1
 
         debugg("#1 ............CUTTING.....vdbname = %s" % (vdbname))
-        if vdbname[-1].isdigit() and vdbname not in spcl_case_dbs:
+        if vdbname[-1].isdigit() and vdbname[-1] not in spcl_case:
             tmpdbname = vdbname[:-1]
         else:
             tmpdbname =  vdbname
@@ -933,7 +933,7 @@ def rac_running_homes():
 
           vmetadata = get_meta_data(vnextdb)
 
-          if vnextdb[-1].isdigit() and vnextdb not in spcl_case_dbs:
+          if vnextdb[-1].isdigit() and vnextdb[-1] not in spcl_case:
               dbname = vnextdb[:-1]
           else:
               dbname = vnextdb
@@ -1202,15 +1202,17 @@ def get_version(local_db):
     """Return the general Oracle version for a given database"""
     global grid_home
     global msg
-    global spcl_case_dbs
+    global spcl_case #sfk
 
     if not grid_home:
         grid_home = get_gihome()
+    debugg("    get_version()...grid_home={}".format(grid_home))
 
-    if local_db[:-1].isdigit() and local_db not in spcl_case_dbs:
+    if local_db[:-1].isdigit() and local_db[-1] not in spcl_case:
         tmp_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + local_db[:-1] + " | cut -d/ -f4"
     else:
         tmp_cmd = "/bin/cat /etc/oratab | /bin/grep -m 1 " + local_db + " | cut -d/ -f4"
+    debugg("    tmp_cmd={}".format(tmp_cmd))
 
     try:
       process = subprocess.Popen([tmp_cmd], stdout=PIPE, stderr=PIPE, shell=True)
@@ -1220,11 +1222,62 @@ def get_version(local_db):
         # module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
 
     oracle_version = output.strip()
+    debugg("    oracle_version={}".format("[" + str(oracle_version) + "]"))
+
+    # if it wasn't available in /etc/oratab try running homes.
+    if not oracle_version: #sfk
+        oracle_version = get_running_home(local_db)
 
     if oracle_version:
-        return(oracle_version.split(".")[0])
+        ov = oracle_version.split(".")[0]
+        debugg("    get_version() exiting => return#1 oracle_version={}".format(ov))
+        return(ov)
     else:
+        debugg("    get_version() exiting => return#2 oracle_version=unk")
         return("unk")
+
+def get_running_home(db):
+    """Looking at running processes on the remote host get the db home"""
+
+    debugg("get_running_home()....starting....db={}".format(db))
+
+    cmd_str1 = "ps -ef | grep pmon | grep {} | grep -v python | awk '{{ print $2 }}'".format(db)
+    debugg("    get_running_home()....cmd_str1={}".format(cmd_str1))
+    try:
+      process1 = subprocess.Popen([cmd_str1], stdout=PIPE, stderr=PIPE, shell=True)
+      output1, code1 = process1.communicate()
+    except:
+        msg = msg + ' ERROR [5] get_version() retrieving version for database : %s' % (local_db)
+
+    debugg("    raw output={}".format(str(output1)))
+    if output1:
+        proc_id = output1.strip()
+    else:
+        return("")
+    debugg("    proc_id={}".format(str(proc_id)))
+
+    cmd_str2 = "sudo ls -l /proc/{}/cwd | sed -n -e 's/^.*-> //p' | sed -r 's/\/dbs//'".format(proc_id)
+    debugg("    get_running_home()....cmd_str2={}".format(cmd_str2))
+    try:
+      process2 = subprocess.Popen([cmd_str2], stdout=PIPE, stderr=PIPE, shell=True)
+      output2, code2 = process2.communicate()
+    except:
+        msg = msg + ' ERROR [5] get_version() retrieving version for database : %s' % (local_db)
+
+    debugg("    raw output={}".format(str(output2)))
+    ora_home = output2
+    if ora_home:
+        ora_home = ora_home.strip()
+    else:
+        return("")
+
+    # v = '12.1.0.2'
+    v = ora_home.split("/")[3]
+    short_v = v.split(".")[0]
+
+    debugg("    returning.....ora_home={}".format(str(ora_home)))
+    debugg("    get_running_home()...exiting....")
+    return(short_v)
 
 
 def host_name():
@@ -1379,16 +1432,27 @@ def main(argv):
   global v_rec_count
   global msg
   global global_ora_home
-  global spcl_case_dbs
+  global spcl_case
+  global debugme
+  global affirm
+  vdebug = False
 
   ansible_facts={ 'orafacts': {} }
   facts = {}
 
   module = AnsibleModule(
       argument_spec = dict(
+         debugging = dict(required=False)
       ),
       supports_check_mode = True,
   )
+
+  vdebug = module.params["debugging"]
+
+  if vdebug in affirm:
+      debugme = True
+  else:
+      debugme = False
 
   if is_ora_installed():
     if is_ora_running():
@@ -1420,10 +1484,10 @@ def main(argv):
                 debugg("\nmain() :: looping through individual databases: vkey=%s vvalue=%s" % (vkey, vvalue))
                 ansible_facts['orafacts'][vkey] = vvalue
                 if "+asm" not in vkey.lower() and "pmon" not in vkey.lower() and "mgmtdb" not in vkey.lower():
-                    if vkey[-1:].isdigit() and vkey not in spcl_case_dbs:
+                    if vkey[-1:].isdigit() and vkey[-1] not in spcl_case:
                         tmpdb = vkey[:-1]
                     debugg("    processing vkey = %s   tmpdb= %s" % (vkey, tmpdb))
-                    if not tmpdb[-1].isdigit() or tmpdb in spcl_case_dbs:
+                    if not tmpdb[-1].isdigit() or tmpdb[-1] in spcl_case: # or tmpdb in spcl_case:
                         tmpdb = tmpdb + str(node_number)
                     tmpver = get_version(tmpdb)
                     ansible_facts['orafacts']['all_dbs'].update({tmpdb: {'status': vvalue['status'], 'version': tmpver, 'metadata': ansible_facts['orafacts'][tmpdb]['state_details'].upper()}})
