@@ -734,7 +734,7 @@ def main ():
                 ansible_facts[refname].update( { 'USER_TABLESPACE': vtemp } )
         ignore_err_flag = False
 
-        if usable_ver[:2] == "12":
+        if usable_ver[:2] != "11":
             # Get sourcedb home:
             try:
               cur.execute("select SYS_CONTEXT ('USERENV','ORACLE_HOME') from dual")

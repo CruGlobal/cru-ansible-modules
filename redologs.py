@@ -71,6 +71,8 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
+  * For resize functionality see utils GUI app on the DBA team drive.
+
   - name: Flush redo logs
     local_action:
         module: redologs
@@ -80,8 +82,6 @@ EXAMPLES = '''
         dest_host: "{{ dest_host }}"
         function: flush
         cycles: 2
-        size:
-        units:
         ignore: true
         refname:
         debugmode: True
@@ -89,41 +89,25 @@ EXAMPLES = '''
     become_user: "{{ local_user }}"
     register: redo_run
 
-  - name: Resize redo logs
-    local_action:
-        module: redologs
-        system_password: "{{ database_passwords[dest_db_name].system }}"
-        dest_db: "{{ dest_db_name }}"
-        dest_host: "{{ dest_host }}"
-        function: resize
-        cycles:
-        size: 500
-        units: m
-        ignore: false
-        refname:
-        debugmode:
-        debuglog:
-    become_user: "{{ local_user }}"
-    register: redo_run
+  Notes: Used to flush redo logs.
 
-  Notes: Used to flush or resize redo logs.
-
- connect_as - Not required. default system.
-     cycles - Only works with FLUSH function.
-              The number of times to force log switches and flush redo logs.
-              It captures starting status and cycles through to that picture
-              this number of times.
-              size and units are not required for "flush" but are for resize.
-       size - Required for resize and is a number i.e. size: 2 units: m = 2MB
-      units - Required for resize.
+ connect_as - Not required. default is 'system' user.
+     cycles - When this module runs it captures the which redo logs are 'current'
+              and takes this to be the starting point. It then issues commands
+              to advance redologs until it reaches the starting point again.
+              This is considered 1 cycle. So to flush all redo logs to disk
+              one time, cycles: 1
               are single letter: k (kilobytes), m (megabytes), g (gigabytes) etc.
-     ignore - tells the module whether to fail on error and raise it or pass on error
-              and continue with the play. Default is to fail.
-  debugmode and debuglog - optional, but required if debugging.
+     ignore - ignore module failures: true/false
+              tells the module whether to fail the play on module error and raise
+              an exception or print the error and continue the play.
+              The default is to fail the play. To continue, 'ignore: true'
+  debugmode and debuglog - optional, but required if debugging this module.
               all debugging information will be written to debuglog if provided.
-              otherwise if debugmode is True it, but no debuglog provided it will
+              otherwise if debugmode is True, but no debuglog provided it will
               be written to the output msg if the module runs to completion.
-
+                    'debugmode: true'
+                    'debuglog: /dir/to/debug/output/debug.log'
 '''
 # Global Vars:
 itemsToMatch = 0
@@ -141,6 +125,7 @@ cru_domain = ".ccci.org"
 # Name to call facts dictionary being passed back to Ansible
 # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
 refname = "redologs"
+available_fxs = ['flush']
 def_con_as_user = "system"
 num_start_objs = 0
 num_cycles = 1
@@ -158,7 +143,7 @@ class redoLogClass:
         self.__redoStatus__ = redo_t[3]
         self.__prevStatus__ = ""
         self.__startingStatus__ = redo_t[3]
-        self.__redoSize__ = redo_t[2]
+        self.__redoSize__ = redo_t[2] or ""
         self.__redoUnits__ = 'm'
         self.__archivedStatus__ = redo_t[4]
         self.__member__ = redo_t[5]
@@ -315,6 +300,7 @@ class redoLogClass:
                                     self.__changeflag__,
                                     self.__finished__
                                      ))
+                f.write("====================================\n")
 
 
 def debugg(a_str):
@@ -618,6 +604,8 @@ def main ():
     global refname
     global def_con_as_user
     global num_cycles
+    global available_fxs
+    orig_db_param = ""
 
     ansible_facts={}
 
@@ -632,8 +620,6 @@ def main ():
             db_host         =dict(required=True),
             function        =dict(required=True),
             cycles          =dict(required=False),
-            size            =dict(required=False),
-            units           =dict(required=False),
             is_rac          =dict(required=False),
             ignore          =dict(required=False),
             refname         =dict(required=False),
@@ -650,8 +636,6 @@ def main ():
     vdbhost        = module.params.get('db_host')
     vfx            = module.params.get('function')
     vcycles        = module.params.get('cycles')
-    vsize          = module.params.get('size')
-    vunits         = module.params.get('units')
     visrac         = module.params.get('is_rac')
     vignore        = module.params.get('ignore')
     vrefname       = module.params.get('refname')
@@ -699,6 +683,8 @@ def main ():
         else:
             module.fail_json(msg=msg, meta=response)
 
+    orig_db_param = vdb
+
     if not vdbhost:
         error_msg = 'REDOLOGS MODULE ERROR: No databae host provided for required function parameter.'
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
@@ -707,8 +693,8 @@ def main ():
         else:
             module.fail_json(msg=msg, meta=response)
 
-    if not vfx:
-        error_msg = 'REDOLOGS MODULE ERROR: No function provided.'
+    if not vfx or vfx not in available_fxs:
+        error_msg = 'REDOLOGS MODULE ERROR: No function, or unknown fx provided.'
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
             module.exit_json( msg=msg, ansible_facts=response , changed=False)
@@ -718,23 +704,7 @@ def main ():
     if vignore:
         g_vignore = vignore
 
-    if not vsize and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No size provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
-        if g_vignore:
-            module.exit_json( msg=msg, ansible_facts=response , changed=False)
-        else:
-            module.fail_json(msg=msg, meta=response)
-
-    if not vunits and vfx == "resize":
-        error_msg = 'REDOLOGS MODULE ERROR: No units provided. Required for resize function.'
-        response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
-        if g_vignore:
-            module.exit_json( msg=msg, ansible_facts=response , changed=False)
-        else:
-            module.fail_json(msg=msg, meta=response)
-
-    if vfx.lower() not in ("resize", "flush"):
+    if vfx.lower() not in available_fxs:
         error_msg = 'REDOLOGS MODULE ERROR: Unknown function: %s. Function must be resize or flush' % (vfx)
         response = { 'status':'Fail', 'error_msg': error_msg, 'Error': error.message, 'changed':'False'}
         if g_vignore:
@@ -782,7 +752,7 @@ def main ():
               else:
                   module.fail_json(msg=msg, meta=response)
 
-            add_to_msg("Redologs module succeeded for %s database. %s function" % (vdb, vfx.lower()))
+            add_to_msg("Redologs module succeeded for %s database. %s function" % (orig_db_param, vfx.lower()))
 
             vchanged="False"
 
