@@ -110,8 +110,9 @@ EXAMPLES = '''
 
 '''
 
-debugme = False
+debugme = True
 host_debug_path="/tmp/debug.log"
+grid_home_root = "/app"
 ora_home = ""
 global_ora_home = ""
 err_msg = ""
@@ -121,10 +122,9 @@ err_msg = ""
 node_number = ""
 node_name = ""
 msg = ""
-grid_home = ""
 oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
-israc = None
+israc = False
 spcl_case = ['9'] # ['orcl11g','orcl12c','orcl19']
 affirm = ['Y', 'y', 'Yes', 'YES', 'yes', 'True', 'TRUE', 'true', True, 'T', 't']
 
@@ -144,9 +144,9 @@ def debugg(add_string):
     global debugme
     global msg
 
-    if debugme:
-        msgg(add_string)
-        debug_to_log(add_string)
+    # if debugme in affirm:
+    #     msgg(add_string)
+    debug_to_log(add_string)
 
 
 def debug_to_log(debug_str):
@@ -269,25 +269,25 @@ def get_nodes(vstring):
   return tmp
 
 
-def get_gihome():
-    """Determine the Grid Home directory"""
-    global grid_home
-
-    try:
-      process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
-      output, code = process.communicate()
-    except:
-        err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
-        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
-
-    grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
-
-    if not grid_home:
-        err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
-        err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
-        raise Exception (err_msg)
-
-    return(grid_home)
+# def get_gihome():
+#     """Determine the Grid Home directory"""
+#     global grid_home
+#
+#     try:
+#       process = subprocess.Popen(["/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'"], stdout=PIPE, stderr=PIPE, shell=True)
+#       output, code = process.communicate()
+#     except:
+#         err_msg = ' get_gihome() retrieving GRID_HOME : (%s,%s)' % (sys.exc_info()[0],code)
+#         module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+#
+#     grid_home = (output.strip()).replace('/bin/ocssd.bin', '')
+#
+#     if not grid_home:
+#         err_msg = ' Error:  get_gihome() error - retrieving grid_home : %s output: %s' % (grid_home, output)
+#         err_msg = err_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], err_msg, sys.exc_info()[2])
+#         raise Exception (err_msg)
+#
+#     return(grid_home)
 
 
 def get_installed_ora_homes2():
@@ -1000,6 +1000,8 @@ def is_rac():
     if israc is not None:
         return(israc)
 
+    if
+
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
     vproc = run_command("ps -ef | grep lck | grep -v grep | wc -l")
 
@@ -1064,13 +1066,20 @@ def is_lsnr_up():
   """Determine if the local listener is up"""
   global err_msg
   global ora_home
+  global grid_home
+  global affirm
 
+  if not grid_home:
+      get_gihome()
+
+  debugg("is_lsnr_up().......grid_home=%s" % (grid_home))
   # determine if the listener is up and running - returns 1 if no listener running 0 if the listener is running
   try:
-    vlsnr = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + ";" + ora_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
+    vlsnr = run_remote_cmd( grid_home + "/bin/lsnrctl status | grep 'TNS-12560' | wc -l")[1])
   except:
     err_msg = err_msg + ' Error: is_lsnr_up() - vlsnr: (%s)' % (sys.exc_info()[0])
 
+  debugg("===========>>>> is_lsnr_up().....vlsnr={}".format(vlsnr))
   # the command returns 1 if no listener, so return 0
   try:
     if int(vlsnr) == 0:
@@ -1085,12 +1094,23 @@ def listener_info():
   """Return listner facts"""
   global ora_home
   global err_msg
+  global grid_home
+  global affirm
   lsnrfax={}
+  _up = ""
 
-  if is_lsnr_up():
+  if not grid_home:
+      get_gihome()
+
+  _up = is_lsnr_up()
+
+  _str = "listener_info()....grid_home= %s" % (grid_home)
+  debugg(_str)
+
+  if _up in affirm:
     # Find lsnrctl parameter file
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
+      temp = str(commands.getstatusoutput(grid_home + "/bin/lsnrctl status | grep Parameter | awk '{print $4}'")[1])
     except:
       err_msg = err_msg + ' Error: listener_info() - find parameter file: (%s)' % (sys.exc_info()[0])
 
@@ -1101,7 +1121,7 @@ def listener_info():
 
     # Find lsnrctl alert log
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
+      temp = str(commands.getstatusoutput( grid_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
     except:
       err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
@@ -1113,7 +1133,7 @@ def listener_info():
 
     # Find lsnrctl version
     try:
-      temp = str(commands.getstatusoutput("export ORACLE_HOME=" + ora_home + "; " + ora_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
+      temp = str(commands.getstatusoutput(grid_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
     except:
       err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
@@ -1140,18 +1160,19 @@ def rac_dblist():
   """Return database information from srvctl"""
   global ora_home
   global err_msg
+  global grid_home
+  global msg
   dblist = []
   database_info = { 'database_details':{} }
 
   debugg("rac_dblist")
 
-  global grid_home
-  global msg
-
   if not grid_home:
       grid_home = get_gihome()
 
-  srvctl_verbose = run_command("export ORACLE_HOME=" + grid_home + ";" + grid_home + "/bin/srvctl config database -verbose")
+  srvctl_verbose = run_command( grid_home + "/bin/srvctl config database -verbose" )
+
+  debugg("srvctl_verbose = {}".format(srvctl_verbose))
 
   if srvctl_verbose != "No databases are configured":
     for line in srvctl_verbose.split("\n"):
@@ -1346,6 +1367,66 @@ def get_orahome_procid(vdb):
     return(ora_home)
 
 
+def get_gihome():
+    """
+        # ways to find grid home fastest to slowest
+             1.) Find Grid Home from /etc/oratab
+             2.) Find the Grid Infrastructure home from running processes
+             3.) if Cluster is not up and running, check install 'oraInst.loc'
+             ** 3 is too slow, do it last
+    """
+    global grid_home_root
+    global grid_home
+
+    if grid_home:
+        return(grid_home)
+
+    # First try /etc/oratab ( fastest ) ============================
+    cmd_str = "cat /etc/oratab | grep ASM | grep -v '^#' | awk -F: '{ print $2 }'"
+
+    try:
+        grid_dir = run_cmd(cmd_str)
+    except:
+        grid_dir = None
+
+    if grid_dir:
+        # /app/19.0.0/grid
+        grid_home = grid_dir
+        return(grid_dir)
+
+    # Try finding it by running processes: ====================================
+    cmd_str = /bin/ps -ef | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{ print $8 }' | /bin/sed 's/\/bin\/ocssd.bin//g' | /bin/grep -v sed"
+
+    try:
+        grid_dir = run_cmd(cmd_str)
+    except:
+        grid_dir = None
+
+    # /app/19.0.0/grid/bin
+    if grid_dir:
+        grid_home = grid_dir
+        return(grid_dir)
+    else:
+        return(None)
+
+    # finally try to construct the grid home:
+    cmd_str1 = "/bin/find /app -mindepth 1 -maxdepth 1 -type d -name '*[0-9]*' | awk -F/ '{ print $3 }'"
+    try:
+        first_dir = run_cmd(cmd_str1)
+    except:
+        return(None)
+
+    if first_dir:
+        # 19.0.0
+        grid_dir = grid_home_root + first_dir + "grid"
+
+        if grid_dir:
+            grid_home = grid_dir
+            return(grid_dir)
+        else:
+            return(None)
+
+
 def get_scan(ora_home):
     """Get scan listener info"""
 
@@ -1435,7 +1516,7 @@ def main(argv):
   global spcl_case
   global debugme
   global affirm
-  vdebug = False
+  vdebug = True
 
   ansible_facts={ 'orafacts': {} }
   facts = {}
@@ -1448,7 +1529,7 @@ def main(argv):
   )
 
   vdebug = module.params["debugging"]
-
+  debugg("MAIN()....vdebug={}".format(vdebug))
   if vdebug in affirm:
       debugme = True
   else:
@@ -1517,6 +1598,10 @@ def main(argv):
 
         #databases
 
+         if is_rac():
+             ansible_facts.update( {'is_rac': 'True'} )
+         else:
+             ansible_facts.update( {'is_rac': 'False'} )
 
       else: # Run these for Single Instance <<< ========================= SI
         msg="Single Instance (SI) Environment"
@@ -1531,6 +1616,11 @@ def main(argv):
 
         # Get list of all databases in /etc/oratab
         ansible_facts.update(si_dblist())
+
+        if is_rac():
+         ansible_facts.update( {'is_rac': 'True'} )
+        else:
+         ansible_facts.update( {'is_rac': 'False'} )
 
       # Run the following functions for both RAC and SI
       # Get tnsnames info
