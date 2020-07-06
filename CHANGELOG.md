@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.2.1] - 2020-05-19
+- Fixed issue where orafacts.py module was incorrectly reporting nodes for RAC
+
+- Also fixed issue of orafacts.py module was not handling MGMTDB correctly.
+
 ## [v1.2.0] - 2020-05-19
 - Removed resize functionality from redologs module and moved it to utils GUI
 
@@ -30,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.0...HEAD
 
+[v1.2.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.1.0...v1.2.1
 [v1.2.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.1.0...v1.2.0
 [v1.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.0.0...v1.1.0
 [v1.0.0]: https://github.com/CruGlobal/cru-ansible-modules/releases/tag/v1.0.0
