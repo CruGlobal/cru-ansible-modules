@@ -146,25 +146,9 @@ def debugg(add_string):
     global msg
     global host_debug_path
 
-    # if debugme:
-    #     msgg(add_string)
-    #     debug_to_log(add_string)
-    # try:
-    with open(host_debug_path, 'a') as f:
-        f.write(add_string + '\n')
-    # except:
-    #     pass
-
-
-def debug_to_log(debug_str):
-    """write debugging strings to log file on remote host"""
-    global host_debug_path
-
-    try:
+    if debugme:
         with open(host_debug_path, 'a') as f:
-            f.write(debug_str + '\n')
-    except:
-        pass
+            f.write(add_string + '\n')
 
 
 def run_remote_cmd(cmd_str):
