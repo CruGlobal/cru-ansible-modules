@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.3.0] - 2020-07-06
+## [v1.2.1] - 2020-07-06
 - Fixed issue where orafacts.py module was incorrectly reporting nodes for RAC
 
 - Also fixed issue of orafacts.py module was not handling MGMTDB correctly.
