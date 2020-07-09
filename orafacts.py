@@ -146,25 +146,9 @@ def debugg(add_string):
     global msg
     global host_debug_path
 
-    # if debugme:
-    #     msgg(add_string)
-    #     debug_to_log(add_string)
-    # try:
-    with open(host_debug_path, 'a') as f:
-        f.write(add_string + '\n')
-    # except:
-    #     pass
-
-
-def debug_to_log(debug_str):
-    """write debugging strings to log file on remote host"""
-    global host_debug_path
-
-    try:
+    if debugme:
         with open(host_debug_path, 'a') as f:
-            f.write(debug_str + '\n')
-    except:
-        pass
+            f.write(add_string + '\n')
 
 
 def run_remote_cmd(cmd_str):
@@ -203,17 +187,20 @@ def get_dbhome(local_vdb):
     global my_msg
     global ora_home
 
+    debugg("get_dbhome() starting... with ....local_vdb={}".format(local_vdb or "empty!"))
     cmd_str = "cat /etc/oratab | grep -m 1 " + local_vdb + " | grep -o -P '(?<=:).*(?<=:)' |  sed 's/\:$//g'"
-
+    debugg("get_dbhome() about to run cmd_str={}".format(cmd_str or "empty!"))
     try:
         process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
         output, code = process.communicate()
     except:
-       my_msg = my_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
-       my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
-       raise Exception (my_msg)
+        debugg("get_dbhome() ERROR cmd_str={}".format(cmd_str or "empty!"))
+        my_msg = my_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+        my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
+        raise Exception (my_msg)
 
     ora_home = output.strip()
+    debugg("get_dbhome()...ora_home={}".format(ora_home or "EMPTY!"))
 
     if not ora_home:
         my_msg = ' Error[2]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
@@ -248,7 +235,7 @@ def get_node_num():
     global node_name
     global msg
     tmp_cmd = ""
-
+    debugg("get_node_num()...starting...")
     if not grid_home:
         grid_home = get_gihome()
 
@@ -262,21 +249,30 @@ def get_node_num():
        raise Exception (err_msg)
 
     node_number = int(output.strip())
-
+    debugg("get_node_num()...exiting...node_number={}".format(str(node_number)))
     return(node_number)
 
 
 def get_nodes(vstring):
     """Return the number of nodes in a RAC cluster and their names
+       vstring:
+            plrac1	1	<none>
+            plrac2	2	<none>
     """
+    this_node = ""
+    debugg("get_nodes()...starting....passed parameter={}".format(vstring))
     x = 1 # This counter counts node/line numbers
     tmp = {}
-    for vline in vstring.splitlines():
-        for token in vline.split():
-            tmp.update({'node'+str(x) : token})
-            break
-    x += 1
-    return tmp
+    debugg("get_nodes()...starting nested for loops")
+    for vline in vstring.split("\n"):
+        debugg("get_nodes()...for loop #1 ...vline={}".format(vline))
+        this_node = "node{}".format(str(x))
+        node_name = vline.split()[0]
+        tmp.update( { this_node:  node_name} )
+        x += 1
+
+    debugg("get_nodes()...exiting...returning={}".format(tmp))
+    return(tmp)
 
 
 def get_gihome():
@@ -399,7 +395,8 @@ def get_db_home_n_vers(local_db):
     global spcl_case
     return_info = {}
 
-    if local_db[-1].isdigit() and local_db not in spcl_case_dbs:
+    # Change sids to db name
+    if local_db[-1].isdigit() and local_db[-1] not in spcl_case:
         local_db = local_db[:-1]
 
     try:
@@ -497,6 +494,7 @@ def get_ora_homes():
    global err_msg
    global v_rec_count
    global global_ora_home
+   tmp_nodes = ""
 
    has_changed = False
    tempHomes = {}
@@ -532,15 +530,21 @@ def get_ora_homes():
 
          # node names in the cluster
          try:
-           clu_names = get_nodes((os.popen(newhome + "/bin/olsnodes -n -i").read()).rstrip())
+            cmd_str = "{}/bin/olsnodes -n -i".format(newhome)
+            debugg("get_ora_homes()..#DB1...cmd_str={}".format(cmd_str))
+            tmp_nodes = os.popen(cmd_str).read().rstrip()
+            clu_names = get_nodes(tmp_nodes)
          except:
-           err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s)' % (sys.exc_info()[0])
+            err_msg = err_msg + ' ERROR: get_ora_homes() - node names in cluster: (%s) running cmd_str=%s' % (sys.exc_info()[0], cmd_str)
+            clu_names="Error unknown"
 
          tempHomes.update({'nodes': clu_names})
+         debugg("get_ora_homes()..#DB2...tmpHomes={}".format(str(tempHomes)))
 
          for (vkey, vvalue) in clu_names.items():
            tempHomes.update({vkey: vvalue})
 
+         debugg("get_ora_homes()...#DB3...tmpHomes={}".format(tempHomes))
 
       elif "home" in newhome.lower():
          homenum = str(re.search("\d.",newhome).group())
@@ -1151,6 +1155,10 @@ def listener_info():
     debugg("========== result={}".format(str(result)))
     # ora_pmon_orcl11g
     db = result.split("_")[2]
+    db = db.replace("-","")
+    debugg("listener_info()...calling get_dbhome() with db={}".format(db or "empty!"))
+    if db[-1].isdigit():
+        db = db[:-1]
     db_home = get_dbhome(db) # { local_db: {'home':vhome.strip(), 'version': vversion}}
     debugg("result={} db={} db_home={}".format(str(result), db, db_home))
     _up = is_lsnr_up()
