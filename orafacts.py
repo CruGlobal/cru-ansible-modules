@@ -395,7 +395,8 @@ def get_db_home_n_vers(local_db):
     global spcl_case
     return_info = {}
 
-    if local_db[-1].isdigit() and local_db not in spcl_case_dbs:
+    # Change sids to db name
+    if local_db[-1].isdigit() and local_db[-1] not in spcl_case:
         local_db = local_db[:-1]
 
     try:
