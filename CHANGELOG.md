@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.2.2] - 2020-07-22
+### Updated dbfacts
+- Fix for dbfacts connecting to a single instance database running on RAC host
+
 ## [v1.2.1] - 2020-07-06
 - Fixed issue where orafacts.py module was incorrectly reporting nodes for RAC
 
@@ -33,8 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.2...HEAD
 
+[v1.2.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.0...v1.2.1
 [v1.2.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.1.0...v1.2.0
 [v1.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.0.0...v1.1.0
