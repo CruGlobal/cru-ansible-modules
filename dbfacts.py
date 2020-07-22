@@ -296,6 +296,7 @@ def main ():
 
             dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
         except cx_Oracle.DatabaseError as exc:
+            # try special case where single instance on rac:
             error, = exc.args
             if vignore:
                 add_to_msg("Failed to create dns_tns: %s" %s (error.message))
@@ -303,15 +304,23 @@ def main ():
                 module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
         try:
-          con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+            con = cx_Oracle.connect('system', vdbpass, dsn_tns)
         except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if vignore:
-              add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
-              debugg(" vignore: %s " % (vignore))
-              module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
-          else:
-              module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+            if vdb[-1:].isdigit():
+                vdb = vdb[:-1]
+                debugg(">>> vdb={}".format(vdb))
+                try:
+                    dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+                    debugg(dsn_tns)
+                    con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+                except:
+                    error, = exc.args
+                    if vignore:
+                      add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
+                      debugg(" vignore: %s " % (vignore))
+                      module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+                    else:
+                      module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
         cur = con.cursor()
 
