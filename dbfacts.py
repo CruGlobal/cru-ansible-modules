@@ -96,6 +96,7 @@ affirm = ['True','TRUE', 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
 debug_log = ""
 utils_settings_file = os.path.expanduser("~/.utils")
+debug_log2 = os.path.expanduser("~/.debug.log")
 
 def set_debug_log():
     """ Set the debug_log value to write debugging messages to """
