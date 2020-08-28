@@ -125,9 +125,10 @@ node_name = ""
 msg = ""
 oracle_base = "/app/oracle"
 os_path = "PATH=/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/oracle/12.1.0.2/dbhome_1/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/usr/local/rvm/bin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/u01/oracle/.emergency_space:/app/12.1.0.2/grid/tfa/slorad01/tfa_home/bin"
-israc = None
+israc = "UNKNOWN"
 spcl_case = ['9'] # ['orcl11g','orcl12c','orcl19']
 affirm = ['Y', 'y', 'Yes', 'YES', 'yes', 'True', 'TRUE', 'true', True, 'T', 't']
+v_neg = [False, 'F', 'False', 'f']
 
 
 def msgg(add_string):
@@ -1053,19 +1054,26 @@ def is_rac():
     global err_msg
     global israc
 
-    if israc is not None:
-        return(israc)
+    debugg("is_rac()....starting....global israc={}".format(israc or "None"))
+    if israc != "UNKNOWN":
+        debugg("is_rac() israc not UNKNOWN returning israc={} ".format(israc or "None"))
+        if israc == "True":
+            return(True)
+        else:
+            return(False)
 
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
     vproc = run_command("ps -ef | grep lck | grep -v grep | wc -l")
-
+    debugg("is_rac() :: cmd returned vproc={}".format(str(vproc)))
     if int(vproc) > 0:
       # if > 0 "lck" processes running, it's RAC
-      israc = True
-      return True
+      israc = "True"
+      debugg("is_rac() :: set global israc=True returning True")
+      return(True)
     else:
-      israc = False
-      return False
+      israc = "False"
+      debugg("is_rac() :: set global israc=False returning False")
+      return(False)
 
 
 def is_oracle_restart():
@@ -1089,20 +1097,24 @@ def is_ora_running():
       err_msg = ' Error: is_ora_running() - proc: (%s)' % (sys.exc_info()[0])
 
     if int(vproc) == 0:
-      # No databases are running
-      return False
+        # No databases are running
+        debugg("is_ora_running() returning False")
+        return False
     elif int(vproc) > 0:
-      return True
+        debugg("is_ora_running() returning True")
+        return True
 
 
 def is_ora_installed():
     """Quick determination if Oracle db software has been installed"""
     # Check if there's an /etc/oratab
     if os.path.isfile("/etc/oratab"):
-      return True
+        debugg("is_ora_installed() returning True")
+        return True
     else:
-      # no /etc/oratab installed, so Oracle may not be installed.
-      return False
+        debugg("is_ora_installed() returning False")
+        # no /etc/oratab installed, so Oracle may not be installed.
+        return False
 
 
 def tnsnames():
@@ -1142,7 +1154,7 @@ def is_lsnr_up():
 
 
 def listener_info():
-    """Return listner facts"""
+    """Return listener facts"""
     global ora_home
     global err_msg
     global grid_home
@@ -1152,64 +1164,66 @@ def listener_info():
     debugg("=========================listener_info()...starting...")
     cmd_str = "ps -ef | grep pmon | grep -v ASM | grep -v color | awk '{ print $8 }' | grep -v grep | head -n 1"
     result = run_remote_cmd(cmd_str)
-    debugg("========== result={}".format(str(result)))
-    # ora_pmon_orcl11g
-    db = result.split("_")[2]
-    db = db.replace("-","")
-    debugg("listener_info()...calling get_dbhome() with db={}".format(db or "empty!"))
-    if db[-1].isdigit():
-        db = db[:-1]
-    db_home = get_dbhome(db) # { local_db: {'home':vhome.strip(), 'version': vversion}}
-    debugg("result={} db={} db_home={}".format(str(result), db, db_home))
-    _up = is_lsnr_up()
-    debugg("listener_info()...starting...db={} db_home={} _up={}".format(db, db_home, _up))
+    debugg("========== listener_info() :: result={}".format(str(result or "No databases running")))
 
-    if _up in affirm:
-        # Find lsnrctl parameter file
-        try:
-            cmd_str = "unalias grep; export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | /bin/grep Parameter | awk '{print $4}'"
-            debugg("listener_info()....cmd_str={} ".format(cmd_str))
-            temp = run_remote_cmd(cmd_str)
-        except:
-            err_msg = ' Error: listener_info() - find parameter file: (%s)' % (str(sys.exc_info()))
-            debugg("Error Getting Parameter ={}".format(err_msg))
+    if result:
+        # ora_pmon_orcl11g
+        db = result.split("_")[2]
+        db = db.replace("-","")
+        debugg("listener_info()...calling get_dbhome() with db={}".format(db or "empty!"))
+        if db[-1].isdigit():
+            db = db[:-1]
+        db_home = get_dbhome(db) # { local_db: {'home':vhome.strip(), 'version': vversion}}
+        debugg("result={} db={} db_home={}".format(str(result), db, db_home))
+        _up = is_lsnr_up()
+        debugg("listener_info()...starting...db={} db_home={} _up={}".format(db, db_home, _up))
 
-        debugg("listener_info()....temp={}".format(temp or "empty!"))
+        if _up in affirm:
+            # Find lsnrctl parameter file
+            try:
+                cmd_str = "unalias grep; export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | /bin/grep Parameter | awk '{print $4}'"
+                debugg("listener_info()....cmd_str={} ".format(cmd_str))
+                temp = run_remote_cmd(cmd_str)
+            except:
+                err_msg = ' Error: listener_info() - find parameter file: (%s)' % (str(sys.exc_info()))
+                debugg("Error Getting Parameter ={}".format(err_msg))
 
-        if temp:
-          lsnrfax['parameter_file'] = temp
-        else:
-          lsnrfax['parameter_file'] = "No parameter file found."
+            debugg("listener_info()....temp={}".format(temp or "empty!"))
 
-        # Find lsnrctl alert log
-        try:
-          temp = str(commands.getstatusoutput("export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
-        except:
-          err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
+            if temp:
+              lsnrfax['parameter_file'] = temp
+            else:
+              lsnrfax['parameter_file'] = "No parameter file found."
 
-        # add lsnrctl alert log to lsnrfax
-        if temp:
-          lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
-        else:
-          lsnrfax['log_file'] = "No listener.log found."
+            # Find lsnrctl alert log
+            try:
+              temp = str(commands.getstatusoutput("export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | grep Log | awk '{print $4}'")[1])
+            except:
+              err_msg = err_msg + ' Error: listener_info() - find alert log : (%s)' % (sys.exc_info()[0])
 
-        # Find lsnrctl version
-        try:
-          temp = str(commands.getstatusoutput("export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
-        except:
-          err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
+            # add lsnrctl alert log to lsnrfax
+            if temp:
+              lsnrfax['log_file'] = temp[:-13] + "trace/listner.log"
+            else:
+              lsnrfax['log_file'] = "No listener.log found."
 
-        # add lsnrctl version to lsnrfax
-        if temp:
-          lsnrfax['version'] = temp
-        else:
-          lsnrfax['version'] = "Listener version could not be determined."
+            # Find lsnrctl version
+            try:
+              temp = str(commands.getstatusoutput("export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
+            except:
+              err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
 
-         # add the oracle home this ran out of.
-        if db_home:
-         lsnrfax['home'] = db_home
-        else:
-         lsnrfax['home'] = "unknown"
+            # add lsnrctl version to lsnrfax
+            if temp:
+              lsnrfax['version'] = temp
+            else:
+              lsnrfax['version'] = "Listener version could not be determined."
+
+             # add the oracle home this ran out of.
+            if db_home:
+             lsnrfax['home'] = db_home
+            else:
+             lsnrfax['home'] = "unknown"
 
         return(lsnrfax)
 
@@ -1237,7 +1251,7 @@ def rac_dblist():
     debugg("rac_dblist()...grid_home = {}".format(grid_home))
 
     srvctl_verbose = run_remote_cmd("{}/bin/srvctl config database -verbose".format(grid_home))
-
+    debugg("rac_dblist() :: srvctl_verbose={}".format(srvctl_verbose))
     if srvctl_verbose != "No databases are configured":
         for line in srvctl_verbose.split("\n"):
             split = line.split()
@@ -1252,8 +1266,10 @@ def rac_dblist():
 
             dblist.append(split[0])
               # database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'domain': item['domain'], 'services': item['services']}})
-    database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item['services']}})
-    database_info['databases'] = dblist
+        database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item['services']}})
+        database_info['databases'] = dblist
+    else:
+        database_info['database_details'].update({ 'databases': srvctl_verbose })
     return(database_info)
 
 
@@ -1547,11 +1563,11 @@ def main(argv):
                dest_host = 'ora_facts_' + str(commands.getstatusoutput("hostname | sed 's/\..*//'")[1])
             except:
                err_msg = err_msg + ' Error: retrieving hostname: (%s)' % (sys.exc_info()[0])
-
+            debugg("MAIN :: inside is_ora_installed() and is_ora_running() DEBUG #1")
             # Run these functions for RAC:  <<< ============================== RAC
             if is_rac():
                 msg = msg + "RAC Environment"
-
+                debugg("MAIN :: inside is_ora_installed() and is_ora_running() :: is_rac")
                 # get GRID_HOME and VERSION, ORACLE_HOMES and VERSIONS and Opatch version
                 all_homes = get_ora_homes()
                 for (vkey, vvalue) in all_homes.items():
@@ -1593,6 +1609,7 @@ def main(argv):
                 # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
 
             elif is_oracle_restart(): # Run these for Oracle Restart Instance <<< ========================= SI_ASM
+                debugg("Single instance DEBUG #2")
                 msg = msg + "Single Instance Oracle Restart Environment"
 
                 homes = oracle_restart_homes()
