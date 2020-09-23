@@ -1265,8 +1265,7 @@ def rac_dblist():
                   item['services'] = x[10:]
 
             dblist.append(split[0])
-              # database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'domain': item['domain'], 'services': item['services']}})
-        database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item['services']}})
+            database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item['services']}})
         database_info['databases'] = dblist
     else:
         database_info['database_details'].update({ 'databases': srvctl_verbose })

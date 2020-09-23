@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.2.4] - 2020-09-23
+### Changed
+- Fixed indentation problem causing `orafacts.py` to not list all databases in `database_details`
+
 ## [v1.2.3] - 2020-07-26
 ### Updated dbfacts
 - added local host debug.log ( ~/.debug.log ) for debugging dbfacts.py module
@@ -43,8 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.3...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.4...HEAD
 
+[v1.2.4]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.3...v1.2.4
 [v1.2.3]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.2...v1.2.3
 [v1.2.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.0...v1.2.1
