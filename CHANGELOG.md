@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.3.0] - 2021-04-16
+### Updated dbfacts
+- Gather database facts needed to setup data guard
+
 ## [v1.2.4] - 2020-09-23
 ### Changed
 - Fixed indentation problem causing `orafacts.py` to not list all databases in `database_details`

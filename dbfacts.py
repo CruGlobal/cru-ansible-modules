@@ -87,7 +87,8 @@ vparams=[ "cluster_database",
           "core_dump_dest",
           "background_dump_dest",
           "audit_file_dest",
-          "db_files" ]
+          "db_files",
+          "standby_file_management"]
 
 msg = ""
 debugme = False
@@ -236,7 +237,7 @@ def main ():
     # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
     refname = ""
 
-    os.system("/usr/bin/scl enable python27 bash")
+    # os.system("/usr/bin/scl enable python27 bash")
     # os.system("scl enable python27 bash")
 
     module = AnsibleModule(
@@ -449,6 +450,82 @@ def main ():
             else:
               vtemp = 'False'
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
+        ignore_err_flag = False
+
+       # Check if flashback is on.
+        try:
+          cur.execute('select flashback_on from v$database')
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting flashback_on from v$database, Error: %s" % (error.message))
+          else:
+              module.fail_json(msg='Error selecting flashback_on from v$database, Error: %s' % (error.message), changed=False)
+
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            if vtemp == 'YES':
+              vtemp = 'True'
+            else:
+              vtemp = 'False'
+            ansible_facts[refname].update( { 'flashback_on' : vtemp } )
+        ignore_err_flag = False
+
+       # Check for force logging.
+        try:
+          cur.execute('select force_logging from v$database')
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting force_logging from v$database, Error: %s" % (error.message))
+          else:
+              module.fail_json(msg='Error selecting force_logging from v$database, Error: %s' % (error.message), changed=False)
+
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            if vtemp == 'YES':
+              vtemp = 'True'
+            else:
+              vtemp = 'False'
+            ansible_facts[refname].update( { 'force_logging' : vtemp } )
+        ignore_err_flag = False
+
+        # count online redo log groups
+        try:
+          cur.execute('select count(distinct group#) from v$logfile where type=\'ONLINE\'')
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting v$logfile count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting count from v$logfile, Error: %s' % (error.message), changed=False)
+        # if an error just occurred on the select and ignore errors is True skip this and go on
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            ansible_facts[refname].update( { 'online_redo_log_group_count': vtemp } )
+        ignore_err_flag = False
+
+        # count standby redo logs
+        try:
+          cur.execute('select count(*) from v$standby_log')
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error selecting v$standby_log count: %s " % (error.message))
+          else:
+              module.fail_json(msg='Error selecting count from v$standby_log, Error: %s' % (error.message), changed=False)
+        # if an error just occurred on the select and ignore errors is True skip this and go on
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            ansible_facts[refname].update( { 'standby_redo_log_group_count': vtemp } )
         ignore_err_flag = False
 
         # Determine if SIEBEL or PS Database
