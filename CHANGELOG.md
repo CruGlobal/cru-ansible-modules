@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [v1.3.1] - 2021-06-07
-### Updated dbfacts
+### Updated mkalias
 - Fixed mkalias module to delete previous alias if dbca missed it.
 
 ## [v1.3.0] - 2021-04-16
