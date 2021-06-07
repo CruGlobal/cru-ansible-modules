@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.3.1] - 2021-06-07
+### Updated dbfacts
+- Fixed mkalias module to delete previous alias if dbca missed it.
+
 ## [v1.3.0] - 2021-04-16
 ### Updated dbfacts
 - Gather database facts needed to setup data guard
@@ -51,8 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.4...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.1...HEAD
 
+[v1.3.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.0...v1.3.1
+[v1.3.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.4...v1.3.0
 [v1.2.4]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.3...v1.2.4
 [v1.2.3]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.2...v1.2.3
 [v1.2.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.2.1...v1.2.2
