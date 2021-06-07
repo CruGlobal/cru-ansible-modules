@@ -318,7 +318,7 @@ def main ():
 
     debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vdb_home))
 
-    # Make sure an alias doesn't already exist
+    # Make sure an alias doesn't already exist. If it does, delete it.
     debugg("[1] make sure alias doesnt already exist")
     output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
     debugg("main: spfile output=%s" % (output))
@@ -328,8 +328,10 @@ def main ():
 
         if len(spfile) > 1:
             debugg("[1b] spfile already exists %s" % (spfile))
-            add_to_msg("spfile already exists: %s/%s/%s => %s" % (vasm_dg,vdb,spfile[0],spfile[1]))
-            module.exit_json( msg=msg, ansible_facts={} , changed=False)
+            add_to_msg("spfile already exists: %s/%s/%s => %s deleting it." % (vasm_dg,vdb,spfile[0],spfile[1]))
+            # module.exit_json( msg=msg, ansible_facts={} , changed=False)
+            output = run_sub_env("echo rmalias %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+            debugg("main: Previous alias existed after dbca delete. Deleted alias. Continuing..." % (output))
 
     # Else get the name of the parameterfile.
     output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })

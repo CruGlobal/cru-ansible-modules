@@ -1258,14 +1258,17 @@ def rac_dblist():
             item = {}
             debugg("rac_dblist()...split={}".format(str(split)))
             srvctl_config = run_command("export ORACLE_HOME=" + split[1] + ";" + split[1] + "/bin/srvctl config database -d " + split[0])
+            debugg("srvctl_config={} <<----------- DEBUGGING #1 --------".format(srvctl_config))
             for x in srvctl_config.split("\n"):
-              if x.startswith('Domain:'):
-                  item['domain'] = x[8:]
-              elif x.startswith('Services:'):
-                  item['services'] = x[10:]
+                debugg("rac_dblist() :: SERVICES :: x={} <<----------- DEBUGGING #2--------".format(x)) #sfk
+                if x:
+                    if x.startswith('Domain:'):
+                      item['domain'] = x[8:]
+                    elif x.startswith('Services:'):
+                      item['services'] = x[10:]
 
             dblist.append(split[0])
-            database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item['services']}})
+            database_info['database_details'].update({split[0]: {'oracle_home': split[1], 'version': split[2], 'services': item.get('services', 'NONE') }})
         database_info['databases'] = dblist
     else:
         database_info['database_details'].update({ 'databases': srvctl_verbose })
