@@ -110,7 +110,7 @@ EXAMPLES = '''
 
 '''
 
-debugme = True
+debugme = False
 host_debug_path="/tmp/debug.log"
 grid_home_root = "/app"
 ora_home = ""
