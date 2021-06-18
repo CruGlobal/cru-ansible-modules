@@ -88,7 +88,15 @@ vparams=[ "cluster_database",
           "background_dump_dest",
           "audit_file_dest",
           "db_files",
-          "standby_file_management"]
+          "standby_file_management",
+          "log_archive_config",
+          "log_archive_dest_2",
+          "dg_broker_start",
+          "dg_broker_config_file1",
+          "dg_broker_config_file2",
+          "standby_file_management",
+          "fal_server"
+        ]
 
 msg = ""
 debugme = False
@@ -559,7 +567,7 @@ def main ():
 
         ignore_err_flag = False
 
-        # # get db_size
+        # # get db_size - This works, but takes WAY TOO LONG for larger databases.
         # cmd_str = "select round(sum(used.bytes) / 1024 / 1024 / 1024 ) as db_size from (select bytes from v$datafile union all select bytes from v$tempfile union all select bytes from v$log) used, (select sum(bytes) as p from dba_free_space) free group by free.p"
         # try:
         #   cur.execute(cmd_str)
