@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.3.2] - 2021-06-18
+### Updated dbdbfacts module
+- Added data guard parameters to output of dbfacts module to aid in plays working with dg dbs.
+
 ## [v1.3.1] - 2021-06-07
 ### Updated mkalias
 - Fixed mkalias module to delete previous alias if dbca missed it.
