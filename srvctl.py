@@ -117,9 +117,7 @@ msg = ""
 custom_err_msg = ""
 # debugging
 global_debug_msg = ""
-debug_log = ""
 truism = [True,False,'true','false','Yes','yes']
-debug_dir = ""
 utils_dir = os.path.expanduser("~/.utils")
 module = None
 istrue = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
@@ -136,8 +134,27 @@ valid_stop_11g = ('normal','immediate','abort','transactional')
 # https://docs.oracle.com/cd/E11882_01/server.112/e16604/ch_twelve045.htm#SQPUG128
 valid_start_11g = ('open','mount','restrict','nomount','"read only"','write','"read write"','force', 'read only', 'read write') # ,'force'
 
-debug_path = '/home/oracle/.utils/debug.log'
+debug_dir = "/home/oracle/.utils/"
+debug_file = "debug.log"
+debug_path = debug_dir + debug_file
+debug_file_exists = False
+
 rac_nums = 10
+
+
+def create_debug_file():
+    """
+    Create the debugging directory and file
+    """
+    global debug_dir  # = "/home/oracle/.utils/"
+    global debug_file # = "debug.log"
+
+    if not os.path.isdir(debug_dir):
+        os.mkdir(debug_dir)
+    # f = debug_dir + debug_file
+    # if not os.path.isfile(f):
+    #     path
+    return()
 
 
 def msgg(info_str):
@@ -150,6 +167,7 @@ def msgg(info_str):
         msg = info_str
 
     return
+
 
 def remote_cmd(cmd_str):
     """ execute command on remote host """
@@ -237,10 +255,16 @@ def debugg(debug_str):
     """add debugging info to msg if debugging=true"""
     global debugme
     global debug_path
+    global debug_file_exists
+    global istrue
 
-    if debugme:
-        add_to_msg(debug_str)
-        debugg_to_file(debug_str)
+    if debug_file_exists in istrue:
+        if debugme:
+            add_to_msg(debug_str)
+            debugg_to_file(debug_str)
+    else:
+        create_debug_file()
+        debug_file_exists = True
 
 
 def debugg_to_file(info_str):
@@ -975,6 +999,17 @@ def extract_maj_version(ora_home):
     return(1)
 
 
+def srvctl_remove_db(db_name, orahome):
+    """
+    Remove / deregister database from srvctl
+    """
+    debugg("srvctl_remove_db()...starting....")
+    cmd_str="y | {oh}/bin/srvctl remove database -d {db}".format(oh=orahome, db=db_name)
+    output = popen_cmd_str(cmd_str)
+    results = output.strip().split('\n')
+    return(results)
+
+
 # ===================================================================================================
 # ============================================= MAIN ================================================
 # ===================================================================================================
@@ -1048,6 +1083,11 @@ def main ():
       except:
           add_to_msg("ERROR: Unable to determine ORACLE_HOME.")
           module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
+
+  # If remove was passed as cmd parameter
+  if vcmd.lower() == "remove":
+      msg = srvctl_remove_db(vdb_name, oracle_home)
+      module.exit_json(msg=msg, ansible_facts=ansible_facts , changed="False")
 
   # Ensure if object is an instance and instance number wasn't defined raise exception
   if vobj is not None and vobj.lower() == "instance":
