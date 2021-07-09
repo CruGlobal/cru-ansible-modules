@@ -846,6 +846,9 @@ def main ():
                 vtemp = vtemp[0][0]
                 if vtemp:
                     ansible_facts[refname].update( { 'oracle_home': vtemp} )
+                    # extract version from oracle_home: /app/oracle/12.1.0.2/dbhome_1
+                    v=vtemp.split("/")[3]
+                    ansible_facts[refname].update( { 'oracle_version': v} )
 
             ignore_err_flag = False
 
