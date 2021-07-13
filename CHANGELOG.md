@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v1.3.5] - 2021-07-09
+## [v1.3.5] - 2021-07-12
 ### Updated splitout module
 - Fixed issue that caused module to crash when passed empty string.
 
