@@ -102,7 +102,7 @@ def main ():
 
     module = AnsibleModule(
       argument_spec = dict(
-        split_str             =dict(required=True),
+        split_str             =dict(required=False),
         split_on_char         =dict(required=True),
         return_num            =dict(required=True),
         refname               =dict(required=False),
@@ -119,6 +119,11 @@ def main ():
     vrefname    = module.params.get('refname')
     vignore     = module.params.get('ignore')
     vdebug      = module.params.get('debugging')
+
+    # if no string passed in exit. Sometimes it won't be depending on the run.
+    if not s_str or s_str.find("/") == -1:
+        msg = "Nothing to do with input: {}".format(s_str or "Empty!")
+        module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
 
     # if a reference name was passed use it
     if vrefname:
@@ -172,7 +177,7 @@ def main ():
                 module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
             else:
                 module.fail_json( msg=msg )
-                
+
 # code to execute if this program is called directly
 if __name__ == "__main__":
     main()

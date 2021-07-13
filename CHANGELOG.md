@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v1.3.5] - 2021-07-12
+### Updated splitout module
+- Fixed issue that caused module to crash when passed empty string.
+
 ## [v1.3.4] - 2021-07-09
 ### Updated dbfacts module
 - Added extra oracle_version
@@ -67,8 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.5...HEAD
 
+[v1.3.5]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.4...v1.3.5
 [v1.3.4]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.3...v1.3.4
 [v1.3.3]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.2...v1.3.3
 [v1.3.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.1...v1.3.2
