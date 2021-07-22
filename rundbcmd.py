@@ -17,14 +17,6 @@ try:
 except ImportError:
     cx_Oracle_found = False
 
-# Reference links
-# http://www.oracle.com/technetwork/articles/dsl/prez-python-queries-101587.html
-
-# Notes: IAW this doc : http://docs.ansible.com/ansible/latest/dev_guide/developing_modules_general.html
-# This module was setup to return a dictionary called "ansible_facts" which then makes those facts usable
-# in the ansible playbook, and roles. The facts in this module are referenced by using the format:
-#                    sourcefacts['key'] which returns associated value - the ref name : "sourcefacts" was created in this module
-#     example:    {{ sourcefacts['oracle_version'] }} => 11.2.0.4
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
