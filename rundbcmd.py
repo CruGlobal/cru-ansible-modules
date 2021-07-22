@@ -78,7 +78,7 @@ EXAMPLES = '''
 # Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
 msg = ""
 default_ignore = False
-debugme = True
+debugme = False
 default_refname = "cmdfacts"
 affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
