@@ -32,52 +32,60 @@ ANSIBLE_METADATA = {'status': ['stableinterface'],
 
 DOCUMENTATION = '''
 ---
-module: dbfacts
-short_description: Get Oracle Database facts from a remote database.
-(remote database = a database not in the group being operated on)
+module: rundbcmd
+short_description: Run any sql against the database as sys, system, or any user
+                   as long as user name and password are provided. This will
+                   run on the local host ( users computer ) and requires cx_Oracle
+                   to be installed and working.
 
 notes: Returned values are then available to use in Ansible.
-requirements: [ python2.* ]
+requirements: [ python3 ]
 author: "DBA Oracle module Team"
 '''
 
 EXAMPLES = '''
 
-    # To run a sql command in a database
+    # To run a sql command in a database during ansible play.
     - local_action:
         module: rundbcmd
-        user_id: sys or system (1)
+        user_id: sys or system or other user (1)
         user_password: "{{ database_passwords[db_name].sys }} or {{ database_passwords[db_name].system }} "
         db_name: "{{ db_name }}"
         host: "{{ host }}" (2)
         is_rac: "{{ orafacts['is_rac'] }}" or "{{ sourcefacts['is_rac'] }}"
-        cmd: "{{ item }}"
-        expect_results: True / False or Yes / No (3)
+        cmd: "{{ cmd_str }}"
+        expect_results: "{{ expect_records }}" (3) True / False or Yes / No
         refname: "{{ refname_str }} (4)"
         ignore: False (5)
         debugging: False
       whith_items:
-        - "select systdate from dual"
-        - "select user from dual"
+        - { expect_records: "Yes", cmd_str: "select systdate from dual" }
+        - { expect_records: "No", cmd_str: "drop restore point rst1" }
       when: master_node|bool
 
-      (1) user_id / user_password - sys or system
+      (1) user_id / user_password - sys, system or any user / password combo
 
-      (2) host - including instance number. ( i.e. tlrac1, tlrac2.ccci.org or ploradr.dr.cru.org etc. )
+      (2) host - including instance number. With domain.
+          ( i.e. tlrac2.ccci.org or ploradr.dr.cru.org etc. )
 
       (3) expect_results - REQUIRED. If the cmd should produce an output: True, else False
+          if querying a table for records : True
+          if dropping restore points: False
 
-      (4) refname - name used in Ansible to reference these facts ( i.e. cmdfacts )
+      (4) refname - name used during Ansible play to reference the returned
+          records. ( default: cmdfacts )
 
-      (5) ignore - (connection errors) is optional. If you know the
-          database may be down set ignore: True. If connection to the
-          database fails the module will not throw a fatal error
-          and continue. If set to False this module will fail if an error occurs.
+      (5) ignore - ignore errors. Optional. Default: False
+          If you know the database may be down set ignore: True.
+          If connection to the database fails the module will not throw a
+          fatal error and allow the play to continue.
+          If set to False this module will fail if an error occurs.
 
 '''
 
 # Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
 msg = ""
+default_ignore = False
 debugme = True
 default_refname = "cmdfacts"
 affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
@@ -93,6 +101,8 @@ nasty_list = [
             "drop"
             "drop database"
             ]
+
+exemption_list = [ "drop restore point" ]
 
 def set_debug_log():
     """
@@ -265,6 +275,7 @@ def main ():
     global dr_domain
     global affirm
     global cur
+    global default_ignore
     is_rac = None
     ignore_err_flag = False
     return_values = []
@@ -313,7 +324,7 @@ def main ():
     debugg("DEBUGGING SET: {}".format(debugme))
 
     if vignore is None:
-        vignore = False
+        vignore = default_ignore
 
     if ".org" in vhost:
         abbr_host = vhost.replace(".ccci.org","").replace(dr_domain, "")
