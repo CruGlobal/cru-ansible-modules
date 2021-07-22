@@ -50,7 +50,7 @@ EXAMPLES = '''
         refname: "{{ refname_str }} (4)"
         ignore: False (5)
         debugging: False
-      whith_items:
+      with_items:
         - { expect_records: "Yes", cmd_str: "select systdate from dual" }
         - { expect_records: "No", cmd_str: "drop restore point rst1" }
       when: master_node|bool
@@ -272,11 +272,6 @@ def main ():
     ignore_err_flag = False
     return_values = []
 
-    # Name to call facts dictionary being passed back to Ansible
-    # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
-
-    # os.system("/usr/bin/scl enable python27 bash")
-    # os.system("scl enable python27 bash")
     print("here")
 
     module = AnsibleModule(
