@@ -105,3 +105,8 @@ logs
 rmanmon.py
 afiedt.buf
 orafacts.py.orig
+
+crupac/*.egg-info
+crupac/__pycache__
+crupack/*.pyc
+
