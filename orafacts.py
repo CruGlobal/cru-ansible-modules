@@ -129,10 +129,13 @@ israc = "UNKNOWN"
 spcl_case = ['9'] # ['orcl11g','orcl12c','orcl19']
 affirm = ['Y', 'y', 'Yes', 'YES', 'yes', 'True', 'TRUE', 'true', True, 'T', 't']
 v_neg = [False, 'F', 'False', 'f']
+network_subnet_v4 = "10"
 
 
 def msgg(add_string):
-    """Passed a string add it to the msg to pass back to the user"""
+    """
+    Add a snippet to the return string
+    """
     global msg
 
     if msg:
@@ -196,7 +199,7 @@ def get_dbhome(local_vdb):
         output, code = process.communicate()
     except:
         debugg("get_dbhome() ERROR cmd_str={}".format(cmd_str or "empty!"))
-        my_msg = my_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
+        my_msg = my_msg + ' Error [1]: srvctl module get_orahome() error - retrieving oracle_home exception: %s' % (sys.exc_info()[0])
         my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
         raise Exception (my_msg)
 
@@ -204,8 +207,9 @@ def get_dbhome(local_vdb):
     debugg("get_dbhome()...ora_home={}".format(ora_home or "EMPTY!"))
 
     if not ora_home:
-        my_msg = ' Error[2]: srvctl module get_orahome() error - retrieving oracle_home excpetion: %s' % (sys.exc_info()[0])
-        my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], my_msg, sys.exc_info()[2])
+        my_msg = "Error processing %s" % (local_vdb or "Empty db string local_vdb ")
+        my_msg = my_msg + ' Error[2]: srvctl module get_orahome() error - retrieving oracle_home exception: %s' % (sys.exc_info()[0])
+        my_msg = my_msg + "%s, %s, %s %s" % (sys.exc_info()[0] or "Empty sys.exec_info 0", sys.exc_info()[1] or "Empty sys.exec_info 1", my_msg, sys.exc_info()[2] or "Empty sys.exec_info 2")
         raise Exception (my_msg)
 
     return(ora_home)
@@ -1225,6 +1229,13 @@ def listener_info():
             else:
              lsnrfax['home'] = "unknown"
 
+            # Find VIP
+            try:
+              temp = str(commands.getstatusoutput("export ORACLE_HOME=" + db_home + "; " + db_home + "/bin/lsnrctl status | grep Version | awk '{print $6}' | grep -v '-'")[1])
+            except:
+              err_msg = err_msg + ' Error: listener_info() - find lsnrctl version: (%s)' % (sys.exc_info()[0])
+
+
         return(lsnrfax)
 
     else:
@@ -1273,6 +1284,65 @@ def rac_dblist():
     else:
         database_info['database_details'].update({ 'databases': srvctl_verbose })
     return(database_info)
+
+
+def get_vip(is_rac):
+    """
+    Get the VIP for registering the local_listener in the database
+    local_listener string (ADDRESS=(PROTOCOL=TCP)(HOST=10.10.214.224)(PORT=1521))
+    """
+    global affirm
+    global node_name
+    global grid_home
+    global network_subnet_v4
+    cmd_str = ""
+
+    debugg("get_vip() :: .......starting......")
+    if not grid_home:
+        debugg("get_vip() :: grid_home not set. Calling get_gihome()....")
+        grid_home = get_gihome()
+
+    # RAC
+    if is_rac in affirm:
+        debugg("get_vip() :: RAC situation. grid_home={}".format(grid_home or "empty!"))
+        # Get the node_name
+        if not node_name:
+            # cmd_str = "ifconfig | grep 'inet 10' | awk '{print $2}'"
+            try:
+                cmd_str = "{gh}/bin/crsctl get nodename".format(gh=grid_home)
+                debugg("get_vip() :: cmd_str = {}".format(cmd_str or "Empty!"))
+                tmp_node_name = run_command(cmd_str)
+            except:
+                err_msg = " Error get_vip(). RAC. Error occurred getting node name. GI_HOME={} cmd_str={}".format(grid_home or "EMPTY!", cmd_str or "EMPTY!")
+                debugg(err_msg)
+                return()
+            node_name = tmp_node_name
+        debugg("get_vip :: after getting node name. output = {}".format(node_name or "EMPTY!"))
+
+        # get VIP
+        try:
+            cmd_str = "{gh}/bin/srvctl config vip -node {nn} | grep IPv4 | awk '{{ print $4 }}'".format(gh=grid_home, nn=node_name)
+            debugg("get_vip() :: cmd_str = {}".format(cmd_str))
+            tmp_vip = run_command(cmd_str)
+        except:
+            err_msg = "Error get_vip(). RAC. Error occurred getting VIP. output={} GI_HOME={} cmd_str={}".format(tmp_vip or "No output!", grid_home or "EMPTY!", cmd_str or "EMPTY!")
+            debugg(err_msg)
+            return()
+        debugg("get_vip() RAC returning => VIP {}".format(tmp_vip))
+        return(tmp_vip)
+
+    # Not RAC
+    else:
+        debugg("get_vip() :: NON-RAC situation.")
+        try:
+            cmd_str = "/usr/sbin/ifconfig | /bin/grep 'inet {sub}' | /bin/awk '{{ print $2 }}'".format(sub=network_subnet_v4)
+            tmp_vip = run_command(cmd_str)
+        except:
+            err_msg = " Error get_vip(). RAC. Error occurred getting node name. output={} GI_HOME={} cmd_str={}".format(tmp_vip or "No output!", grid_home or "EMPTY!", cmd_str or "EMPTY!")
+            debugg(err_msg)
+            return()
+        debugg("get_vip() :: returning => VIP {}".format(tmp_vip))
+        return(tmp_vip)
 
 
 def si_dblist():
@@ -1401,6 +1471,25 @@ def host_name():
     return(tmphost)
 
 
+def domain_name():
+    """Return the hosts' domain"""
+    global msg
+
+    cmd_str = "/bin/dnsdomainname"
+
+    try:
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except:
+        msg = msg + ' ERROR [33] host_name() error obtaining hostname on linux : %s' % (local_db)
+        module.fail_json(msg='ERROR: %s' % (err_msg), changed=False)
+
+    tmp = output.strip()
+
+    # prep the domain name for use dr.cru.org => .dr.cru.org and return
+    return("."+ tmp)
+
+
 def get_orahome_procid(vdb):
     """Get database Oracle Home from the running process."""
     global global_ora_home
@@ -1515,7 +1604,9 @@ def get_scan(ora_home):
     return (scan_info)
 
 def run_command(cmd):
-    """Runs given shell command, returns stdout."""
+    """
+    Runs given shell command, returns stdout.
+    """
     global err_msg
 
     try:
@@ -1643,6 +1734,13 @@ def main(argv):
             else:
                 ansible_facts['orafacts'].update( {'is_rac': 'False'} )
 
+
+            t_vip = get_vip(ansible_facts['orafacts']['is_rac'])
+            if not t_vip:
+                t_vip = msgg("Error determining IPv4 VIP for node.")
+                t_vip = ""
+            ansible_facts['orafacts'].update( {'vip_ipv4': t_vip} )
+
             # Run the following functions for both RAC and SI
             # Get tnsnames info
             vtmp = tnsnames()
@@ -1655,6 +1753,9 @@ def main(argv):
 
             vtmp = host_name()
             ansible_facts['orafacts']['host_name'] = vtmp
+
+            vtmp = domain_name()
+            ansible_facts['orafacts']['domain'] = vtmp
 
             # Add any error messages caught before passing back
             if err_msg:

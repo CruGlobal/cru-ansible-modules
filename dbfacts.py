@@ -95,7 +95,8 @@ vparams=[ "cluster_database",
           "dg_broker_config_file1",
           "dg_broker_config_file2",
           "standby_file_management",
-          "fal_server"
+          "fal_server",
+          "db_domain"
         ]
 
 msg = ""
@@ -361,6 +362,8 @@ def main ():
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'db_recovery_file_dest' == vparams[idx]:
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
+            elif 'db_domain' == vparams[idx]:
+                ansible_facts[refname].update({ 'domain': "." + vtemp })
             elif 'listener' in vparams[idx]:
                 if vtemp is None:
                     ansible_facts[refname].update({ vparams[idx]: 'None' })

@@ -37,6 +37,9 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
+    Usage: Run a command against a database and get a list returned that is
+           iterable by Ansible.
+
     # To run a sql command in a database during ansible play.
     - local_action:
         module: rundbcmd
@@ -272,7 +275,7 @@ def main ():
     ignore_err_flag = False
     return_values = []
 
-    print("here")
+    # print("here")
 
     module = AnsibleModule(
       argument_spec = dict(
@@ -287,7 +290,7 @@ def main ():
         ignore          =dict(required=False),
         debugging       =dict(required=False)
       ),
-      supports_check_mode=True,
+      supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
@@ -373,7 +376,7 @@ def main ():
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         if vignore:
-            temp_msg = "DB CONNECTION FAILED : {}".format(error.message)
+            temp_msg = "DB CONNECTION FAILED : {} with user: {} and dsn_tns: {}".format(error.message, vuid or "Empty!", dsn_tns or "Empty!")
             add_to_msg(temp_msg)
             debugg(" vignore: {} Error: {}".format(vignore,temp_msg))
             module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
@@ -429,9 +432,9 @@ def main ():
         pass
     debugg("cmd={} output={} results={}".format(vcmd_str,vtemp, results))
 
-    ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': True, 'output': return_values } })
-
-    module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=True)
+    ansible_facts.update({ refname : return_values, 'results': {'cmd': vcmd_str, 'success': True, 'output': return_values } } )
+    m = "module: success. query output: {}".format(return_values)
+    module.exit_json( msg=m, ansible_facts=ansible_facts , changed=True)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
