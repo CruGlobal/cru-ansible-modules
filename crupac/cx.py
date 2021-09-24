@@ -16,9 +16,9 @@ except ImportError:
     cx_Oracle_found = False
     print("unable to import cx_Oracle")
 
-class cxcon(object):
+class odbo(object):
     """
-    to instantiate this class pass a Python dictionary in the follow format:
+    to instantiate this class: pass a Python dictionary in the follow format:
     {
     "sid" : fscmp1
     "host" : plrac1.ccci.org

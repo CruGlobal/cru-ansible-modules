@@ -83,7 +83,9 @@ vparams=[ "compatible",
           "core_dump_dest",
           "background_dump_dest",
           "audit_file_dest",
-          "db_files" ]
+          "db_files",
+          "db_domain"
+         ]
 msg = ""
 debugme = False
 
