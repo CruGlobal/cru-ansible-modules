@@ -112,7 +112,6 @@ EXAMPLES = '''
    Since this will run on the local host, you have to stop this task from becomeing oracle.
    Either of these will work:
        become_user: "{{ local_user }}"or become_user: "{{ local_user }}"
-
 '''
 # Global Vars:
 itemsToMatch = 0

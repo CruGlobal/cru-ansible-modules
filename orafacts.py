@@ -134,7 +134,7 @@ network_subnet_v4 = "10"
 
 def msgg(add_string):
     """
-    Add a snippet to the return string
+    Add a snippet of information to the return string
     """
     global msg
 
@@ -1619,6 +1619,17 @@ def run_command(cmd):
 
     return output.strip()
 
+
+def host_domain():
+    """
+    get the domain of the host
+    """
+    global err_msg
+    cmd_str = "/bin/dnsdomainname"
+    dom = run_command(cmd_str)
+    return(dom)
+
+
 # ================================== Main ======================================
 def main(argv):
     global ora_home
@@ -1750,6 +1761,9 @@ def main(argv):
             # Get local listener info
             vtmp = listener_info()
             ansible_facts['orafacts']['lsnrctl'] = vtmp
+
+            vtmp = host_domain()
+            ansible_facts['orafacts']['domain'] = "." + vtmp
 
             vtmp = host_name()
             ansible_facts['orafacts']['host_name'] = vtmp

@@ -48,11 +48,11 @@ EXAMPLES = '''
 
 '''
 #Global variables
-affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
+affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 oracle_home=""
 err_msg = ""
 msg = ""
-debugme = False
+debugme = True
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
@@ -67,7 +67,9 @@ env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/b
 host_debug_log = "/tmp/mod_debug.log"
 
 def add_to_msg(mytext):
-    """Passed some text add it to the msg"""
+    """
+    Add a snippet of information to the return string
+    """
     global msg
 
     if not msg:
@@ -328,10 +330,12 @@ def main ():
 
         if len(spfile) > 1:
             debugg("[1b] spfile already exists %s" % (spfile))
-            add_to_msg("spfile already exists: %s/%s/%s => %s deleting it." % (vasm_dg,vdb,spfile[0],spfile[1]))
+            add_to_msg("spfile already existed: %s/%s/%s => %s deleting it." % (vasm_dg or "Empty!",vdb or "Empty!",spfile[0] or "Empty!",spfile[1] or "Empty!"))
             # module.exit_json( msg=msg, ansible_facts={} , changed=False)
-            output = run_sub_env("echo rmalias %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
-            debugg("main: Previous alias existed after dbca delete. Deleted alias. Continuing..." % (output))
+            output = run_sub_env("echo rmalias %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper() or "Empty!",vdb or "Empty!",vdb or "Empty!",vdb_home or "Empty!"), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+            debugg("deleted alias...removing old spfile")
+            output = run_sub_env("echo rm %s | %s/bin/asmcmd" % (spfile[1], vdb_home or "Empty!"), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+            debugg("removed old parameterfile")
 
     # Else get the name of the parameterfile.
     output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
