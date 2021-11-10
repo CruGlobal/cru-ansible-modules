@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Library/Frameworks/Python.framework/Versions/3.7/bin/python3
 # -*- coding: utf-8 -*-
 
 from ansible.module_utils.basic import *
@@ -13,7 +13,7 @@ import math
 from subprocess import (PIPE, Popen)
 # import importlib.util
 
-sys.path.append('./library/pymods/')
+sys.path.append(r'./library/pymods/')
 from crumods import debugg
 
 # default reference name
@@ -192,6 +192,8 @@ def main ():
         ansible_facts[refname].update( { 'item': result } )
         # print json.dumps( ansible_facts_dict )
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
+
+
     else:
         if err_flag:
             msg = "SPLITOUT module ERROR: " + msg

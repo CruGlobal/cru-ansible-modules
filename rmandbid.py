@@ -34,111 +34,30 @@ author: "DBA Oracle module Team"
 EXAMPLES = '''
 
     # Retrieve the dbid of a given database.
-    - name: retrieve the dbid of the db to restore
-      local_action:
-          module: rmandbid
-          db_user: sys, system, rco etc.
-          user_password: "{{ database_passwords['rcat'].system }}"
-          db_name: "crmp"                 (1)
-          cdb: "cat"                       *
-          pdb: "catcdb"                    *
-          rman_db: "rcat"                 (2)
-          schema_owner: rco
-          host: "{{ rman_host }}"
-          refname: your_reference_name    (3) *
-      become_user: "{{ utils_local_user }}"
+    - local_action:
+        module: rcatdbid
+        systempwd: "{{ database_passwords['cat'].system }}"
+        cdb: "cat"
+        pdb: "catcdb"
+        schema_owner: rco
+        host: "{{ source_host }}"
+        refname: your_reference_name
+      become_user: "{{ local_user }}"
 
     Notes:
-
-        (1) db_name: name of the db to get the dbid for.
-
-        (2) use either cdb / pdb OR rman_db to specify the rman catalog to connect to, but not both.
-
-        (3) refname (optional) - any name you want to use to referene the data later in the play
-                                 defualt reference name (refname) is 'rmandbid'
-
-        * optional
+        refname (optional) - any name you want to use to referene the data later in the play
+                             defualt refname is 'rmandbid'
 
 '''
 
 msg = ""
 debugme = False
-debug_log = "" # os.path.expanduser("cru-ansible-oracle/bin/.utils/debug.log")
 # defaults
 d_schema_owner = "rco"
 d_cdb = "cat"
 d_pdb = "catcdb"
-d_domain = ".ccci.org"
-d_refname = "rmandbid"
-d_tns_str = "rcat.ccci.org"
-default_ignore = False
-affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
-v_ignore = False
-ansible_facts = {}
-
-
-def add_to_msg(a_msg):
-    """Add the arguement to the msg to be passed out"""
-    global msg
-
-    if msg:
-        msg = msg + " " + a_msg
-    else:
-        msg = a_msg
-
-
-def debugg(db_msg):
-    """if debugging is on add this to msg"""
-    global debug_log
-    global debugme
-    global affirm
-    # print("debugging log: {}".format(debug_log or "Empty!"))
-    if debugme not in affirm:
-        return()
-
-    add_to_msg(db_msg)
-
-    if not debug_log:
-        set_debug_log()
-        if not debug_log:
-            add_to_msg("Error setting debug log. No debugging will be available.")
-        return()
-
-    try:
-        with open(debug_log, 'a') as f:
-            f.write(db_msg + "\n")
-    except:
-        pass
-
-    return()
-
-
-def set_debug_log():
-    """
-    Set the debug_log value to write debugging messages
-    Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
-    """
-    global utils_settings_file
-    global debug_log
-    global debugme
-
-    if not debugme or debug_log:
-        return()
-
-    try:
-        with open(utils_settings_file, 'r') as f1:
-            line = f1.readline()
-            while line:
-                if 'ans_dir' in line:
-                    tmp = line.strip().split("=")[1]
-                    debug_log = tmp + "/bin/.utils/debug.log"
-                    return()
-
-                line = f1.readline()
-    except:
-        print("ans_dir not set in ~/.utils unable to write debug info to file")
-        pass
-
+cru_domain = ".ccci.org"
+dr_domain = ".dr.cru.org"
 
 def add_to_msg(tmpmsg):
     """Add some info to the ansible_facts output message"""
@@ -150,183 +69,117 @@ def add_to_msg(tmpmsg):
     else:
         msg = tmpmsg
 
-
-def fail_handler(v_module, v_msg, v_changed):
-    """
-    Do failing here to cut down on code
-    """
-    global v_ignore
-    global ansible_facts
-    global affirm
-
-    if v_ignore in affirm:
-        v_module.exit_json( msg=v_msg, ansible_facts=ansible_facts , changed=v_changed)
-    else:
-        v_module.fail_json( msg=v_msg, ansible_facts=ansible_facts , changed=v_changed)
-
-
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
 def main ():
-    """
-    Get DBID from RMAN catalog directly
-    """
-    global msg
-    global d_refname
-    global d_tns_str
-    global d_domain
-    global default_ignore
-    global affirm
-    global ansible_facts
-    cdb_flag = False
+  """ Return Oracle database parameters from a database not in the specified group"""
+  global msg
+  global cru_domain
+  global dr_domain
+  ansible_facts={}
 
-    module = AnsibleModule(
+  # Name to call facts dictionary being passed back to Ansible
+  # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
+  refname = "rmandbid"
+
+  os.system("/usr/bin/scl enable python27 bash")
+  # os.system("scl enable python27 bash")
+
+  module = AnsibleModule(
       argument_spec = dict(
-        db_user           =dict(required=True),
-        user_password     =dict(required=True),
+        systempwd         =dict(required=True),
         db_name           =dict(required=True),
         cdb               =dict(required=False),
         pdb               =dict(required=False),
-        rman_db           =dict(required=False),
-        schema_owner      =dict(required=True),
+        schema_owner      =dict(required=False),
         host              =dict(required=True),
-        refname           =dict(required=False),
-        ignore_errors     =dict(required=False)
+        refname           =dict(required=False)
       ),
       supports_check_mode=True,
-    )
+  )
 
-    # Get arguements passed from Ansible playbook
-    v_db_user       = module.params.get('db_user')
-    v_user_password = module.params.get('user_password')
-    p_db_name       = module.params.get('db_name')
-    p_cdb           = module.params.get('cdb')
-    p_pdb           = module.params.get('pdb')
-    p_rman_db       = module.params.get('rman_db')
-    p_schema_owner  = module.params.get('schema_owner')
-    v_host          = module.params.get('host')
-    p_refname       = module.params.get('refname')
-    p_ignore_errors = module.params.get('ignore_errors')
+  # Get arguements passed from Ansible playbook
+  v_syspwd       = module.params.get('systempwd')
+  p_db_name      = module.params.get('db_name')
+  p_cdb          = module.params.get('cdb')
+  p_pdb          = module.params.get('pdb')
+  p_schema_owner = module.params.get('schema_owner')
+  v_host         = module.params.get('host')
+  p_refname      = module.params.get('refname')
 
-    # p_ = parameter, what was passed in
-    # v_ = variable, value that is used in the program
-    # d_ = default, what is defined in the header
+  if p_refname:
+      refname = p_refname
 
-    # CHECK PARAMETERS ===== START =============================================
-    if p_refname:
-        v_refname = p_refname
-    else:
-        v_refname = d_refname
+  if not cx_Oracle_found:
+    module.fail_json(msg="Error: cx_Oracle module not found")
 
-    ansible_facts = { v_refname : {}}
+  if p_cdb is None:
+      v_cdb = d_cdb
+  else:
+      v_cdb = p_cdb
 
-    if p_ignore_errors is None:
-        v_ignore = default_ignore
-    else:
-        v_ignore = p_ignore_errors
+  if p_pdb is None:
+      v_pdb = d_pdb
+  else:
+      v_pdb = p_pdb
 
-    if not cx_Oracle_found:
-        ansible_facts = { v_refname : { "status": "Fail" } }
-        # def fail_handler(v_module, v_msg, v_changed):
-        fail_handler(module, "Error: cx_Oracle module not found. Exiting.", False)
+  if p_schema_owner is None:
+      v_schema_owner = d_schema_owner
+  else:
+      v_schema_owner = p_schema_owner
 
-    # container db is cat
-    if p_cdb is None:
-        v_cdb = d_cdb
-    else:
-        v_cdb = p_cdb
-        cdb_flag = True
+  if p_db_name:
+      v_db_name = p_db_name
 
-    # pluggable db [cat] if working with cdb [catcdb] our old rman db.
-    if p_pdb is None and cdb_flag in affirm:
-        v_pdb = d_pdb
-    else:
-        v_pdb = None
+  # check vars passed in are not NULL. All are needed to connect to source db
+  if ( v_syspwd is not None ) and ( v_host is not None ) and ( v_cdb is not None ) and ( v_pdb is not None ):
 
-    # schema owner is rco
-    if p_schema_owner is None:
-        v_schema_owner = d_schema_owner
-    else:
-        v_schema_owner = p_schema_owner
+    if v_pdb[-1].isdigit():
+        v_pdb = v_pdb[:-1]
 
-    # name of the db to get dbid for
-    if p_db_name:
-        v_db_name = p_db_name
-
-    # check required parameter values are not NULL. If any required are missing exit.
-    if ( v_db_user and v_user_password is None ) or ( v_host is None ) or (v_db_name is None) or (v_schema_owner is None):
-        tmp = "db_user: {} ,user_password: {}, host: {}, db_name: {}".format(v_db_user or "None!", v_user_password or "None!", v_host or "None!", v_db_name or "None!" )
-        ansible_facts = { v_refname : { "called with parameters": tmp } }
-        # def fail_handler(v_module, v_msg, v_changed):
-        fail_handler(module, "Error: Required parameter missing", False)
-    # CHECK PARAMETERS ===== FINISH =============================================
-
-    # If cdb / pdb type connection:
-    if (cdb_flag in affirm) or (v_pdb and v_cdb):
-        if v_pdb[-1].isdigit():
-            v_pdb = v_pdb[:-1]
-
-    # prep host name: if domain not included add it.
-    if d_domain not in v_host:
-        v_host = "{}{}".format(v_host, d_domain)
-
-    # choose which db you're connecting to
-    if v_pdb and cdb_flag in affirm:
-        v_db = vpdb
-    elif p_rman_db:
-        v_db = p_rman_db
+    if cru_domain not in v_host and dr_domain not in v_host:
+        if "dr" in v_host:
+            v_host = v_host + dr_domain
+        else:
+            v_host = v_host + cru_domain
 
     try:
-        dsn_tns = cx_Oracle.makedsn(v_host, '1521', v_db)
+        dsn_tns = cx_Oracle.makedsn(v_host, '1521', v_pdb)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        err_msg = "TNS generation error: {}, db name: {} host: {}".format(error.message, v_db or "Empty!", v_host or "Empty!")
-        ansible_facts = { v_refname : { "dsn_tns": "FAILED" } }
-        # def fail_handler(v_module, v_msg, v_changed):
-        fail_handler(module, err_msg, False)
+        module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, v_pdb, vdbhost), changed=False)
 
     try:
-        con = cx_Oracle.connect(v_db_user, v_user_password, dsn_tns)
+        con = cx_Oracle.connect('system', v_syspwd, dsn_tns)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        ansible_facts = { v_refname : { "connection": "FAILED" } }
-        msg="Database connection error: {}, tnsname: {}, db: {}".format(error.message or "Empty!", dsn_tns or "failed to create.", v_db or "Empty!")
-        fail_handler(module, err_msg, False)
+        module.fail_json(msg='Database connection error: %s, tnsname: %s, pdb %s' % (error.message, dsn_tns, v_pdb), changed=False)
+
+    cur = con.cursor()
 
     try:
-        cur = con.cursor()
-    except:
-        ansible_facts = { v_refname : { "cur creation": "FAILED" } }
-        msg="Failed to generate cur from cx_Oracle connection: {}, tnsname: {}, db: {}".format(error.message or "Empty!", dsn_tns or "failed to create.", v_db or "Empty!")
-        fail_handler(module, err_msg, False)
+        cmd_str = "SELECT CASE WHEN MAX(object_name) IS NULL THEN 'False' ELSE 'True' END table_exists FROM dba_objects WHERE object_name = '%s'" % ('v$pdbs')
+        cur.execute(cmd_str)
+    except cx_Oracle.DatabaseError as exc:
+        error, = exc.args
+        module.fail_json(msg='Error determining if v_pdbs table exists, Error: %s' % (error.message), changed=False)
 
+    vtemp = cur.fetchall()
+    vpuggable_db = vtemp[0][0]
 
-    if cdb_flag in affirm:
+    if vpuggable_db:
+        # set container database
         try:
-            cmd_str = "SELECT CASE WHEN MAX(object_name) IS NULL THEN 'False' ELSE 'True' END table_exists FROM dba_objects WHERE object_name = '{}'".format('v$pdbs')
+            cmd_str = "alter session set container = %s" % (v_cdb.upper())
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
             error, = exc.args
-            ansible_facts = { v_refname : { "cmd_str": "FAILED" } }
-            err_msg = "Error determining if v_pdbs table exists, Error: {}".format(error.message)
-            fail_handler(module, err_msg, False)
-
-        vtemp = cur.fetchall()
-        vpuggable_db = vtemp[0][0]
-
-        if vpuggable_db:
-            # set container database
-            try:
-                cmd_str = "alter session set container = {}".format(v_cdb.upper())
-                cur.execute(cmd_str)
-            except cx_Oracle.DatabaseError as exc:
-                error, = exc.args
-                module.fail_json(msg='Error setting container, Error: %s container: %s' % (error.message,v_cdb.upper()), changed=False)
+            module.fail_json(msg='Error setting container, Error: %s container: %s' % (error.message,v_cdb.upper()), changed=False)
 
     # Get dbid of database given in arguments
     try:
-        cmd_str = "select dbid from {}.RC_DATABASE_INCARNATION where name = '{}' and current_incarnation = 'YES'".format(v_schema_owner,v_db_name.upper())
+        cmd_str = "select dbid from %s.RC_DATABASE_INCARNATION where name = '%s' and current_incarnation = 'YES'" % (v_schema_owner,v_db_name.upper())
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
@@ -335,7 +188,7 @@ def main ():
     vtemp = cur.fetchall()
     vtemp = vtemp[0][0]
     vdbid = vtemp
-    ansible_facts[v_refname]= { v_db_name: {'dbid': vdbid} }
+    ansible_facts[refname]= { v_db_name: {'dbid': vdbid} }
 
     try:
         cur.close()

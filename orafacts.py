@@ -1739,12 +1739,10 @@ def main(argv):
                 # Get list of all databases in /etc/oratab
                 ansible_facts.update(si_dblist())
 
-
             if is_rac():
                 ansible_facts['orafacts'].update( {'is_rac': 'True'} )
             else:
                 ansible_facts['orafacts'].update( {'is_rac': 'False'} )
-
 
             t_vip = get_vip(ansible_facts['orafacts']['is_rac'])
             if not t_vip:

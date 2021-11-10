@@ -104,8 +104,9 @@ debugme = False
 defrefname = "dbfacts"
 affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
+debug_log = os.path.expanduser("~/.dbfacts.log")
 utils_settings_file = os.path.expanduser("~/.utils")
-debug_log = os.path.expanduser("~/.module_debug.log")
+debug_log2 = os.path.expanduser("~/.debug.log")
 
 def set_debug_log():
     """ Set the debug_log value to write debugging messages to """
@@ -113,7 +114,7 @@ def set_debug_log():
     global debug_log
     global debugme
 
-    if not debugme:
+    if not debugme or debug_log:
         return
 
     try:
@@ -364,10 +365,10 @@ def main ():
             if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
                 vtemp = convert_size(float(vtemp),"M")
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
-            elif 'db_recovery_file_dest' == vparams[idx]:
-                ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'db_domain' == vparams[idx]:
                 ansible_facts[refname].update({ 'domain': "." + vtemp })
+            elif 'db_recovery_file_dest' == vparams[idx]:
+                ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'listener' in vparams[idx]:
                 if vtemp is None:
                     ansible_facts[refname].update({ vparams[idx]: 'None' })

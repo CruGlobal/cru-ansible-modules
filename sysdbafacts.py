@@ -132,7 +132,7 @@ defualt_ora_home = "dbhome_1"
 default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
 default_refname = "sysdbafacts"
 affirm = [ 'True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes', 't', 'T', 'y', 'Y', 'ON', 'on', 'On']
-cru_domain = ".ccci.org"
+lh_domain = ".ccci.org"
 dr_domain = ".dr.cru.org"
 
 
@@ -185,7 +185,7 @@ def main ():
   global default_pfile_name
   global default_refname
   global dr_domain
-  global cru_domain
+  global lh_domain
 
   ansible_facts={}
 
@@ -248,8 +248,11 @@ def main ():
 
     if '.org' in vdbhost:
         # vdbhost => full_hostname and abbr_hostname
-        abbr_hostname = vdbhost.replace(cru_domain,"").replace(dr_domain,"")
+        abbr_hostname = vdbhost.replace(".ccci.org","")
         full_hostname = vdbhost
+    else:
+        abbr_hostname = vdbhost.replace(".ccci.org","")
+        full_hostname = abbr_hostname + ".ccci.org"
 
     if visrac in affirm:
         if abbr_hostname[-1:].isdigit():
