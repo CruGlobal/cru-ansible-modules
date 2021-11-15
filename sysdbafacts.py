@@ -132,8 +132,6 @@ defualt_ora_home = "dbhome_1"
 default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
 default_refname = "sysdbafacts"
 affirm = [ 'True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes', 't', 'T', 'y', 'Y', 'ON', 'on', 'On']
-lh_domain = ".ccci.org"
-dr_domain = ".dr.cru.org"
 
 
 def add_to_msg(mytext):
@@ -184,8 +182,6 @@ def main ():
   global default_ora_base
   global default_pfile_name
   global default_refname
-  global dr_domain
-  global lh_domain
 
   ansible_facts={}
 

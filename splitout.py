@@ -187,13 +187,10 @@ def main ():
             result = result.split(sec_s_on)[int(sec_return_num ) - 1]
             debugg("splitout() :: second split result={} sec_s_on: {} sec_return_num {}".format(result, sec_s_on, sec_return_num))
 
-    if result:
         msgg("Success")
         ansible_facts[refname].update( { 'item': result } )
         # print json.dumps( ansible_facts_dict )
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed="False")
-
-
     else:
         if err_flag:
             msg = "SPLITOUT module ERROR: " + msg

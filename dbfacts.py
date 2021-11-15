@@ -100,9 +100,9 @@ vparams=[ "cluster_database",
         ]
 
 msg = ""
-debugme = False
+debugme = True
 defrefname = "dbfacts"
-affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
+affirm = ['True','TRUE', True,'true','T','t','Yes','YES','yes','y','Y']
 db_home_name = "dbhome_1"
 debug_log = os.path.expanduser("~/.dbfacts.log")
 utils_settings_file = os.path.expanduser("~/.utils")
@@ -141,8 +141,6 @@ def add_to_msg(a_msg):
     else:
         msg = a_msg
 
-    return()
-
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
@@ -150,7 +148,7 @@ def debugg(db_msg):
     global debugme
 
     if not debugme:
-        return()
+        return
 
     try:
         with open(debug_log, 'a') as f:

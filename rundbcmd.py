@@ -136,6 +136,7 @@ def add_to_msg(a_msg):
     else:
         msg = a_msg
 
+    return()
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
