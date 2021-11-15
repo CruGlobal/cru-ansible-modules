@@ -95,15 +95,16 @@ vparams=[ "cluster_database",
           "dg_broker_config_file1",
           "dg_broker_config_file2",
           "standby_file_management",
-          "fal_server"
+          "fal_server",
+          "db_domain"
         ]
 
 msg = ""
-debugme = False
+debugme = True
 defrefname = "dbfacts"
-affirm = ['True','TRUE', 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
+affirm = ['True','TRUE', True,'true','T','t','Yes','YES','yes','y','Y']
 db_home_name = "dbhome_1"
-debug_log = ""
+debug_log = os.path.expanduser("~/.dbfacts.log")
 utils_settings_file = os.path.expanduser("~/.utils")
 debug_log2 = os.path.expanduser("~/.debug.log")
 
@@ -113,7 +114,7 @@ def set_debug_log():
     global debug_log
     global debugme
 
-    if not debugme:
+    if not debugme or debug_log:
         return
 
     try:
@@ -146,7 +147,7 @@ def debugg(db_msg):
     global debug_log
     global debugme
 
-    if not debugme or not debug_log:
+    if not debugme:
         return
 
     try:
@@ -154,6 +155,7 @@ def debugg(db_msg):
             f.write(db_msg + "\n")
     except:
         pass
+    return()
 
 
 def convert_size(arg_size_bytes, vunit):
@@ -314,11 +316,13 @@ def main ():
                 module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
         try:
+            debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
             con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+            debugg("Connection good!")
         except cx_Oracle.DatabaseError as exc:
             if vdb[-1:].isdigit():
                 vdb = vdb[:-1]
-                debugg(">>> vdb={}".format(vdb))
+                debugg(">>> vdb={} attempting to create connection without digit".format(vdb))
                 try:
                     dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
                     debugg(dsn_tns)
@@ -359,6 +363,8 @@ def main ():
             if 'sga_target' == vparams[idx] or 'db_recovery_file_dest_size' == vparams[idx]:
                 vtemp = convert_size(float(vtemp),"M")
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
+            elif 'db_domain' == vparams[idx]:
+                ansible_facts[refname].update({ 'domain': "." + vtemp })
             elif 'db_recovery_file_dest' == vparams[idx]:
                 ansible_facts[refname].update({ vparams[idx]: vtemp })
             elif 'listener' in vparams[idx]:
@@ -403,6 +409,24 @@ def main ():
             retver = dbver[0][0]
             usable_ver = ".".join(retver.split('.')[0:-1])
             ansible_facts[refname].update({'version': usable_ver, 'oracle_version_full': retver, 'major_version': usable_ver.split(".")[0]})
+        ignore_err_flag = False
+
+        # select instance name
+        try:
+            cur.execute('select instance_name from v$instance')
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            if not vignore:
+                module.fail_json(msg='Error selecting instance_name from v$instance, Error: %s' % (error.message), changed=False)
+            else:
+                ignore_err_flag = True
+                add_to_msg("Error selecting instance_name: %s" % (error.message))
+
+        # if an error just occurred on the select and ignore errors is True skip this and go on
+        if not ignore_err_flag:
+            vinst =  cur.fetchall()
+            vinst = vinst[0][0].strip()
+            ansible_facts[refname].update( { 'sid':vinst } )
         ignore_err_flag = False
 
         # select host_name
@@ -458,6 +482,29 @@ def main ():
             else:
               vtemp = 'False'
             ansible_facts[refname].update( { 'archivelog' : vtemp } )
+        ignore_err_flag = False
+
+       # Check dataguard enabled
+       # select count(*) from v$archive_dest where status = 'VALID' and target = 'STANDBY';
+       # if the result > 0 dataguard is enabled
+        try:
+          cur.execute('select count(*) from v$archive_dest where status = \'VALID\' and target = \'STANDBY\'')
+        except cx_Oracle.DatabaseError as exc:
+          error, = exc.args
+          if vignore:
+              ignore_err_flag = True
+              add_to_msg("Error determining if dataguard is enabled, Error: %s" % (error.message))
+          else:
+              module.fail_json(msg='Error determining if dataguard is enabled: %s' % (error.message), changed=False)
+
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            if int(vtemp) > 0:
+              vtemp = 'True'
+            else:
+              vtemp = 'False'
+            ansible_facts[refname].update( { 'dg_enabled' : vtemp } )
         ignore_err_flag = False
 
        # Check if flashback is on.
@@ -601,6 +648,24 @@ def main ():
             vtemp = cur.fetchall()
             vtemp = vtemp[0][0]
             ansible_facts[refname].update( { 'dbid': vtemp } )
+
+        ignore_err_flag = False
+
+        # Check for db supplemental logging. This is required for logminer which is used by Fivetran
+        try:
+            cur.execute('select supplemental_log_data_min from v$database')
+        except cx_Oracle.DatabaseError as exc:
+            error, = exc.args
+            if vignore:
+                ignore_err_flag = True
+                add_to_msg('Error selecting supplemental_log_data_min from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context))
+            else:
+                module.fail_json(msg='Error selecting supplemental_log_data_min from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
+
+        if not ignore_err_flag:
+            vtemp = cur.fetchall()
+            vtemp = vtemp[0][0]
+            ansible_facts[refname].update( { 'supplemental_log_data_min': vtemp } )
 
         ignore_err_flag = False
 

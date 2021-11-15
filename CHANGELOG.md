@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.0.0] - 2021-11-15
+### Created new modules escpass.py, linkmapper.py, xtractitem.py
+- escpass.py looks for special characters that need escaped to be used by oracle in a password.
+- linkmapper.py takes a python list of filters and database link mappings and remaps current db links and synonyms to reflect mapping changes.
+- xtracitem.py extracts a specified item from a string based on user defined criteria.
+- OSB and Data Guard support
+
 ## [v1.4.0] - 2021-07-22
 ### Updated splitout module
 - Created a module to run commands against a database and resturn ansible usable results if requested.
@@ -75,8 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.0...HEAD
 
+[v1.5.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.4.0...v2.0.0
 [v1.4.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.5...v1.4.0
 [v1.3.5]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.4...v1.3.5
 [v1.3.4]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.3...v1.3.4

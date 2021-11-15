@@ -56,7 +56,8 @@ debugme = False
 d_schema_owner = "rco"
 d_cdb = "cat"
 d_pdb = "catcdb"
-d_domain = ".ccci.org"
+cru_domain = ".ccci.org"
+dr_domain = ".dr.cru.org"
 
 def add_to_msg(tmpmsg):
     """Add some info to the ansible_facts output message"""
@@ -74,6 +75,8 @@ def add_to_msg(tmpmsg):
 def main ():
   """ Return Oracle database parameters from a database not in the specified group"""
   global msg
+  global cru_domain
+  global dr_domain
   ansible_facts={}
 
   # Name to call facts dictionary being passed back to Ansible
@@ -135,8 +138,11 @@ def main ():
     if v_pdb[-1].isdigit():
         v_pdb = v_pdb[:-1]
 
-    if d_domain in v_host:
-        v_host = v_host.replace(d_domain,'')
+    if cru_domain not in v_host and dr_domain not in v_host:
+        if "dr" in v_host:
+            v_host = v_host + dr_domain
+        else:
+            v_host = v_host + cru_domain
 
     try:
         dsn_tns = cx_Oracle.makedsn(v_host, '1521', v_pdb)

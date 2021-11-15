@@ -44,15 +44,15 @@ EXAMPLES = '''
 
         A database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
         The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
-            ** this can be obtained dynamically from sourcefacts.
+            ** this can be obtained dynamically from dbfacts.py module output if run prior to this module.
 
 '''
 #Global variables
-affirm = [ 'True', 'TRUE', 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
+affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 oracle_home=""
 err_msg = ""
 msg = ""
-debugme = False
+debugme = True
 sleep_time = 2
 default_ttw = 2
 default_expected_num_reg_lsnrs = 1
@@ -67,7 +67,9 @@ env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/b
 host_debug_log = "/tmp/mod_debug.log"
 
 def add_to_msg(mytext):
-    """Passed some text add it to the msg"""
+    """
+    Add a snippet of information to the return string
+    """
     global msg
 
     if not msg:
@@ -269,7 +271,7 @@ def main ():
     global grid_home
     global debugme
     global affirm
-
+    cur_aliased_spfile = ""
     vasm_sid = "+ASM"
     voracle_user = "oracle"
 
@@ -277,17 +279,19 @@ def main ():
 
     module = AnsibleModule(
       argument_spec = dict(
-        db_name         = dict(required=True),
-        asm_dg          = dict(required=True),
-        debugging       = dict(required=False)
+        db_name          = dict(required=True),
+        asm_dg           = dict(required=True),
+        existing_spfiles = dict(required=False),
+        debugging        = dict(required=False)
       ),
       supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
-    vdb          = module.params["db_name"]
-    vasm_dg      = module.params["asm_dg"]
-    vdebug       = module.params["debugging"]
+    vdb               = module.params["db_name"]
+    vasm_dg           = module.params["asm_dg"]
+    vexisting_spfiles = module.params["existing_spfiles"]
+    vdebug            = module.params["debugging"]
 
     if vasm_dg[0] != "+":
         vasm_dg = "+%s" % (vasm_dg)
@@ -314,46 +318,84 @@ def main ():
             vdb = vdb[:-1]
         debugg("visrac is %s, instance name: %s" % (visrac, vdb))
 
-    vdb_home = get_dbhome(vasm_sid)
+    vasm_home = get_dbhome(vasm_sid)
 
-    debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vdb_home))
+    debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vasm_home))
+
+    # format existing spfile input
+    existing_spfiles_list = []
+    for item in vexisting_spfiles.split():
+        if "spfile" in item:
+            existing_spfiles_list.append(item)
+    debugg("Existing spfiles => {}".format(str(existing_spfiles_list) or "None!"))
 
     # Make sure an alias doesn't already exist. If it does, delete it.
-    debugg("[1] make sure alias doesnt already exist")
-    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+    debugg("[1] Checking an alias doesnt already exist")
+    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
     debugg("main: spfile output=%s" % (output))
+
+    # if an existing alias does exist
     if not 'does not exist' in output and 'spfile' in output:
-        debugg("[1a] spfile found in output %s" % (output))
-        spfile = [ item for item in output.split() if "spfile" in item ]
+        debugg("[1a] existing alias found %s" % (output))
+        old_spfile = [ item for item in output.split() if "SPFILE" in item ][0]
+        debugg("old_spfile: {}".format(str(old_spfile)))
+        # old_spfile would contian this if an alias exists
+        # +DATA3/DB_UNKNOWN/PARAMETERFILE/SPFILE.659.1087834493
+        for item in old_spfile.split("/"):
+            if "SPFILE" in item.upper():
+                # If the cur_aliased_spfile is in the existing_spfiles_list, remove it.
+                # It will be deleted separately below
+                try:
+                    existing_spfiles_list.remove(item)
+                    debugg("Existing spfiles after removing alias => {}".format(str(existing_spfiles_list) or "None!"))
+                except:
+                    debugg("Existing spfiles after removing alias => {}".format(str(existing_spfiles_list) or "None!"))
+                    pass
 
-        if len(spfile) > 1:
-            debugg("[1b] spfile already exists %s" % (spfile))
-            add_to_msg("spfile already exists: %s/%s/%s => %s deleting it." % (vasm_dg,vdb,spfile[0],spfile[1]))
-            # module.exit_json( msg=msg, ansible_facts={} , changed=False)
-            output = run_sub_env("echo rmalias %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
-            debugg("main: Previous alias existed after dbca delete. Deleted alias. Continuing..." % (output))
+        debugg("[1a] old_spfile results {}".format(str(old_spfile)))
 
-    # Else get the name of the parameterfile.
-    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
-    debugg("output=%s" % (output))
+        # These two checks will help us not accidentally delete the wrong existing spfile
+        if "+" in old_spfile and ( vdb.lower() in old_spfile.lower() or "DB_UNKNOWN" in old_spfile):
+            debugg("[1b] existing spfile %s" % (old_spfile))
+            add_to_msg("existing spfile: %s deleted." % (old_spfile))
+            # Remove the alias
+            cmd_str = "echo rmalias {asm_dg}/{db}/spfile{db}.ora | {asm_home}/bin/asmcmd".format(asm_dg=vasm_dg.upper(), db=vdb, asm_home=vasm_home)
+            debugg("removing alias spfile{}.ora using cmd_str = {}".format(vdb, cmd_str))
+            output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+            debugg("alias removed, results {}".format(output))
+            # remove the spfile
+            debugg("deleted alias...removing old spfile")
+            cmd_str = "echo rm {spfile} | {asm_home}/bin/asmcmd".format(spfile=old_spfile, asm_home=vasm_home)
+            output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+            debugg("removed old spfile using cmd {} with output {}".format(cmd_str, ouptut))
+
+    # sometimes old spfiles can accumulate in the parameterfile directory. Delete them.
+    debugg("Removing any previously existing spfiles from parameterfile directory existing_spfiles_list = {}".format(str(existing_spfiles_list)))
+    if len(existing_spfiles_list) > 0:
+        for an_spfile in existing_spfiles_list:
+            cmd_str = "echo rm {vasm_dg}/{db}/PARAMETERFILE/{spfile} | {asm_home}/bin/asmcmd".format(vasm_dg=vasm_dg.upper(), db=vdb, spfile=an_spfile, asm_home=vasm_home)
+            output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+            debugg("removed {} with cmd_str={} results {}".format(an_spfile,cmd_str,output)
+
+    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+    debugg("This is the output of {}/{}/parameterfile and should only contain the new spfile = %s" % (vasm_dg.upper(), vdb.upper(), output))
     if output:
         spfile_orig = [ item for item in output.split() if "spfile" in item ][0]
-
         debugg("[2] get the parameterfile name: %s" % (spfile_orig))
 
     # Create the alias
-    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),spfile_orig,vasm_dg.upper(),vdb.upper(),vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid })
+    output = run_sub_env("echo mkalias %s/%s/parameterfile/%s %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,spfile_orig,vasm_dg.upper(),vdb.upper(),vdb,vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
 
     debugg("[3] Alias created output %s" % (output))
 
     # Check the alias and return the results
-    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vdb_home), {'oracle_home': vdb_home, 'oracle_sid': vasm_sid } )
+    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid } )
 
     spfile = [ item for item in output.split() if "spfile" in item]
 
-    debugg("[4] Check Alias")
+    debugg("[4] Check Alias spfile={}".format(str(spfile)))
 
-    add_to_msg("Module mkalias exiting successfully. Created alias: %s/%s/%s => %s " % (vasm_dg,vdb,spfile[0],spfile[1]))
+    add_to_msg("Module mkalias exiting successfully. Created alias: %s/%s/%s => %s ".format(vasm_dg, vdb, spfile[0]))
 
     # print json.dumps( ansible_facts_dict )
     module.exit_json( msg=msg, ansible_facts={} , changed=True)

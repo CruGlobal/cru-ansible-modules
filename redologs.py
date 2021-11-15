@@ -86,7 +86,7 @@ EXAMPLES = '''
         refname:
         debugmode: True
         debuglog: /cru-ansible-oracle/bin/.utils/debug.log
-    become_user: "{{ local_user }}"
+    become: no
     register: redo_run
 
   Notes: Used to flush redo logs.
@@ -108,6 +108,10 @@ EXAMPLES = '''
               be written to the output msg if the module runs to completion.
                     'debugmode: true'
                     'debuglog: /dir/to/debug/output/debug.log'
+
+   Since this will run on the local host, you have to stop this task from becomeing oracle.
+   Either of these will work:
+       become_user: "{{ local_user }}"or become_user: "{{ local_user }}"
 '''
 # Global Vars:
 itemsToMatch = 0

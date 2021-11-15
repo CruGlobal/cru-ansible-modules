@@ -117,10 +117,10 @@ msg = ""
 custom_err_msg = ""
 # debugging
 global_debug_msg = ""
-truism = [True,False,'true','false','Yes','yes']
+truism = [True, False, 'true', 'false', 'Yes', 'yes']
 utils_dir = os.path.expanduser("~/.utils")
 module = None
-istrue = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
+affirm = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
 rac = None
 cru_domain = ".ccci.org"
 # True valid, False invalid. NORMAL, TRANSACTIONAL LOCAL (not used), IMMEDIATE, or ABORT
@@ -256,9 +256,9 @@ def debugg(debug_str):
     global debugme
     global debug_path
     global debug_file_exists
-    global istrue
+    global affirm
 
-    if debug_file_exists in istrue:
+    if debug_file_exists in affirm:
         if debugme:
             add_to_msg(debug_str)
             debugg_to_file(debug_str)
@@ -664,7 +664,7 @@ def is_opt_valid(vopt,vcmd,majver):
     global valid_start_12c
     global valid_stop_12c
     debugg("is_opt_valid()...starting...vopt=%s vcmd=%s majver=%s" % (vopt,vcmd,majver))
-    if majver == "12":
+    if int(majver) >= 12:
         if vcmd.lower() == "start" and vopt in valid_start_12c:
                 return(True)
         elif vcmd.lower() == "stop" and vopt in valid_stop_12c:
@@ -1026,7 +1026,7 @@ def main ():
   global msg
   global ansible_facts
   global module
-  global istrue
+  global affirm
 
   # local vars
   custom_err_msg = ""
@@ -1058,7 +1058,7 @@ def main ():
   vdebugging    = module.params["debugging"]
   # rest of the parameters are read-in below:
 
-  if vdebugging in istrue:
+  if vdebugging in affirm:
     debugme = True
     debugg("MAIN()...start....")
     debugg("vdb_name=%s vcmd=%s vobj=%s vdebugging=%s" % (vdb_name, vcmd, vobj, vdebugging))
@@ -1145,9 +1145,9 @@ def main ():
 
   # 0 valid, 1 invalid. checked against a list of valid start and stop options per major version
   if vstopt:
-      debugg("MAIN() checking start/stop options")
+      debugg("MAIN() checking start/stop options  ...maj_ver={}".format(maj_ver))
       vresult = is_opt_valid(vstopt,vcmd,maj_ver)
-      if not vresult and maj_ver == "12":
+      if not vresult and int(maj_ver) >= 12:
           cust_msg = "The -%soption parameter passed (%s) was not valid for %s %s on a %s database. Error: invalid stopt option." % (vcmd,vstopt,vcmd,vobj,maj_ver)
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
       elif vresult and maj_ver == "11":
@@ -1155,11 +1155,15 @@ def main ():
           module.fail_json(msg=cust_msg,ansible_facts={},changed=False)
 
   # check if vparam given ck if its valid:
-  if vparam and maj_ver == "12":
-      debugg("MAIN() checking parameters for version 12")
+  debugg("vparam={} maj_ver={}".format(vparam, maj_ver))
+  if vparam and int(maj_ver) >= 12:
+      debugg("MAIN() checking parameters for version 12 <-------")
       if vparam in ["eval","force","verbose"]:
-          vparam = "-" + vparam
+          debugg("Vparam was either : eval, force or verpose....adding dash '-' ")
+          vparam = "-" + vparam.strip()
+          debugg("vparam now {} ".format(vparam))
       else:
+          debugg
           if vparam:
               tmp_msg = "invalid parameter for %s database ignored: [%s] " % (maj_ver, vparam)
               add_to_msg(tmp_msg)
@@ -1187,7 +1191,7 @@ def main ():
   if vobj is not None and ( vobj.lower() == "database" and not all(item == vexpected_state['exp_state'] for item in current_state)):
       debugg("MAIN() If db not in future state already run srvctl command....maj_ver: %s vobj: %s expected_state: %s current_state = %s" % (maj_ver, vobj, str(vexpected_state),str(current_state)))
 
-      if maj_ver in ["12","18","19"]:
+      if int(maj_ver) >= 12:
           debugg("maj_ver in ['12','18','19']: call exec_db_srvctl_12_cmd() with vdb_name=%s vcmd=%s vobj=%s vstopt=%s vparam=%s" % (vdb_name, vcmd, vobj, vstopt, vparam))
           vchanged = exec_db_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam)
       elif maj_ver == "11":
@@ -1197,7 +1201,7 @@ def main ():
   # Else dealing with instance. Check current_state vs expected state. Run srvctl cmd if needed.
   elif vobj is not None and (vobj.lower() == "instance" and current_state[inst_to_ck_indx] != vexpected_state['exp_state']):
       debugg("MAIN() Else dealing with instance. Check current_state vs expected state. Run srvctl cmd if needed....maj_ver: %s vobj: %s expected_state: %s" % (maj_ver,vobj,str(vexpected_state)))
-      if maj_ver in ["12","18","19"]:
+      if int(maj_ver) >= 12:
           debugg("MAIN() dealing with version %s so in 12,18,19 section for instance" % (maj_ver))
           vchanged = exec_inst_srvctl_12_cmd(vdb_name, vcmd, vobj, vstopt, vparam, vinst)
       elif maj_ver == "11":

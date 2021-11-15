@@ -37,12 +37,15 @@ author: "DBA Oracle module Team"
 
 EXAMPLES = '''
 
+    Usage: Run a command against a database and get a list returned that is
+           iterable by Ansible.
+
     # To run a sql command in a database during ansible play.
     - local_action:
         module: rundbcmd
         user_id: sys or system or other user (1)
         user_password: "{{ database_passwords[db_name].sys }} or {{ database_passwords[db_name].system }} "
-        db_name: "{{ db_name }}"
+        sid: "{{ db_sid }}"
         host: "{{ host }}" (2)
         is_rac: "{{ orafacts['is_rac'] }}" or "{{ sourcefacts['is_rac'] }}"
         cmd: "{{ cmd_str }}"
@@ -57,7 +60,7 @@ EXAMPLES = '''
 
       (1) user_id / user_password - sys, system or any user / password combo
 
-      (2) host - including instance number. With domain.
+      (2) host - including instance number. With domain. inventory_hostname should work: tlrac1.ccci.org
           ( i.e. tlrac2.ccci.org or ploradr.dr.cru.org etc. )
 
       (3) expect_results - REQUIRED. If the cmd should produce an output: True, else False
@@ -73,6 +76,7 @@ EXAMPLES = '''
           fatal error and allow the play to continue.
           If set to False this module will fail if an error occurs.
 
+
 '''
 
 # Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
@@ -82,9 +86,9 @@ debugme = False
 default_refname = "cmdfacts"
 affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 db_home_name = "dbhome_1"
-debug_log = "" # os.path.expanduser("~/.debug.log")
+debug_log = os.path.expanduser("~/.module_debug.log")
 utils_settings_file = os.path.expanduser("~/.utils")
-cru_domain = ".ccci.org"
+lh_domain = ".ccci.org"
 dr_domain = ".dr.cru.org"
 non_rac_dbs = [ "dw", "dr" ]
 cur = None
@@ -132,6 +136,7 @@ def add_to_msg(a_msg):
     else:
         msg = a_msg
 
+    return()
 
 def debugg(db_msg):
     """if debugging is on add this to msg"""
@@ -139,6 +144,7 @@ def debugg(db_msg):
     global debugme
     global affirm
     print("debugging log: {}".format(debug_log or "Empty!"))
+
     if debugme not in affirm:
         return()
 
@@ -189,14 +195,14 @@ def israc(host_str=None):
     Determine if a host is running RAC or Single Instance
     """
     global err_msg
-    global cru_domain
+    global lh_domain
     global dr_domain
 
     if host_str is None:
         return()
 
     if "org" in host_str:
-        host_str = host_str.replace(cru_domain,"")
+        host_str = host_str.replace(lh_domain,"")
         host_str = host_str.replace(dr_domain, "")
 
     if "dr" in host_str or "dw" :
@@ -263,7 +269,7 @@ def main ():
     global default_refname
     global debugme
     global db_home_name
-    global cru_domain
+    global lh_domain
     global dr_domain
     global affirm
     global cur
@@ -272,28 +278,27 @@ def main ():
     ignore_err_flag = False
     return_values = []
 
-    print("here")
-
+    # host is REQUIRED to have domain
     module = AnsibleModule(
       argument_spec = dict(
         user_id         =dict(required=True),
         user_password   =dict(required=True),
-        db_name         =dict(required=True),
+        sid             =dict(required=True),
         host            =dict(required=True),
-        is_rac          =dict(required=False),
+        is_rac          =dict(required=True),
         cmd             =dict(required=True),
         expect_results  =dict(required=True),
         refname         =dict(required=False),
         ignore          =dict(required=False),
         debugging       =dict(required=False)
       ),
-      supports_check_mode=True,
+      supports_check_mode=False,
     )
 
     # Get arguements passed from Ansible playbook
     vuid       = module.params.get('user_id')
     vpass      = module.params.get('user_password')
-    vdb        = module.params.get('db_name')
+    vsid        = module.params.get('sid')
     vhost      = module.params.get('host')
     visrac     = module.params.get('is_rac')
     vcmd_str   = module.params.get('cmd')
@@ -313,16 +318,31 @@ def main ():
     if vignore is None:
         vignore = default_ignore
 
-    if ".org" in vhost:
-        abbr_host = vhost.replace(".ccci.org","").replace(dr_domain, "")
+    if not vrefname:
+        refname = default_refname
     else:
-        abbr_host = vhost
+        refname = vrefname
+    ansible_facts = { refname : {}}
+
+    if "." in vhost:
+        domain = vhost[vhost.find("."):]
+        abbr_host = vhost.replace(domain,"")
+    else:
+        temp = "Error: host name did not include domain. host: {}. Correct format: tlrac1.ccci.org".format(vhost)
+        debugg(temp)
+        module.fail_json(msg=temp,ansible_facts=ansible_facts,changed=False)
+
+    debugg("abbr_host={} domain={}".format(abbr_host, domain))
 
     if not visrac:
         visrac = israc(abbr_host)
 
+    debugg("visrac={}".format(visrac))
+
     if not cx_Oracle_found:
-        module.fail_json(msg="Error: cx_Oracle module not found. Unable to proceed.")
+        temp = "Error: cx_Oracle module not found. Unable to proceed."
+        debugg(temp)
+        module.fail_json(msg=temp,ansible_facts=ansible_facts,changed=False)
 
     if not vrefname:
         refname = default_refname
@@ -330,17 +350,18 @@ def main ():
         refname = vrefname
     ansible_facts = { refname : {}}
 
-    debugg("vignore={} abbr_host={} host={} israc={}".format(vignore or "None", abbr_host or "None", vhost or "None", visrac or "None"))
+    debugg("vignore={} abbr_host={} host={} israc={} domain={}".format(vignore or "None", abbr_host or "None", vhost or "None", visrac or "None", domain or "None"))
 
     # check required vars passed in are not NULL.
-    if ( vpass is None) or (vdb is None) or (vhost is None) or (vuid is None) or (vcmd_str is None):
-        temp_msg = "password: {} db name: {} host: {} user name: {} cmd = {}".format(vpass or "Empty!", vdb  or "Empty!", vhost  or "Empty!", vuid  or "Empty!", vcmd_str or "Empty!")
+    if ( vpass is None) or (vsid is None) or (vhost is None) or (vuid is None) or (vcmd_str is None):
+        temp_msg = "password: {} db name: {} host: {} user name: {} cmd = {}".format(vpass or "Empty!", vsid  or "Empty!", vhost  or "Empty!", vuid  or "Empty!", vcmd_str or "Empty!")
         ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': False, 'output': None } })
         debugg("required parameter missing...exiting....{}".format(temp_msg))
         module.fail_json(msg="Error: Expected paramter missing. Unable to proceed. {}", ansible_facts=ansible_facts, changed=False )
 
     # This will check vcmd_str for hazardous words. Drop, Drop database, truncate.
     results, key_word = ck_cmd(vcmd_str)
+    debugg("results={}, key_word={}".format(results,key_word))
     if results in affirm:
         ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': False, 'output': None } })
         debugg("MALICIOUS KEYWORD FOUND: {} {}...exiting..".format(results, key_word))
@@ -349,14 +370,14 @@ def main ():
     # Make a cx_Oracle connection:
     # create dsn_tns
     try:
-        dsn_tns = cx_Oracle.makedsn(vhost, '1521', vdb)
+        dsn_tns = cx_Oracle.makedsn(vhost, '1521', vsid)
     except cx_Oracle.DatabaseError as exc:
         # try special case where single instance on rac:
         error, = exc.args
         if vignore:
             add_to_msg("Failed to create dns_tns: {}".format(error.message))
         else:
-            err_msg="cx_Oracle dsn_tns generation error: {}, db name: {} host: {}".format(error.message or "None", vdb or "None", vhost or "None")
+            err_msg="cx_Oracle dsn_tns generation error: {}, db name: {} host: {}".format(error.message or "None", vsid or "None", vhost or "None")
             add_to_msg(err_msg)
             debugg("DEBUG[01] :: ERROR creating dsn_tns {}".format(err_msg))
             ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': False, 'output': None } })
@@ -373,12 +394,12 @@ def main ():
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         if vignore:
-            temp_msg = "DB CONNECTION FAILED : {}".format(error.message)
+            temp_msg = "DB CONNECTION FAILED : {} with user: {} and dsn_tns: {}".format(error.message, vuid or "Empty!", dsn_tns or "Empty!")
             add_to_msg(temp_msg)
             debugg(" vignore: {} Error: {}".format(vignore,temp_msg))
             module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
         else:
-            module.fail_json(msg='Database connection error: {}, tnsname: {} host: {}' % (error.message, vdb, vhost), changed=False)
+            module.fail_json(msg='Database connection error: {}, tnsname: {} host: {}' % (error.message, vsid, vhost), changed=False)
 
     cur = con.cursor()
     debugg("Cursor successfully created.")
@@ -387,6 +408,7 @@ def main ():
     # It causes an error to try and retrieve results when none are produced by the command.
     try:
         cur.execute(vcmd_str)
+        debugg("successfully executed cmd_str={}".format(vcmd_str))
     except cx_Oracle.DatabaseError as exc:
         try:
             cur.close()
@@ -406,6 +428,7 @@ def main ():
 
     # if no results are expected return
     if vxpect not in affirm:
+        debugg("No results expected, exiting.....vxpect={}".format(vxpect))
         add_to_msg("Success")
         ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': True, 'output': None } })
         module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=True)
@@ -413,6 +436,7 @@ def main ():
     # if results expected fetch and return
     try:
         vtemp = cur.fetchall()
+        debugg("results successfully cur.fetchall()")
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
         err_msg = "Error fetching results from database: {} cmd_str={}".format(error.message, vcmd_str)
@@ -420,18 +444,23 @@ def main ():
         full_msg = "DEBUGGING: {} OUTPUT: {}".format(err_msg, msg)
         ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': False, 'output': None } })
         module.fail_json(msg=full_msg, ansible_facts=ansible_facts, changed=False)
+    debugg("vtemp={}".format(str(vtemp) or "Empty cursor! Query returned nothing."))
+    if vtemp:
+        for item in vtemp:
+            return_values.append(item[0])
 
-    for item in vtemp:
-        return_values.append(item[0])
+    debugg("return_values = {}".format(str(return_values)))
+
     try:
         cur.close()
+        debugg("cursor closed")
     except:
         pass
-    debugg("cmd={} output={} results={}".format(vcmd_str,vtemp, results))
+    debugg("cmd={} output={} results={} ....exiting.....".format(vcmd_str,vtemp, results))
 
     ansible_facts[refname].update({ 'results': {'cmd': vcmd_str, 'success': True, 'output': return_values } })
-
-    module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=True)
+    m = "module: success. query output: {}".format(return_values) + msg
+    module.exit_json( msg=m, ansible_facts=ansible_facts , changed=True)
 
 # code to execute if this program is called directly
 if __name__ == "__main__":

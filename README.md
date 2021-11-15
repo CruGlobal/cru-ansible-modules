@@ -718,7 +718,7 @@ Predefined variables:
       when: master_node
 
       (1) ps_admin, table_list and num_sec_tables - are defined in
-          vars/utils/utils_env.yml
+          vars/utils/xtra_utils_vars.yml
           num_sec_tables is used after the count is obtained to fail if
           the count is less than expected.
           Fail when:
