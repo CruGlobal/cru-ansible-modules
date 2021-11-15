@@ -117,6 +117,7 @@ msg = ""
 custom_err_msg = ""
 # debugging
 global_debug_msg = ""
+truism = [True, False, 'true', 'false', 'Yes', 'yes']
 utils_dir = os.path.expanduser("~/.utils")
 module = None
 affirm = ['True', 'TRUE', 'T', 't', True, 'true', 'YES', 'Yes', 'yes', 'y']
@@ -663,7 +664,7 @@ def is_opt_valid(vopt,vcmd,majver):
     global valid_start_12c
     global valid_stop_12c
     debugg("is_opt_valid()...starting...vopt=%s vcmd=%s majver=%s" % (vopt,vcmd,majver))
-    if int(majver) == 12:
+    if int(majver) >= 12:
         if vcmd.lower() == "start" and vopt in valid_start_12c:
                 return(True)
         elif vcmd.lower() == "stop" and vopt in valid_stop_12c:

@@ -44,7 +44,7 @@ EXAMPLES = '''
 
         A database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
         The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
-            ** this can be obtained dynamically from sourcefacts.
+            ** this can be obtained dynamically from dbfacts.py module output if run prior to this module.
 
 '''
 #Global variables
@@ -381,7 +381,6 @@ def main ():
     debugg("This is the output of {}/{}/parameterfile and should only contain the new spfile = %s" % (vasm_dg.upper(), vdb.upper(), output))
     if output:
         spfile_orig = [ item for item in output.split() if "spfile" in item ][0]
-
         debugg("[2] get the parameterfile name: %s" % (spfile_orig))
 
     # Create the alias
