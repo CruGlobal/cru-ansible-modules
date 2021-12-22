@@ -112,18 +112,19 @@ EXAMPLES = '''
 '''
 
 # Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
-global msg
+msg
 module = None
 vignore = ""
 default_ignore = False
-debugme = False
+debugme = True
 default_refname = "linkmapper"
 p_dict = None
-oracle_staging="/home/oracle/ansible_stage/utils/tstdb/rstOSB/2021-08-23"
+oracle_staging=""
 ans_dir = ""
 cmd_temp_file = ""
 prev_tmp_cmd_file_deleted = False
 oracle_home = ""
+module = None
 
 
 def save_cmd(cmd_str):
@@ -314,6 +315,9 @@ def convert_link(p_filter, p_cre_stmt, p_to, p_db):
     Return the new create string: ( with password filled in )
         CREATE DATABASE LINK "CRMP.CCCI.ORG" CONNECT TO "INTF_FIN" IDENTIFIED BY {pwd} USING 'CRMP.CCCI.ORG'
     """
+    global vignore
+    global affirm
+
     debugg("\nconvert_link()...starting....with parameters....\n\tp_filter={}\n\tp_cre_stmt={}\n\tp_to={}\n\tp_db={}".format(p_filter, p_cre_stmt, p_to, p_db))
 
     # convert p_to: cmp.ccci.org into usable slices db ( crmp ) and domain ( .ccci.org )
@@ -364,7 +368,8 @@ def convert_link(p_filter, p_cre_stmt, p_to, p_db):
             temp_msg = "ERROR RETRIEVING INTER CONNECT PASSWORD FOR {} PASSWORD {}.\nCheck lpass. Current status: {}\n".format(vinterconnect.lower() or "Empty!", vinter_pass or "Empty!", results)
             add_to_msg(temp_msg)
             debugg(temp_msg)
-            fail_module("#6")
+            if vignore not in affirm:
+                fail_module("#6")
 
     # get domain : by finding first period in link with domain and taking the period and everything after that : .DR.CRU.ORG
     vdomain = link_with_domain[link_with_domain.find("."):]
@@ -518,6 +523,7 @@ def main ():
     global proxy_user
     global vorastage
     global affirm
+    global module
 
     syn_only_owners = None
     is_rac = None
@@ -758,7 +764,7 @@ def main ():
                 else:
                     # else just use sys cursor
                     use_cur = sys_cur
-                    # now that we have both drop and create:
+                # now that we have both drop and create:
                 execute_cmd(use_cur, drop_stmt, "no")          # don't expect rows back from a drop.
                 debugg("MAIN :: POST DROP STATMENT")
                 execute_cmd(use_cur, converted_cre_stmt, "no") # don't expect rows back from a create.
