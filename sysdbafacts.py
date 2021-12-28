@@ -185,9 +185,6 @@ def main ():
 
   ansible_facts={}
 
-  os.system("/usr/bin/scl enable python3 bash")
-  # os.system("scl enable python27 bash")
-
   module = AnsibleModule(
       argument_spec = dict(
         syspwd          =dict(required=True),

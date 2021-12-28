@@ -610,11 +610,7 @@ def main ():
     global num_cycles
     global available_fxs
     orig_db_param = ""
-
     ansible_facts={}
-
-    os.system("/usr/bin/scl enable python27 bash")
-    # os.system("scl enable python27 bash")
 
     module = AnsibleModule(
         argument_spec = dict(

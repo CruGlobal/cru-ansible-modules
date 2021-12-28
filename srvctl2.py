@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *

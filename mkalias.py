@@ -1,22 +1,26 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 from ansible.module_utils._text import to_native
 from ansible.module_utils._text import to_text
 # from ansible.error import AnsibleError
-import commands
+# import commands
 import subprocess
 import sys
 import os
 import json
 import re                           # regular expression
+import ast
 # import math
 # import time
 # import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
-from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
+# from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
+
+# sys.path.append(r'./pymods/crumods.py')
+# from crumods import *
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
@@ -27,11 +31,9 @@ DOCUMENTATION = '''
 module: mkalias
 short_description: Given ASM diskgroup and database name it looks for an spfile in ASM,
                    and creates an alias.
-
 '''
 
 EXAMPLES = '''
-
     # when standing up a new database using restore, or clone etc.
     # this will look in asm for a new spfile and create an alias to it.
     - name: Map new alias to spfile
@@ -39,15 +41,13 @@ EXAMPLES = '''
         db_name: "{{ db_name }}"
         asm_dg: "{{ asm_dg_name }}" (1)
       when: master_node
-
     Notes:
-
         A database name ( db_name ) can be entered with or without the instance number ( tstdb or tstdb1 )
         The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
             ** this can be obtained dynamically from dbfacts.py module output if run prior to this module.
-
 '''
 #Global variables
+# This is global in that it calls library/pymods/crumods.py msg variable
 affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
 oracle_home=""
 err_msg = ""
@@ -66,9 +66,10 @@ env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/b
 #   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
 host_debug_log = "/tmp/mod_debug.log"
 
+
 def add_to_msg(mytext):
     """
-    Add a snippet of information to the return string
+    Add a snippet of information to attach to the msg string being passed back to the Ansible play.
     """
     global msg
 
@@ -79,7 +80,9 @@ def add_to_msg(mytext):
 
 
 def debugg(debug_str):
-    """If debugging is on add debugging string to global msg"""
+    """
+    If debugging is on add debugging string to global msg and write it to the debug log file
+    """
     global debugme
 
     if debugme:
@@ -88,7 +91,9 @@ def debugg(debug_str):
 
 
 def write_to_file(info_str):
-    """write this string to debug log"""
+    """
+    write this string to debug log
+    """
     global host_debug_log
 
     f =  open(host_debug_log, 'a')
@@ -98,9 +103,12 @@ def write_to_file(info_str):
 
 
 def get_grid_home():
-    """Determine the Grid Home directory
+    """
+    Determine the Grid Home directory
        using ps -eo args
-       returns string."""
+       returns string
+
+    """
     global grid_home
 
     output = run_sub("/bin/ps -eo args | /bin/grep ocssd.bin | /bin/grep -v grep | /bin/awk '{print $1}'")
@@ -110,7 +118,9 @@ def get_grid_home():
 
 
 def get_node_num():
-    """Return current node number to ensure that srvctl is only executed on one node (1)"""
+    """
+    Return current node number to ensure that srvctl is only executed on one node (1)
+    """
     global grid_home
     global node_number
     global msg
@@ -126,7 +136,9 @@ def get_node_num():
 
 
 def get_dbhome(vdb):
-    """Return database home as recorded in /etc/oratab"""
+    """
+    Return database home as recorded in /etc/oratab
+    """
 
     output = run_sub("/bin/cat /etc/oratab | /bin/grep -m 1 %s | /bin/grep -o -P '(?<=:).*(?<=:)' |  /bin/sed 's/\:$//g'" % (vdb))
 
@@ -138,7 +150,9 @@ def get_dbhome(vdb):
 
 
 def israc():
-    """Determine if a host is running RAC or Single Instance"""
+    """
+    Determine if a host is running RAC or Single Instance
+    """
     global err_msg
 
     # Determine if a host is Oracle RAC ( return 1 ) or Single Instance ( return 0 )
@@ -154,7 +168,9 @@ def israc():
 
 
 def run_sub(cmd_str):
-    """Encapsulate error handling and run subprocess cmds here"""
+    """
+    Encapsulate error handling and run subprocess cmds here
+    """
     global msg
 
     try:
@@ -172,8 +188,9 @@ def run_sub(cmd_str):
 
 
 def run_sub_env(cmd_str, env=None):
-    """Run a subprocess with environmental vars
-       passed in as dictionary: {'ORACLE_HOME': value, ORACLE_SID: value }
+    """
+     Run a subprocess with environmental vars
+     passed in as dictionary: {'ORACLE_HOME': value, ORACLE_SID: value }
     """
     global msg
 
@@ -188,7 +205,7 @@ def run_sub_env(cmd_str, env=None):
         add_to_msg('Error run_sub_env cmd_str=%s env=%s' % (cmd_str,str(env)) )
         add_to_msg('%s, %s, %s' % (sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]) )
         raise Exception (msg)
-
+    debugg("run_sub_env()...returning {} from cmd_str={}".format(output, cmd_str))
     if not output:
         return("")
     else:
@@ -196,26 +213,29 @@ def run_sub_env(cmd_str, env=None):
 
 
 def run_cmd(cmd_str):
-    """Encapsulate all error handline in one fx. Run cmds here."""
+    """
+    Encapsulate all error handline in one fx. Run cmds here.
+    """
     global msg
 
     # get the pmon process id for the running database.
     # 10189  tstdb1
-    try:
-        vproc = str(commands.getstatusoutput(cmd_str)[1])
-    except:
-        add_to_msg('Error: run_cmd(%s) :: cmd_str=%s' % (sys.exc_info()[0],cmd_str))
-        add_to_msg("Meta:: %s, %s, %s %s" % (sys.exc_info()[0], sys.exc_info()[1], msg, sys.exc_info()[2]))
-        raise Exception (msg)
 
-    if vproc:
-        return(vproc)
-    else:
-        return("")
+    try:
+        p = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = p.communicate()
+    except:
+       add_to_msg("Error run_cmd: {}".format(cmd_str))
+       add_to_msg("{}, {}, {}".format(sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
+       raise Exception (msg)
+
+    return output.strip()
 
 
 def get_orahome_procid(vdb):
-    """Get database Oracle Home from the running process."""
+    """
+    Get database Oracle Home from the running process.
+    """
     global msg
 
     # get the pmon process id for the running database.
@@ -249,7 +269,9 @@ def get_orahome_procid(vdb):
 
 
 def get_asm_db():
-    """Retrieve the ASM DB name"""
+    """
+    Retrieve the ASM DB name
+    """
     cmd_str = "/bin/ps -ef | grep _pmon_ | grep -v grep | grep '+'"
     output = run_cmd(cmd_str)
     tmp = output.split()
@@ -265,7 +287,20 @@ def get_asm_db():
 # =================================== MAIN =====================================
 # ==============================================================================
 def main ():
-    """ Check the lsnrctl state using command line """
+    """
+    This module will delete any old spfiles in the +ASM diskgroup for the given db
+    from previous runs, if they exist and create a new alias pointing to the current
+    spfile.
+
+    This module works in conjuntion with a task which passes a registered variable
+    as input to the existing_spfiles parameter of this module which contains the output to the command:
+        echo ls -l +{{ database_parameters[dest_db_name].asm_dg_name }}/{{ dest_db_name }}/parameterfile | {{ grid_home }}/bin/asmcmd | awk '{ print $8}'
+    that command captures existing spfiles on the ASM diskgroup
+    Another task runs to create a current spfile in the ASM diskgroup before calling this module.
+    This module will list the contents of the +ASM/db/parameterfile directory and take the difference between
+    the previously captured spfiles and the spfiles which currently exist. The difference will be the one spfile
+    created just prior to calling this module. That being the new spfile which should be used by this module (mkalias)
+    """
     global msg
     global err_msg
     global grid_home
@@ -290,7 +325,7 @@ def main ():
     # Get arguements passed from Ansible playbook
     vdb               = module.params["db_name"]
     vasm_dg           = module.params["asm_dg"]
-    vexisting_spfiles = module.params["existing_spfiles"]
+    vexisting_spfiles = ast.literal_eval(module.params["existing_spfiles"])
     vdebug            = module.params["debugging"]
 
     if vasm_dg[0] != "+":
@@ -322,34 +357,47 @@ def main ():
 
     debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vasm_home))
 
-    # format existing spfile input
+    # format existing spfile input. Input will be like this:
+    # {"changed": True, "end": "2021-11-29 15:58:44.202582", "stdout": "\nspfile.271.1089906513", "cmd": "echo ls -l +DATA3/tst -
+    # db/parameterfile | /app/19.0.0/grid/bin/asmcmd | awk '{ print $8}\n", "rc": 0, "start": "2021-11-29 15:58:43.373553", "stderr": -
+    # "", "delta": "0:00:00.829029", "stdout_lines": ["", "spfile.271.1089906513"], "stderr_lines": [], "failed": False}
     existing_spfiles_list = []
-    for item in vexisting_spfiles.split():
-        if "spfile" in item:
-            existing_spfiles_list.append(item)
-    debugg("Existing spfiles => {}".format(str(existing_spfiles_list) or "None!"))
+    debugg("list of pre-existing spfiles passed in: type {} ==>> {} vexisting_spfiles['stdout']={}".format( type(vexisting_spfiles), str(vexisting_spfiles) or "None", str(vexisting_spfiles) or "ERROR vexisting_spfiles empty!"))
+    if vexisting_spfiles:
+        for item in vexisting_spfiles['stdout'].split("\n"):
+            debugg("processing item {} of the existing list of parameter")
+            if "spfile" in item:
+                debugg("adding item {} to the list: {}".format(item.strip(), str(existing_spfiles_list)))
+                existing_spfiles_list.append(item.strip())
+        # if the existing_spfiles_list isn't empty remove any duplicate entries by casting the new list to a set and then back to a list
+        if existing_spfiles_list:
+            existing_spfiles_list = list(set(existing_spfiles_list))
+        debugg("Existing spfiles => {}".format(str(existing_spfiles_list) or "None!"))
 
     # Make sure an alias doesn't already exist. If it does, delete it.
     debugg("[1] Checking an alias doesnt already exist")
-    output = run_sub_env("echo ls -l %s/%s/spfile%s.ora | %s/bin/asmcmd" % (vasm_dg.upper(),vdb,vdb,vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
-    debugg("main: spfile output=%s" % (output))
+    cmd_str = "echo ls -l {dg}/{db}/spfile{db}.ora | {home}/bin/asmcmd".format(dg=vasm_dg.upper(),db=vdb,home=vasm_home)
+    output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+    debugg("main: spfile output={} from cmd_str={}".format(str(output), cmd_str))
 
     # if an existing alias does exist
-    if not 'does not exist' in output and 'spfile' in output:
+    old_spfile = []
+    if not ('does not exist' in output) and ('spfile' in output.lower()):
         debugg("[1a] existing alias found %s" % (output))
-        old_spfile = [ item for item in output.split() if "SPFILE" in item ][0]
+        old_spfile = [ item for item in output.split() if "spfile" in item.lower() ][0]
         debugg("old_spfile: {}".format(str(old_spfile)))
-        # old_spfile would contian this if an alias exists
-        # +DATA3/DB_UNKNOWN/PARAMETERFILE/SPFILE.659.1087834493
+        # old_spfile would contain this format if an alias exists
+        # +DATA3/DB_UNKNOWN/PARAMETERFILE/SPFILE.659.1087834493 or +DATA3/TSTDB/PARAMETERFILE/SPFILE.659.1087834493
         for item in old_spfile.split("/"):
-            if "SPFILE" in item.upper():
+            debugg("processing item: {}".format(item or "Empty!"))
+            if "spfile" in item.lower() and ".ora" not in item:
                 # If the cur_aliased_spfile is in the existing_spfiles_list, remove it.
                 # It will be deleted separately below
                 try:
                     existing_spfiles_list.remove(item)
-                    debugg("Existing spfiles after removing alias => {}".format(str(existing_spfiles_list) or "None!"))
+                    debugg("Existing spfiles after removing alias => {}".format(str(existing_spfiles_list)))
                 except:
-                    debugg("Existing spfiles after removing alias => {}".format(str(existing_spfiles_list) or "None!"))
+                    debugg("Removing alias from list failed! Existing spfiles list {} removing alias => {}".format(str(existing_spfiles_list)), str(item))
                     pass
 
         debugg("[1a] old_spfile results {}".format(str(old_spfile)))
@@ -369,17 +417,21 @@ def main ():
             output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
             debugg("removed old spfile using cmd {} with output {}".format(cmd_str, ouptut))
 
-    # sometimes old spfiles can accumulate in the parameterfile directory. Delete them.
+    # sometimes old spfiles can accumulate in the parameterfile directory due to previous runs. If they exist, remove them.
     debugg("Removing any previously existing spfiles from parameterfile directory existing_spfiles_list = {}".format(str(existing_spfiles_list)))
     if len(existing_spfiles_list) > 0:
         for an_spfile in existing_spfiles_list:
+            debugg("REMOVING EXISTING SPFILES: {}".format(an_spfile or "None!"))
             cmd_str = "echo rm {vasm_dg}/{db}/PARAMETERFILE/{spfile} | {asm_home}/bin/asmcmd".format(vasm_dg=vasm_dg.upper(), db=vdb, spfile=an_spfile, asm_home=vasm_home)
             output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
-            debugg("removed {} with cmd_str={} results {}".format(an_spfile,cmd_str,output)
+            debugg("removed {} with cmd_str={} results {}".format(an_spfile, cmd_str, output))
 
-    output = run_sub_env("echo ls -l %s/%s/parameterfile/ | %s/bin/asmcmd" % (vasm_dg.upper(),vdb.upper(),vasm_home), {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
-    debugg("This is the output of {}/{}/parameterfile and should only contain the new spfile = %s" % (vasm_dg.upper(), vdb.upper(), output))
+    # Get a list of existing system parameter files (spfile) after the list of pre-existeing system parameter files was deleted. Only the current spfile should remain.
+    cmd_str = "echo ls -l {dg}/{db}/parameterfile/ | {asm_home}/bin/asmcmd".format(dg=vasm_dg.upper(), db=vdb.upper(),asm_home=vasm_home)
+    output = run_sub_env(cmd_str, {'oracle_home': vasm_home, 'oracle_sid': vasm_sid })
+    debugg("This is the output of {dg}/{db}/parameterfile and should only contain the new spfile = {out}".format(dg=vasm_dg.upper(), db=vdb.upper(), out=output))
     if output:
+        # turn the output of the ls command into a python list: spfile_orig ( the original spfiles )
         spfile_orig = [ item for item in output.split() if "spfile" in item ][0]
         debugg("[2] get the parameterfile name: %s" % (spfile_orig))
 

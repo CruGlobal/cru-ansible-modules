@@ -1,4 +1,4 @@
-#!/Library/Frameworks/Python.framework/Versions/3.7/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 # Written by: Sam Kohler

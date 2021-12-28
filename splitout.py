@@ -1,4 +1,4 @@
-#!/Library/Frameworks/Python.framework/Versions/3.7/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from ansible.module_utils.basic import *
@@ -105,9 +105,6 @@ def main ():
     global affirm
     ansible_facts = {}
     err_flag = False
-
-    os.system("/usr/bin/scl enable python27 bash")
-    # os.system("scl enable python27 bash")
 
     module = AnsibleModule(
       argument_spec = dict(

@@ -330,16 +330,12 @@ def main ():
     global debug_log
     global cru_domain
     global affirm
-
     vchanged = False
     ansible_facts={}
 
     # Name to call facts dictionary being passed back to Ansible
     # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
     refname = ""
-
-    # os.system("/usr/bin/scl enable python27 bash")
-    # os.system("scl enable python27 bash")
 
     module = AnsibleModule(
       argument_spec = dict(

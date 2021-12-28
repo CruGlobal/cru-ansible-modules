@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python2
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
@@ -84,8 +84,6 @@ def main(argv):
     global vdebugme
     global vlogit
     ansible_facts={}
-
-    # os.system("/usr/bin/scl enable python27 bash")
 
     module = AnsibleModule(
       argument_spec = dict(

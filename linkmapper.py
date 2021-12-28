@@ -34,9 +34,6 @@ try:
 except ImportError:
     cx_Oracle_found = False
 
-sys.path.append(r'./library/pymods/')
-from crumods import *
-
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
                     'version': '0.1'}
@@ -112,18 +109,60 @@ EXAMPLES = '''
 '''
 
 # Debugging will go to: cru-ansible-oracle/bin/.utils/debug.log
-global msg
+msg = ""
 module = None
 vignore = ""
 default_ignore = False
-debugme = False
+debugme = True
+debug_log = "/tmp/mod_debug.log"
 default_refname = "linkmapper"
 p_dict = None
-oracle_staging="/home/oracle/ansible_stage/utils/tstdb/rstOSB/2021-08-23"
+oracle_staging=""
 ans_dir = ""
 cmd_temp_file = ""
 prev_tmp_cmd_file_deleted = False
 oracle_home = ""
+module = None
+affirm = ['True','TRUE', True,'true','T','t','Yes','YES','yes','y','Y']
+# Cru domains
+cru_domain = ".ccci.org"
+dr_domain = ".dr.cru.org"
+utils_settings_file = os.path.expanduser("~/.utils")
+vault_file = ""
+
+
+def debugg(debug_str):
+    """
+    If debugging is on add debugging string to global msg and write it to the debug log file
+    """
+    global debugme
+    global affirm
+
+    if debugme in affirm:
+        add_to_msg(debug_str)
+        write_to_file(debug_str)
+
+
+def write_to_file(info_str):
+    """
+    write this string to debug log
+    """
+    global debug_log
+
+    with open(debug_log, 'a') as f:
+        for aline in info_str.split("\n"):
+            f.write(aline + "\n")
+    f.close()
+
+
+def add_to_msg(a_msg):
+    """Add the arguement to the msg to be passed out"""
+    global msg
+
+    if msg:
+        msg = msg + " " + a_msg
+    else:
+        msg = a_msg
 
 
 def save_cmd(cmd_str):
@@ -283,7 +322,6 @@ def execute_cmd(p_cur, p_cmd_str, p_expect):
         temp_msg = "Error {} executing command: {}".format(error.message, p_cmd_str)
         add_to_msg(temp_msg)
         debugg(temp_msg)
-        # Fail hard or soft
         fail_module("#5")
 
     debugg("\nexecute_cmd()...\n\tcmd_str={}\ncommand successfully executed.\n".format(p_cmd_str))
@@ -496,6 +534,257 @@ def do_synonyms(cur, owner, vlink_filter, vmap_to):
         debugg()
 
     return("success")
+
+
+def prep_sid(dbName, host):
+    """
+    Given a database name and a host name create and return an Oracle SID
+    """
+    global cru_domain
+    global debug_log
+
+    debugg("crumods :: prep_sid()....starting.....dbName={} host={}".format(dbName, host))
+
+    if not dbName or not host:
+        msg = "prep_sid() :: Error one or both required parameters missing: database: {} and host: {}".format(dbName or "No database passed!", host or "No host passed!")
+        print(msg)
+        debugg(msg)
+
+    if cru_domain in host or dr_domain in host:
+        host = host.replace(cru_domain, "").replace(dr_domain, "")
+
+    if cru_domain in dbName or dr_domain in dbName:
+        dbName = dbName.replace(cru_domain, "").replace(dr_domain, "")
+
+    # If there's already a digit at the end of the db name assume its a SID else
+    if dbName[-1:].isdigit():
+        return(dbName)
+    else:
+        # our RAC's are 1 - 10. DW is 60 so last digit = 0
+        if host[-1:].isdigit() and int(host[-1:]) != 0:
+            sid = dbName + host[-1:]
+        else:
+            sid = dbName
+
+    debugg("Global :: prep_sid() :: returning...sid : {}".format(sid))
+    return(sid)
+
+
+def get_utils_setting(get_param):
+    """ Given a parameter from ~/.utils file return its value
+        valid parameter settings are:
+            ans_dir         ans_vault       pass_files
+            ans_aws_dir     ssh_user        log_dir
+            exe_dir         resend_vault    ora_client
+            symlinknag      debug
+
+        Note:
+        returns only the value of the setting
+    """
+    global debug_log
+    global utils_settings_file
+    debugg("Global :: get_utils_setting()....starting....get_param={} sfk".format(get_param or "None passed!"))
+
+    cmd_str = "cat {} | grep {}".format(utils_settings_file, get_param)
+    debugg("cmd_str = {}".format(cmd_str))
+    output = run_local(cmd_str)
+    debugg("Global :: get_utils_setting() ... output={}".format(output))
+    if output and get_param in output:
+        tmp = output.split('=')[1]
+        return(tmp)
+
+    return(None)
+
+
+def pkg_pass(db, user, pri_filter=None, sec_filter=None):
+    """
+        ====================================
+        Given a vault name ( v_name ):
+            aws      or  aws_vault.yml
+            tower    or  tower_vault.yml
+            mysql    or  mysql_vault.yml
+            postgres or  postgres_vault.yml
+        and a primary filter ( i.e. f1 database name )
+        and a secondary filter ( i.e. f2 user name )
+        example:
+            v_name: aws_vault.yml or just aws
+            primary filter f1: [ database_passwords, asm_passwords]
+                secondary filter f2: [ dbname ]
+                    teritary_filter f3: [ user name ]
+        or
+        just a primary filter:
+        example:
+            vault: postgres_vault.yml
+            f1: [ ploemomr01_pdb_admin_pass, scp_user, temppass, osb_password, datadog_oracle_password, datadog_api_key/datadog_app_key ]
+        return the password from an AWS ansible-vault
+
+    Attempting new method to retrieve ansible vault passwords when this code is packaged.
+
+    """
+    debug_passwords = False
+    global affirm
+    global p_dict
+    new_yml_str = ""
+    if not pri_filter:
+        pri_filter = "database_passwords"
+
+    if user:
+        user = user.lower()
+
+    if "dr" in db:
+        db = db.replace("dr","")
+
+    debugg("\nGlobal pkg_pass()....starting...\nparameters:\n\tdb={}\n\tuser={}\n\tpri_filter={}\n\tsec_filter={}".format(db or "Empty!", user or "Empty!", pri_filter or "Empty!", sec_filter or "Empty!"))
+
+    filter_count = count_filters(db, user, pri_filter, sec_filter)
+
+    if not p_dict:
+        unlock_lpass()
+
+        v_loc = get_vault_location()
+
+        debugg("\nGlobal pkg_pass():: \n\tv_loc = {}".format(v_loc))
+
+        # /Users/samk/.pyenv/shims/ansible-vault if needed
+        cmd_str = "ansible-vault view {}".format(v_loc)
+
+        if debug_passwords in affirm: debugg("\nGlobal pkg_pass() :: CALLING SUBPROCESS...\n\tcmd_str = {}\n\toutput={}".format(cmd_str, output))
+        output = run_local(cmd_str)
+
+        if debug_passwords in affirm: debugg("\nGlobal pkg_pass():: ...after communicate() ... \n\touput = {} ".format(output or "Empty!") ) #), code or "Empty!"))
+
+        for item in output.split("\n"):
+            if debug_passwords in affirm: debugg("for loop() === line={}".format(item))
+            if item[:1] == "#" in ['#','---']:
+                continue
+            else:
+                new_yml_str = new_yml_str + item + "\n"
+
+        if debug_passwords in affirm: debugg("\nGlobal :: pkg_pass() :: \n\tcleaned up dictionary => new_dict={}".format(str(new_yml_str)) )
+
+        # good_dict = find_this_item(output)
+        pwd_dict = yaml.safe_load( new_yml_str )
+        if debug_passwords in affirm: debugg("\nGlobal :: pkg_pass() :: \n\tfilter_count = {} after yaml.safe_load(pwd_dict) => {}".format(
+            filter_count or "Empty!", str(pwd_dict)))
+        p_dict = pwd_dict
+    else:
+        if debug_passwords in affirm: debugg("\nGlobal :: pkg_pass() :: p_dict already populated {}".format(str(p_dict)))
+        pwd_dict = p_dict
+
+    if debug_passwords in affirm: debugg("\nGlobal :: pkg_pass() :: filter_count = {} attempting password retrieval....from {}".format(filter_count or "Empty!", str(pwd_dict)))
+    try:
+        if filter_count == 1:
+            the_passwd = pwd_dict.get(db, None)
+        elif filter_count == 2:
+            the_passwd = pwd_dict[pri_filter][db].get(user, None)
+        elif filter_count == 3:
+            the_passwd = pwd_dict[pri_filter][db].get(user, None)
+        elif filter_count == 4:
+            the_passwd = pwd_dict[pri_filter][sec_filter][db].get(user, None)
+        else:
+            return(None)
+    except:
+        # It could have been a top level password:
+        try:
+            the_passwd = pwd_dict[db].get(user, None)
+        except:
+            debugg("\nGlobal :: pkg_pass() :: SECOND ATTEMPT: pwd_dict[{}].get({})\n".format(
+                db or "Empty!",
+                user or "Empty!"))
+            return (None)
+        if not the_passwd:
+            add_to_msg("Password for {}  {}@{} not found in ansible vault.".format(pri_filter, user or "Empty!", db or "Empty!"))
+            debugg("\nGlobal :: pkg_pass() :: password for user={}@db={} not found in ansible vault.\n".format(user or "Empty!",                                                                                              db or "Empty!"))
+            return (None)
+
+    debugg("\nGLOBAL :: pkg_pass() :: exiting\n\treturning password = {} for {}@{}\n".format(the_passwd,user,db))
+    return(the_passwd)
+
+
+def run_local(cmd_str):
+    """
+    Run a command on the local host using the subprocess module.
+    """
+
+    try:
+        process = subprocess.Popen([cmd_str], stdout=PIPE, stderr=PIPE, shell=True)
+        output, code = process.communicate()
+    except subprocess.CalledProcessError as e:
+        err_msg = "common::run_command() : [ERROR]: output = %s, error code = %s\n".format(e.output, e.returncode)
+        if debug_filename:
+            debugg("Error running global run_local(). cmd_str={} Error: {}".format(cmd_str,err_msg))
+
+    results = output.decode('ascii').strip()
+
+    return(results)
+
+
+def count_filters(f1=None, f2=None, f3=None, f4=None):
+    """ Called by "get_cloud_passwd() to count the number
+        of filters passed
+    """
+    debugg("\nGlobal :: count_filters() :: ...starting....\nwith paramters:\n\tf1={}\n\tf2={}\n\tf3={}\n\tf4={}".format(f1 or "None", f2 or "None", f3 or "None", f4 or "None"))
+    args = locals()
+    count = 0
+    for k, v in args.items():
+        if v is not None:
+            count += 1
+
+    return(count)
+
+
+def get_vault_location():
+    """
+       Read the ~/.utils settings file and
+       retrieve the Anisble vault file location
+       another piece of the puzzle needed to unlock the vault to get passwords
+    """
+    global vault_file
+    debugg("\nGlobal :: utils :: get_vault_location() ...starting...\nvault_file={}".format(vault_file or "Empty!"))
+
+    if vault_file:
+        return(vault_file)
+
+    utils_settings_file = os.path.expanduser("~/.utils")
+    debugg("\nGlobal :: utils :: get_vault_location()\n\tutils_settings_file={}".format(utils_settings_file))
+    try:
+        cmd_str = "cat {} | grep ans_vault".format(utils_settings_file)
+        output = run_local(cmd_str)
+    except:
+        # print("Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
+        debugg("Global :: utils :: Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
+        return
+
+    debugg("\nGlobal :: utils :: get_vault_location()\n\toutput={}".format(output))
+
+    vault_file = output.split("=")[1].strip()  # output.decode('utf-8').split("=")[1]
+    debugg("\nGlobal :: utils :: get_vault_location()...exiting...\n\treturn={}".format(vault_file))
+    if not os.path.isfile(vault_file):
+        debugg("\nVault location defined\nHowever, file does not exist!\n{}".format(vault_file or "Empty!"))
+        return(None)
+    else:
+        debugg("\nVault location defined\nreturning vault_file={}\n".format(vault_file))
+        return(vault_file)
+
+
+def unlock_lpass():
+    '''
+    Passwords have moved to lpass, check status and unlock before trying to retrieve passwords.
+    '''
+
+    debugg("unlock_lpass().....starting......")
+    cmd_str="lpass status"
+    results = run_local(cmd_str)
+    debugg("unlock_lpass()  results={}".format(results))
+    # if not logged in result should be: "Not logged in." else "Logged in as sam.kohler@cru.org."
+    if "Not logged in." == results:
+        debugg("Not logged in! Asking for user password.")
+        debugg("LastPass is locked.\n Go to iterm and unlock your account using:\n lpass login bob.user@cru.org \nExit this app and try again.")
+        return("LOCKED")
+    else:
+        return("UNLOCKED")
+
+
 # ==============================================================================
 # =================================== MAIN =====================================
 # ==============================================================================
@@ -574,7 +863,6 @@ def main ():
 # ========= BEGIN CHECKING PARAMETERS ===========
     if vdebug in affirm:
         debugme = True
-        set_debug_log()
     else:
         debugme = False
 
@@ -758,7 +1046,7 @@ def main ():
                 else:
                     # else just use sys cursor
                     use_cur = sys_cur
-                    # now that we have both drop and create:
+                # now that we have both drop and create:
                 execute_cmd(use_cur, drop_stmt, "no")          # don't expect rows back from a drop.
                 debugg("MAIN :: POST DROP STATMENT")
                 execute_cmd(use_cur, converted_cre_stmt, "no") # don't expect rows back from a create.

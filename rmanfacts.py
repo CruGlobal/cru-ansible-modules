@@ -1,5 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
-# scl enable python27 bash
+#!/usr/bin/env python2
 # export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 #
 # Module for Ansible to retrieve Oracle RMAN facts from a host about a particular database.

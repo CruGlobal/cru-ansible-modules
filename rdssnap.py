@@ -58,10 +58,7 @@ def main ():
   """ Take a snapshot of an AWS RDS database """
   global msg
   global err_msg
-
   ansible_facts={}
-
-  os.system("/usr/bin/scl enable python27 bash")
 
   module = AnsibleModule(
       argument_spec = dict(
