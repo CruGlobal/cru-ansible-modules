@@ -34,7 +34,7 @@ affirm = ['True','TRUE', True, 'true', 'T', 't', 'Yes', 'YES', 'yes', 'y', 'Y']
 # Debugging variables:
 debugme = True
 debug_filename = ".crutils_debug.log"
-debug_log = os.path.expanduser("~/.crutils_debug.log")
+debug_log = os.path.expanduser("~/.mod_debug.log")
 
 # dbas dictionary: this is used by cx.py to make database connections with
 # minimal information: { db, host} it uses whoami to find the dba user and map
@@ -651,5 +651,5 @@ def prep_sid(dbName, host):
         else:
             sid = dbName
 
-    debugg(debug_log, "Global :: prep_sid() :: returning...sid : {}".format(sid or "Error! No sid"))
+    debugg(debug_log, "Global :: prep_sid() :: returning...sid : {}".format(sid))
     return(sid)

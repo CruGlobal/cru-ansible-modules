@@ -1,4 +1,4 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python2
 
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
@@ -66,9 +66,6 @@ def envoke(mycommands):
 # ==============================================================================
 def main ():
   """Wait for a state as specified by an expression and state (result)."""
-
-  # os.system("/usr/bin/scl enable python27 bash")
-  # os.system("scl enable python27 bash")
 
   module = AnsibleModule(
       argument_spec = dict(

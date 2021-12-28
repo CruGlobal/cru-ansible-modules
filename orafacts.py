@@ -1,7 +1,6 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
-# scl enable python27 bash
 # export LD_LIBRARY_PATH=$ORACLE_HOME/lib:$LD_LIBRARY_PATH
 #
 # Module for Ansible to retrieve Oracle facts from a host.
@@ -1630,6 +1629,32 @@ def host_domain():
     return(dom)
 
 
+def asm_info():
+    """
+    Get asm ORACLE_SID and ORACLE_HOME
+    for use in later tasks such as getting a list of parameterfiles from ASM diskgroups
+    return a dictionary { 'sid': asm_sid, 'home': asm_home }
+    """
+    sid = ""
+    home = ""
+    ret_dict = { }
+
+    debugg("asm_info()....start....")
+
+    cmd_str = "cat /etc/oratab | grep ASM | grep -v '^#' | awk '{print $1}'"
+
+    output = run_command(cmd_str)
+
+    tmp = output.split(":")
+    # something like this should be returned: +ASM:/app/19.0.0/grid:N
+    if output and len(output) >= 2:
+        # should have ['+ASM', '/app/19.0.0/grid', 'N']
+        ret_dict['asm_sid'] = tmp[0]
+        ret_dict['asm_home'] = tmp[1]
+
+    return(ret_dict)
+
+
 # ================================== Main ======================================
 def main(argv):
     global ora_home
@@ -1768,6 +1793,10 @@ def main(argv):
 
             vtmp = domain_name()
             ansible_facts['orafacts']['domain'] = vtmp
+
+            vtmp = asm_info()
+            ansible_facts['orafacts']['asm_sid'] = vtmp['asm_sid']
+            ansible_facts['orafacts']['asm_home'] = vtmp['asm_home']
 
             # Add any error messages caught before passing back
             if err_msg:

@@ -1,5 +1,9 @@
-#!/opt/rh/python27/root/usr/bin/python
+#!/usr/bin/env python3
 
+# This module runs on your local machine and
+# connects to the RMAN repo database to retrieve
+# the dbid
+#
 from ansible.module_utils.basic import *
 from ansible.module_utils.facts import *
 # import commands
@@ -82,9 +86,6 @@ def main ():
   # Name to call facts dictionary being passed back to Ansible
   # This will be the name you reference in Ansible. i.e. source_facts['sga_target'] (source_facts)
   refname = "rmandbid"
-
-  os.system("/usr/bin/scl enable python27 bash")
-  # os.system("scl enable python27 bash")
 
   module = AnsibleModule(
       argument_spec = dict(
