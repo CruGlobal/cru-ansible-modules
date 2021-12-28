@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v2.0.0] - 2021-12-28
+## [v2.0.1] - 2021-12-28
 ### Module fixes associated with v2.0.0 and the massive merge of cru-ansible-oracle
 - mkalias fixes to work on disaster recovery environment
 - linkmapper fixes
