@@ -107,6 +107,8 @@ db_home_name = "dbhome_1"
 debug_log = os.path.expanduser("~/.dbfacts.log")
 utils_settings_file = os.path.expanduser("~/.utils")
 debug_log2 = os.path.expanduser("~/.debug.log")
+lh_domain = ".ccci.org"
+dr_domain = ".dr.cru.org"
 
 def set_debug_log():
     """ Set the debug_log value to write debugging messages to """
@@ -238,6 +240,8 @@ def main ():
     global defrefname
     global debugme
     global db_home_name
+    global dr_domain
+    global lh_domain
     ansible_facts={}
     is_rac = None
     global affirm
@@ -277,13 +281,14 @@ def main ():
       vignore = False
 
     if '.org' in vdbhost:
-        vdbhost = vdbhost.replace('.ccci.org','')
+        vdbhost = vdbhost.replace(lh_domain,"").replace(dr_domain, "")
 
     visrac = israc(vdbhost)
 
     if not cx_Oracle_found:
         module.fail_json(msg="Error: cx_Oracle module not found")
 
+    # set the Anisble variable reference name
     if not vrefname:
         refname = defrefname
     else:
@@ -295,13 +300,16 @@ def main ():
         try:
 
             if '.org' in vdbhost:
-                vdbhost = vdbhost.replace(".ccci.org","")
+                vdbhost = vdbhost.replace(lh_domain,"").replace(dr_domain, "")
 
             if visrac:
-                    vdb = vdb + vdbhost[-1:]
+                vdb = vdb + vdbhost[-1:]
 
             if '.org' not in vdbhost:
-                vdbhost = vdbhost + ".ccci.org"
+                if "dr" in vdbhost:
+                    vdbhost = vdbhost + dr_domain
+                else:
+                    vdbhost = vdbhost + lh_domain
 
             dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
         except cx_Oracle.DatabaseError as exc:
