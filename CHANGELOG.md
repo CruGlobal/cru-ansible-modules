@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.0.2] - 2022-01-03
+### Module fix associated with v3.3.2
+- Fix for dbfacts needed since adding dr environment to handle dr domain
+
 ## [v2.0.1] - 2021-12-28
 ### Module fixes associated with v2.0.0 and the massive merge of cru-ansible-oracle
 - mkalias fixes to work on disaster recovery environment
@@ -88,8 +92,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.2...HEAD
 
+[v2.0.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.0.2
 [v2.0.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.0...v2.0.1
 [v2.0.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.4.0...v2.0.0
 [v1.4.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.3.5...v1.4.0
