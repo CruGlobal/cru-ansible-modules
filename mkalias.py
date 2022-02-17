@@ -21,6 +21,26 @@ from subprocess import (PIPE, Popen)
 
 # sys.path.append(r'./pymods/crumods.py')
 # from crumods import *
+#Global variables
+# This is global in that it calls library/pymods/crumods.py msg variable
+affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
+oracle_home=""
+err_msg = ""
+msg = ""
+debugme = True
+sleep_time = 2
+default_ttw = 2
+default_expected_num_reg_lsnrs = 1
+grid_home = ""
+node_number = ""
+env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/12.1.0.2/grid/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/app/12.1.0.2/grid/tfa/tlorad01/tfa_home/bin"
+# number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
+# [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
+# Service "tstdb.ccci.org" has 2 instance(s).
+#   Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
+#   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
+host_debug_log = os.path.expanduser("~/.debug.log")
+
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
                     'supported_by': 'Cru DBA team',
@@ -46,25 +66,6 @@ EXAMPLES = '''
         The ASM diskgroup ( asm_dg ) The asm diskgroup the database is located in on ASM.
             ** this can be obtained dynamically from dbfacts.py module output if run prior to this module.
 '''
-#Global variables
-# This is global in that it calls library/pymods/crumods.py msg variable
-affirm = [ 'True', 'TRUE', True, 'T', 't', 'true', 'Yes', 'YES', 'Y', 'y']
-oracle_home=""
-err_msg = ""
-msg = ""
-debugme = True
-sleep_time = 2
-default_ttw = 2
-default_expected_num_reg_lsnrs = 1
-grid_home = ""
-node_number = ""
-env_path = "/opt/rh/python27/root/usr/bin:/app/oracle/agent12c/core/12.1.0.3.0/bin:/app/oracle/agent12c/agent_inst/bin:/app/oracle/11.2.0.4/dbhome_1/OPatch:/app/12.1.0.2/grid/bin:/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/opt/dell/srvadmin/bin:/u01/oracle/bin:/app/12.1.0.2/grid/tfa/tlorad01/tfa_home/bin"
-# number of registered listeners: currently 2 ( UNKNOWN and BLOCKED )
-# [oracle@tlorad01]:tstdb1:/u01/oracle/ansible_stage/utils/tstdb/dup/2018-08-12> lsnrctl status | grep tstdb
-# Service "tstdb.ccci.org" has 2 instance(s).
-#   Instance "tstdb1", status UNKNOWN, has 1 handler(s) for this service...
-#   Instance "tstdb1", status BLOCKED, has 1 handler(s) for this service...
-host_debug_log = "/tmp/mod_debug.log"
 
 
 def add_to_msg(mytext):
@@ -325,8 +326,10 @@ def main ():
     # Get arguements passed from Ansible playbook
     vdb               = module.params["db_name"]
     vasm_dg           = module.params["asm_dg"]
-    vexisting_spfiles = ast.literal_eval(module.params["existing_spfiles"])
+    vexisting_spfiles = module.params["existing_spfiles"]
     vdebug            = module.params["debugging"]
+
+    # vexisting_spfiles = ast.literal_eval(vexisting_spfiles)
 
     if vasm_dg[0] != "+":
         vasm_dg = "+%s" % (vasm_dg)
@@ -356,16 +359,18 @@ def main ():
     vasm_home = get_dbhome(vasm_sid)
 
     debugg("main: called get_dbhome(%s) returned: %s" %(vasm_sid,vasm_home))
+    debugg("vexisting_spfiles={} typ={}".format(vexisting_spfiles, type(vexisting_spfiles)))
 
-    # format existing spfile input. Input will be like this:
+    # format existing spfile input. Input will be like this: "\nspfile.271.1089906513\nspfile.681.1088866513"
     # {"changed": True, "end": "2021-11-29 15:58:44.202582", "stdout": "\nspfile.271.1089906513", "cmd": "echo ls -l +DATA3/tst -
     # db/parameterfile | /app/19.0.0/grid/bin/asmcmd | awk '{ print $8}\n", "rc": 0, "start": "2021-11-29 15:58:43.373553", "stderr": -
     # "", "delta": "0:00:00.829029", "stdout_lines": ["", "spfile.271.1089906513"], "stderr_lines": [], "failed": False}
     existing_spfiles_list = []
-    debugg("list of pre-existing spfiles passed in: type {} ==>> {} vexisting_spfiles['stdout']={}".format( type(vexisting_spfiles), str(vexisting_spfiles) or "None", str(vexisting_spfiles) or "ERROR vexisting_spfiles empty!"))
+    debugg("list of pre-existing spfiles passed in: type {} ==>> {} vexisting_spfiles={}".format( type(vexisting_spfiles), str(vexisting_spfiles) or "None", str(vexisting_spfiles) or "vexisting_spfiles empty!"))
     if vexisting_spfiles:
-        for item in vexisting_spfiles['stdout'].split("\n"):
-            debugg("processing item {} of the existing list of parameter")
+        for item in vexisting_spfiles.split("\n"):
+            item = item.strip()
+            debugg("processing item {}".format(item.strip()))
             if "spfile" in item:
                 debugg("adding item {} to the list: {}".format(item.strip(), str(existing_spfiles_list)))
                 existing_spfiles_list.append(item.strip())
