@@ -126,13 +126,20 @@ vparams=[ "compatible",
 
 # Global vars
 msg = ""
-debugme = False
 default_ora_base = "/app/oracle/"
 defualt_ora_home = "dbhome_1"
 default_pfile_name = "src_pfile.ora" # This is the name the play is looking for
 default_refname = "sysdbafacts"
 affirm = [ 'True', 'TRUE', 'true', True, 'YES', 'Yes', 'yes', 't', 'T', 'y', 'Y', 'ON', 'on', 'On']
-
+debug_log = os.path.expanduser("~/.debug.log")
+debug_to = "file" # options file, msg, both
+debugme = True
+debug_err_info = """
+    ************************************************************
+    Even though cx_Oracle command may throw errors.
+    During development the commands often finsihed successfully
+    with: ORA-06512, ORA-19504, ORA-29283, ORA-27086
+    ************************************************************"""
 
 def add_to_msg(mytext):
     """Passed some text add it to the msg"""
@@ -147,9 +154,27 @@ def add_to_msg(mytext):
 def debugg(a_str):
     """If debugging is on add debugging string to global msg"""
     global debugme
+    global affirm
+    global debug_to
 
-    if debugme:
-        add_to_msg(a_str)
+    if debugme in affirm:
+        if debug_to in ['msg', 'both']:
+            add_to_msg(a_str)
+        if debug_to in ['file','both']:
+            write_to_file(a_str)
+    return()
+
+
+def write_to_file(info):
+    """
+    write this info out to a debug log file
+    """
+    global debug_log
+
+    with open(debug_log, 'a') as f:
+        f.write(" " + info + "\n")
+
+    return()
 
 
 def convert_size(size_bytes, vunit):
@@ -182,6 +207,8 @@ def main ():
   global default_ora_base
   global default_pfile_name
   global default_refname
+  global debug_log
+  global debug_err_info
 
   ansible_facts={}
 
@@ -219,6 +246,7 @@ def main ():
 
   if vdebugging:
       debugme = vdebugging
+      add_to_msg("debug_log=>{}".format(debug_log))
 
   if vdb:
       orig_vdb_name = vdb
@@ -258,6 +286,7 @@ def main ():
       dsn_tns = cx_Oracle.makedsn(full_hostname, '1521', vdb)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
+      debugg("cmd_str={} \nERROR: {}".format(str(dsn_tns), tr(error.message)))
       module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
     debugg("Attempting to connect to db=%s full_hostname=%s dsn_tns=%s " % (vdb, full_hostname, dsn_tns))
@@ -266,6 +295,7 @@ def main ():
       con = cx_Oracle.connect(dsn=dsn_tns,user='sys',password=vdbpass,mode=cx_Oracle.SYSDBA)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
+      debugg(debug_err_info)
       debugg("Oracle-Error-Code: %s" % (error.code))
       debugg("Oracle-Error-Message: %s" % (error.message))
       if vignore:
@@ -285,6 +315,8 @@ def main ():
           cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
           error, = exc.args
+          debugg("ERROR CREATING PFILE {} IN SHARE DIRECTORY {}".format(vpfile or "EMPTY!", vshare_dir or "EMPTY!"))
+          debugg("cmd_str={} \nERROR: {}".format(str(error.message)))
           if vignore in ("true","yes"):
               add_to_msg("Error creating pfile: %s" % (error.message))
           else:
@@ -298,7 +330,10 @@ def main ():
       cur.execute('select version from v$instance')
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      module.fail_json(msg='Error selecting version from v$instance, Error: %s' % (error.message), changed=False)
+      debugg(debug_err_info)
+      err_msg = 'Error selecting version from v$instance, Error: %s' % (error.message)
+      debugg(err_msg)
+      module.fail_json(msg=err_msg, changed=False)
 
     dbver =  cur.fetchall()
     retver = dbver[0][0]
@@ -315,8 +350,9 @@ def main ():
         else:
             orapw_source = vsrc_passwd_dir
 
-        if not vshare_dir:
-            orapw_dest = "/app/oracle/backups/%s/pfile" % (orig_vdb_name.upper())
+        if not vshare_dir and orig_vdb_name:
+            debugg("orig_vdb_name={}".format(orig_vdb_name))
+            orapw_dest = "/app/oracle/backups/%s/pfile" % (orig_vdb_name)
         else:
             orapw_dest = vshare_dir
 
@@ -326,6 +362,7 @@ def main ():
         except cx_Oracle.DatabaseError as exc:
             add_to_msg("Error creating orapw_dest directory")
             error, = exc.args
+            debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
             if not vignore:
                 module.fail_json(msg='Error creating orapwd dest dir: %s msg: %s cmd_str: %s' % (error.message,msg,cmd_str), changed=False)
             else:
@@ -337,8 +374,9 @@ def main ():
             cmd_str = "create or replace directory ORAPW_SOURCE as '%s'" % (orapw_source)
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
-            add_to_msg("Error creating orapw_dest directory")
+            add_to_msg("Error creating orapw_dest directory {}".format(orapw_source or "No path!"))
             error, = exc.args
+            debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
             if not vignore:
                 module.fail_json(msg='Error creating orapwd dest dir (%s): %s cmd_str: %s msg: %s' % (orapw_source,error.message,cmd_str,msg), changed=False)
             else:
@@ -346,45 +384,61 @@ def main ():
 
         add_to_msg("orapw_source directory [%s] created successfully." % (orapw_source))
 
+        vsid = vdb
+        vdb = re.sub(r'\d+', '', vdb)
+
+        # Before continuing remove the old backup of the Oracle password file: orapw{sid}_bu if it exists
         try:
-            # Rename the current pfile to backup
-            cmd_str = ("BEGIN UTL_FILE.FRENAME('%s','orapw%s','%s','orapw%s_bu', TRUE); END;" % ('ORAPW_DEST',vdb,'ORAPW_DEST',vdb))
+            cmd_str = "BEGIN UTL_FILE.FREMOVE('ORAPW_DEST','orapw{s}_bu'); END;".format(s=vsid)
+            debugg("FREMOVE removing existing backup of orapw\nexecuting FREMOVE cmd_str = {}".format(cmd_str))
             cur.execute(cmd_str)
         except cx_Oracle.DatabaseError as exc:
-            add_to_msg("Error: attempting to rename current password file orapw%s to orapw%s_bu" % (vdb,vdb))
             error, = exc.args
-            if 'ORA-29283' not in error.message:
-                if not vignore:
-                    module.fail_json(msg='Error: Renaming orapwd file in data domain backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
-                else:
-                    add_to_msg('Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg))
+            if "ORA-29283" in error.message:
+                debugg(debug_err_info)
+                debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
+                if "ORA-29283" not in error.message:
+                    if not vignore:
+                        module.fail_json(msg='Error: Renaming orapwd file in data domain backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg), changed=False)
+                    else:
+                        add_to_msg('Error: Renaming orapwd file in backups dir: %s cmd_str: %s msg: %s' % (error.message, cmd_str, msg))
 
-        # because the above command has no output unless it fails. If you've made it
-        # here, assume it succeeded.
-        add_to_msg("orapw file successfully renamed.")
+                if "ORA-29283" in error.message:
+                    add_to_msg("Did not remove orapw{s}_bu, file did not exist in destination directory [{d}].".format(s=vsid,d=orapw_dest))
 
-        cmd_str = ("BEGIN DBMS_FILE_TRANSFER.COPY_FILE(source_directory_object=>'ORAPW_SOURCE',source_file_name=>'orapw%s',destination_directory_object=>'ORAPW_DEST',destination_file_name=>'orapw%s'); END;" % (vdb,vdb))
+        debugg("orapw{s}_bu deleted".format(s=vsid))
 
         # Copy orapwd file from source dir ( ORACLE_HOME/dbs ) to dest dir ( /apps/oracle/backups/DBNAME/pfile )
         try:
+          cmd_str = "BEGIN UTL_FILE.FCOPY('ORAPW_SOURCE','orapw{s}','ORAPW_DEST','orapw{s}'); END;".format(s=vsid)
+          debugg("cmd_str = {}".format(cmd_str))
           cur.execute(cmd_str)
+          add_to_msg("pfile created in share directory.")
         except cx_Oracle.DatabaseError as exc:
-            add_to_msg("Error attempting to copy orapw%s from %s to %s" %(vdb,orapw_source, orapw_dest))
             error, = exc.args
-            if not vignore:
-                module.fail_json(msg='Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message), changed=False)
+            debugg(debug_err_info)
+            debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
+            # ORA-27086: unable to lock file - already in use - however file creates successfully.
+            if vignore not in affirm and 'ORA-27086' not in error.message:
+                err_msg = "DB ORA ERR attempting to copy orapw%s from %s to %s" %(vdb, orapw_source, orapw_dest)
+                add_to_msg(err_msg)
+                module.fail_json(msg='Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper(), error.message), changed=False)
             else:
-                add_to_msg('Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper, error.message))
+                debugg('Error: Copying orapwd file from ORACLE_HOME/dbs to /app/oracle/backups/%s/pfile : %s' % (vdb.upper(), error.message))
 
-        add_to_msg("orapwd%s successfully copied from %s to: %s " % (vdb, orapw_source, orapw_dest))
+        t_msg = "orapwd{s} successfully copied from {sd}/{s} to: {dd}/{s} ".format(s=vsid, sd=orapw_source,dd=orapw_dest)
+        add_to_msg(t_msg)
+        debugg(t_msg)
 
     # select host_name
     try:
         cmd_str = 'select host_name from v$instance'
+        debugg("cmd_str = {}".format(cmd_str))
         cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        if not vignore:
+        debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
+        if vignore not in affirm  and 'ORA-19504' not in error.message:
             module.fail_json(msg='Error selecting host_name from v$instance, Error: %s' % (error.message), changed=False)
         else:
             add_to_msg('Error selecting host_name from v$instance, Error: %s' % (error.message))
@@ -395,10 +449,12 @@ def main ():
 
     # Find archivelog mode.
     try:
-      cur.execute('select log_mode from v$database')
+      cmd_str = 'select log_mode from v$database'
+      cur.execute(cmd_str)
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if not vignore:
+      debugg("cmd_str={} \nERROR: {}".format(cmd_str, str(error.message)))
+      if vignore not in affirm :
           module.fail_json(msg='Error selecting log_mode from v$database, Error: %s' % (error.message), changed=False)
       else:
           add_to_msg('Error selecting log_mode from v$database, Error: %s' % (error.message))
@@ -417,7 +473,7 @@ def main ():
       cur.execute('select dbid from v$database')
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if not vignore:
+      if vignore not in affirm:
           module.fail_json(msg='Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context), changed=False)
       else:
           add_to_msg('Error selecting dbid from v$database, Error: code : %s, message: %s, context: %s' % (error.code, error.message, error.context))
@@ -432,7 +488,7 @@ def main ():
       cur.execute("select name from v$asm_diskgroup where state='CONNECTED' and name not like '%FRA%'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if not vignore:
+      if vignore not in affirm:
         module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
       else:
           add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
@@ -450,7 +506,7 @@ def main ():
       cur.execute("select value from v$parameter where name = 'open_cursors'")
     except cx_Oracle.DatabaseError as exc:
       error, = exc.args
-      if not vignore:
+      if vignore not in affirm :
           module.fail_json(msg='Error selecting value open_cursors, Error: %s' % (error.message), changed=False)
       else:
           add_to_msg('Error selecting value open_cursors, Error: %s' % (error.message))
@@ -698,29 +754,66 @@ def main ():
                 debugg("'control_files' == vparams[idx] => %s vtemp => %s len=%s" % (vparams[idx], vtemp, str(len(vtemp))))
                 tmp = vtemp.split(',')
                 debugg("after splitting on comma tmp = %s len= %s " % (tmp, len(tmp)))
-                data_cntrlfile = tmp[0].strip()
-                ansible_facts[refname][vparams[idx]] = {'data_control_file': data_cntrlfile}
+                # data_cntrlfile = tmp[0].strip()
+                # debugg("data_cntrlfile={}".format(data_cntrlfile))
+                # ansible_facts[refname][vparams[idx]] = {'data': data_cntrlfile}
                 try:
+                    debugg("in try block: len(tmp) = {} type={}".format(str(len(tmp)), type(tmp)))
                     if len(tmp) > 1:
-                        fra_cntrlfile = tmp[1].strip()
-                        ansible_facts[refname][vparams[idx]].update({'fra_control_file': fra_cntrlfile})
+                        debugg("BEGIN FOR LOOP\n")
+                        for item in tmp:
+                            # ITEM : +DATA1/TSTDB/CONTROLFILE/current.294.1096372405
+                            debugg("ITEM : {}".format(item))
+                            # +DATA1/TSTDB/CONTROLFILE/current.294.1096372405
+                            tk = item.split("/")[0]
+                            # +DATA1
+                            k = tk.strip()
+                            # tv = item.split("/")[len(item.split("/"))-1]
+                            # current.294.1096372405
+                            # v = tv.strip()
+                            # found this in one result:  fra: ' +FRA/TSTDB/CONTROLFILE/current.7017.1096628163'
+                            #                                 ^ single quote then space before +FRA
+                            v = item.replace("'", "").strip()
+                            debugg("[787] k={} v={}".format(k, v))
+                            debugg("[788] ansible_facts[{r}][{v}].update({k}: {val})".format(r=refname or "Empty!",
+                                                                                             v=vparams[idx] or "Empty!",
+                                                                                             k=k or "Empty!",
+                                                                                             val=v or "Empty!"))
+                            debugg("if ansible_facts[refname].get(ansible_facts[refname][vparams[idx]], None) ={}".format(str(ansible_facts[refname] or "EMPTY!")))
+                            # vparams[idx] => control_files
+                            if "DATA" in k:
+                                k = "data"
+                            else:
+                                k = "fra"
+                            if ansible_facts[refname].get(vparams[idx], None) is None:
+                            #   { control_files : { +DATA1 : current.294.1096372405 } }
+                                ansible_facts[refname].update( { vparams[idx] : { k: v } } )
+                            else:
+                            #   k = +FRA : v = current.10642.1085751325
+                                ansible_facts[refname][vparams[idx]].update( { k: v } )
+                            # debugg("ansible_faccts[{rn}][vparams[{i}]] = {d}".format(rn=refname, i=idx, d=str(ansible_facts[refname][vparams[idx]])))
                 except Exception as e:
                     add_to_msg(e.args)
+                    debugg("DEBUG[CKPT#1]...")
                     module.fail_json(msg=msg, changed=False)
             else:
+                debugg("DEBUG[CKPT#2]...")
                 ansible_facts[refname][vparams[idx]] = vtemp
+
         except cx_Oracle.DatabaseError as exc:
-          error, = exc.args
-          if msg:
+            error, = exc.args
+            "DEBUG[CKPT#3]..."
+            if msg:
               add_to_msg("vtemp: %s " % (vtemp))
               add_to_msg('Error selecting name from v$asmdiskgroup, Error: %s' % (error.message))
-          module.fail_json(msg=msg, changed=False)
+            module.fail_json(msg=msg, ansible_facts=ansible_facts, changed=False)
 
     try:
         cur.close()
     except cx_Oracle.DatabaseError as exc:
-      error, = exc.args
-      module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), changed=False)
+        "DEBUG[CKPT#4]..."
+        error, = exc.args
+        module.fail_json(msg='Error getting status of BCT, Error: %s' % (error.message), ansible_facts=ansible_facts, changed=False)
 
     msg="Custom module dbfacts succeeded for %s database." % (vdb)
 
@@ -758,4 +851,4 @@ def main ():
 
 # code to execute if this program is called directly
 if __name__ == "__main__":
-   main()
+    main()

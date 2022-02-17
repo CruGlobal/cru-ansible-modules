@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.1.0] - 2022-02-17
+### Module fixes associated cru-ansible-oracle [v4.1.0] - 2022-02-17
+- sysdbafacts - added more debugging. Added current controlfiles to output for reference by new module rmxctl.
+- mkalias - more documentation in the header. More debugging.
+- rmxctl - New module that removes unused obsolete controlfiles that can accumulate in ASM during refresh and cloning.
+
 ## [v2.0.2] - 2022-01-03
 ### Module fix associated with v3.3.2
 - Fix for dbfacts needed since adding dr environment to handle dr domain
@@ -92,8 +98,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.2...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.0...HEAD
 
+[v2.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.1.0
 [v2.0.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.0.2
 [v2.0.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.0...v2.0.1
 [v2.0.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v1.4.0...v2.0.0
