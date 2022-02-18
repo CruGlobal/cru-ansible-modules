@@ -110,7 +110,7 @@ EXAMPLES = '''
 '''
 
 debugme = False
-host_debug_path="/tmp/debug.log"
+host_debug_path = os.path.expanduser("~/.debug.log")
 grid_home_root = "/app"
 ora_home = ""
 global_ora_home = ""
