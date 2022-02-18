@@ -76,7 +76,7 @@ import re                           # regular expression
 # import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
-from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
+# from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -1731,10 +1731,9 @@ def main(argv):
                 debugg("=======>>>  ansible_facts updated {}".format(str(ansible_facts)))
 
                 # Add scan info
-                if ansible_facts['orafacts'].get('12g', None):
-                    vorahome = ansible_facts['orafacts']['12g']['home']
-                    tmpscan = get_scan(vorahome)
-                    ansible_facts['orafacts']['scan'] = tmpscan
+                tmpscan = get_scan(grid_home)
+                debugg("tmpscan => {}".format(str(tmpscan) or "EMPTY!"))
+                ansible_facts['orafacts'].update( { 'scan': tmpscan } )
 
                 # vhuge = hugepages()
                 # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
