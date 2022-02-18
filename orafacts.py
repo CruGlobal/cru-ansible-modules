@@ -1728,11 +1728,13 @@ def main(argv):
 
                 # Get list of all databases configured in SRVCTL
                 ansible_facts.update(rac_dblist())
+                debugg("=======>>>  ansible_facts updated {}".format(str(ansible_facts)))
 
                 # Add scan info
-                vorahome = ansible_facts['orafacts']['12g']['home']
-                tmpscan = get_scan(vorahome)
-                ansible_facts['orafacts']['scan'] = tmpscan
+                if ansible_facts['orafacts'].get('12g', None):
+                    vorahome = ansible_facts['orafacts']['12g']['home']
+                    tmpscan = get_scan(vorahome)
+                    ansible_facts['orafacts']['scan'] = tmpscan
 
                 # vhuge = hugepages()
                 # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
