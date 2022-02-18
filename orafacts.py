@@ -76,7 +76,7 @@ import re                           # regular expression
 # import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
-from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
+# from __builtin__ import any as exists_in  # exist_in(word in x for x in mylist)
 
 
 ANSIBLE_METADATA = {'status': ['stableinterface'],
@@ -110,7 +110,7 @@ EXAMPLES = '''
 '''
 
 debugme = False
-host_debug_path="/tmp/debug.log"
+host_debug_path = os.path.expanduser("~/.debug.log")
 grid_home_root = "/app"
 ora_home = ""
 global_ora_home = ""
@@ -1728,11 +1728,12 @@ def main(argv):
 
                 # Get list of all databases configured in SRVCTL
                 ansible_facts.update(rac_dblist())
+                debugg("=======>>>  ansible_facts updated {}".format(str(ansible_facts)))
 
                 # Add scan info
-                vorahome = ansible_facts['orafacts']['12g']['home']
-                tmpscan = get_scan(vorahome)
-                ansible_facts['orafacts']['scan'] = tmpscan
+                tmpscan = get_scan(grid_home)
+                debugg("tmpscan => {}".format(str(tmpscan) or "EMPTY!"))
+                ansible_facts['orafacts'].update( { 'scan': tmpscan } )
 
                 # vhuge = hugepages()
                 # ansible_facts_dict['contents']['hugepages'] = vhuge['hugepages']
