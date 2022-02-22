@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.1.2] - 2022-02-22
+### dbfacts fix
+- Added code for dbfacts will handle situation where it tries to connect to dataguard standby database which is not queryable.
+
 ## [v2.1.1] - 2022-02-17
 ### orafacts fix
 - Fixed bug in orafacts which caused it to fail when no 12g databases were present
@@ -102,8 +106,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.2...HEAD
 
+[v2.1.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.1...v2.1.2
 [v2.1.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.0...v2.1.1
 [v2.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.1.0
 [v2.0.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.0.2
