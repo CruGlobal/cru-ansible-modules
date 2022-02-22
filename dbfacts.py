@@ -69,7 +69,7 @@ EXAMPLES = '''
 
 '''
 
-# Add anything from v$parameter table to retrieve in here.
+# Add anything to this list from v$parameter table to retrieve for use in ansible_facts.
 vparams=[ "cluster_database",
           "compatible",
           "sga_target",
@@ -104,7 +104,7 @@ debugme = True
 defrefname = "dbfacts"
 affirm = ['True','TRUE', True,'true','T','t','Yes','YES','yes','y','Y']
 db_home_name = "dbhome_1"
-debug_log = os.path.expanduser("~/.dbfacts.log")
+debug_log = os.path.expanduser("~/.debug.log")
 utils_settings_file = os.path.expanduser("~/.utils")
 debug_log2 = os.path.expanduser("~/.debug.log")
 lh_domain = ".ccci.org"
@@ -319,31 +319,40 @@ def main ():
                 add_to_msg("Failed to create dns_tns: %s" %s (error.message))
             else:
                 module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
+        ansible_facts = { refname : { } }
         try:
             debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
             con = cx_Oracle.connect('system', vdbpass, dsn_tns)
             debugg("Connection good!")
-        except cx_Oracle.DatabaseError as exc:
-            if vdb[-1:].isdigit():
-                vdb = vdb[:-1]
-                debugg(">>> vdb={} attempting to create connection without digit".format(vdb))
-                try:
-                    dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
-                    debugg(dsn_tns)
-                    con = cx_Oracle.connect('system', vdbpass, dsn_tns)
-                except:
-                    error, = exc.args
-                    if vignore:
-                      add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
-                      debugg(" vignore: %s " % (vignore))
-                      module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
-                    else:
-                      module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
+        except cx_Oracle.OperationalError as exc:
+        # except (cx_Oracle.OperationalError, cx_Oracle.DatabaseError) as exc:
+            error, = exc.args
+            if "dr" in vdb:
+                msg = "DR database {} cannot be queried in standby mode.\nExact error:\n\t{}".format(vdb, error.message)
+                debugg(msg)
+                ansible_facts[refname].update( { "success" : "false" } )
+                module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+            else:
+                if vdb[-1:].isdigit():
+                    vdb = vdb[:-1]
+                    debugg(">>> vdb={} attempting to create connection without digit".format(vdb))
+                    try:
+                        dsn_tns = cx_Oracle.makedsn(vdbhost, '1521', vdb)
+                        debugg(dsn_tns)
+                        con = cx_Oracle.connect('system', vdbpass, dsn_tns)
+                    except:
+                        error, = exc.args
+                        if vignore:
+                          add_to_msg("DB CONNECTION FAILED : %s" % (error.message))
+                          debugg(" vignore: %s " % (vignore))
+                          ansible_facts[refname].update( { "success" : "false" } )
+                          module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+                        else:
+                          module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
         cur = con.cursor()
-
-        ansible_facts = { refname : {}}
 
         # get parameters listed in the header of this program defined in "vparams"
         for idx in range(len(vparams)):
@@ -353,6 +362,7 @@ def main ():
             except cx_Oracle.DatabaseError as exc:
               error, = exc.args
               if not vignore:
+                  ansible_facts[refname].update( { "success" : "false" } )
                   module.fail_json(msg='Error selecting name from v$asmdiskgroup, Error: %s' % (error.message), changed=False)
               else:
                   add_to_msg("Error while attempting to retrieve parameter %s, %s continuing..." % (vparams[idx],error.message))
@@ -1012,6 +1022,8 @@ def main ():
         vchanged="False"
 
     # print json.dumps( ansible_facts_dict )
+    ansible_facts[refname].update( { "success" : "false" } )
+
     module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
 # code to execute if this program is called directly
