@@ -34,9 +34,12 @@ DOCUMENTATION = '''
 ---
 module: dbfacts
 short_description: Get Oracle Database facts from a remote database.
-(remote database = a database not in the group being operated on)
+                   (remote database = a database not in the group being operated on)
 
-notes: Returned values are then available to use in Ansible.
+notes:
+    Returned values are then available to use in Ansible.
+    This module will run on your local host.
+
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
@@ -286,7 +289,9 @@ def main ():
     visrac = israc(vdbhost)
 
     if not cx_Oracle_found:
-        module.fail_json(msg="Error: cx_Oracle module not found")
+        ansible_facts[refname].update( { "success" : "false" } )
+        # module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
+        module.fail_json(msg="Error: cx_Oracle module not found", ansible_facts=ansible_facts, changed="False")
 
     # set the Anisble variable reference name
     if not vrefname:
@@ -318,6 +323,8 @@ def main ():
             if vignore:
                 add_to_msg("Failed to create dns_tns: %s" %s (error.message))
             else:
+                ansible_facts[refname].update( { "success" : "false" } )
+                # module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
                 module.fail_json(msg='TNS generation error: %s, db name: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
 
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
@@ -994,6 +1001,9 @@ def main ():
 
         vchanged="False"
 
+        # print json.dumps( ansible_facts_dict )
+        ansible_facts[refname].update( { "success" : "true" } )
+
   # if parameters were NULL return informative error.
     else:
 
@@ -1021,8 +1031,9 @@ def main ():
 
         vchanged="False"
 
-    # print json.dumps( ansible_facts_dict )
-    ansible_facts[refname].update( { "success" : "false" } )
+        # print json.dumps( ansible_facts_dict )
+        ansible_facts[refname].update( { "success" : "false" } )
+
 
     module.exit_json( msg=msg, ansible_facts=ansible_facts , changed=vchanged)
 
