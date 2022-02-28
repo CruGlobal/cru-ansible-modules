@@ -64,6 +64,7 @@ EXAMPLES = '''
         proxy_user: system
         proxy_pwd: "{{ database_passwords[source_db_name].system }}"
         db_name: "{{ db_sid }}"
+        ans_dir: "{{ playbook_dir }}"
     (1) src_db_name: "{{ source_db_name }}"
     (2) host: "{{ host }}" (2)
         is_rac: "{{ orafacts['is_rac'] }}"
@@ -174,9 +175,6 @@ def save_cmd(cmd_str):
     global cmd_temp_file
     global prev_tmp_cmd_file_deleted
 
-    if not ans_dir:
-        ans_dir = get_utils_setting("ans_dir")
-
     if not cmd_temp_file:
         cmd_temp_file = "{}/{}".format(ans_dir, "/bin/.utils/tmp.sql")
 
@@ -201,9 +199,6 @@ def write_cmds_to_staging(owners_and_cmds):
     global ans_dir
 
     debugg("linkmapper :: write_cmds_to_staging()....starting...")
-
-    if not ans_dir:
-        ans_dir = get_utils_setting("ans_dir")
 
     if not cmd_temp_file:
         cmd_temp_file = "{}/{}".format(ans_dir, "bin/.utils/tmp.sql")
@@ -570,32 +565,6 @@ def prep_sid(dbName, host):
     return(sid)
 
 
-def get_utils_setting(get_param):
-    """ Given a parameter from ~/.utils file return its value
-        valid parameter settings are:
-            ans_dir         ans_vault       pass_files
-            ans_aws_dir     ssh_user        log_dir
-            exe_dir         resend_vault    ora_client
-            symlinknag      debug
-
-        Note:
-        returns only the value of the setting
-    """
-    global debug_log
-    global utils_settings_file
-    debugg("Global :: get_utils_setting()....starting....get_param={} sfk".format(get_param or "None passed!"))
-
-    cmd_str = "cat {} | grep {}".format(utils_settings_file, get_param)
-    debugg("cmd_str = {}".format(cmd_str))
-    output = run_local(cmd_str)
-    debugg("Global :: get_utils_setting() ... output={}".format(output))
-    if output and get_param in output:
-        tmp = output.split('=')[1]
-        return(tmp)
-
-    return(None)
-
-
 def pkg_pass(db, user, pri_filter=None, sec_filter=None):
     """
         ====================================
@@ -807,6 +776,7 @@ def main ():
     global proxy_user
     global vorastage
     global affirm
+    global ans_dir
 
     syn_only_owners = None
     is_rac = None
@@ -824,6 +794,7 @@ def main ():
         proxy_user      =dict(required=True),
         proxy_pwd       =dict(required=True),
         db_name         =dict(required=True),
+        playbook_dir    =dict(required=True),
         src_db_name     =dict(required=False),
         ora_home        =dict(required=True),
         host            =dict(required=True),
@@ -847,6 +818,7 @@ def main ():
     vproxyid       = module.params.get('proxy_user')
     vproxypwd      = module.params.get('proxy_pwd')
     vdb            = module.params.get('db_name')
+    ans_dir       = module.params.get('ans_dir')
     vsrc_db        = module.params.get('src_db_name')
     vora_home      = module.params.get('ora_home')
     vhost          = module.params.get('host')

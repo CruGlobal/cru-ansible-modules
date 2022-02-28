@@ -329,14 +329,14 @@ def main ():
 
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
         ansible_facts = { refname : { } }
+        debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
         try:
-            debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
             con = cx_Oracle.connect('system', vdbpass, dsn_tns)
-            debugg("Connection good!")
         except cx_Oracle.OperationalError as exc:
         # except (cx_Oracle.OperationalError, cx_Oracle.DatabaseError) as exc:
             error, = exc.args
-            if "dr" in vdb:
+            debugg("EXCEPT TRYING TO MAKE CONNECTION\nvdbpass={} dsn_tns={}!".format(vdbpass or "EMPTY!", str(dsn_tns)))
+            if "dr" in vdbhost:
                 msg = "DR database {} cannot be queried in standby mode.\nExact error:\n\t{}".format(vdb, error.message)
                 debugg(msg)
                 ansible_facts[refname].update( { "success" : "false" } )
@@ -358,7 +358,7 @@ def main ():
                           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
                         else:
                           module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
-
+        debugg("Connection good!")
         cur = con.cursor()
 
         # get parameters listed in the header of this program defined in "vparams"
