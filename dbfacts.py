@@ -35,17 +35,14 @@ DOCUMENTATION = '''
 module: dbfacts
 short_description: Get Oracle Database facts from a remote database.
                    (remote database = a database not in the group being operated on)
-
 notes:
     Returned values are then available to use in Ansible.
     This module will run on your local host.
-
 requirements: [ python2.* ]
 author: "DBA Oracle module Team"
 '''
 
 EXAMPLES = '''
-
     # if cloning a database and source database information is desired
     - local_action:
         module: dbfacts
@@ -57,19 +54,15 @@ EXAMPLES = '''
         debugging: False
       become_user: "{{ remote_user }}"
       register: src_facts
-
       (1) refname - name used in Ansible to reference these facts ( i.e. sourcefacts, destfacts )
-
       (2) ignore - (connection errors) is optional. If you know the source
           database may be down set ignore: True. If connection to the
           source database fails the module will not throw a fatal error
           and continue.
-
    NOTE: these modules can be run with the when: master_node statement.
          However, their returned values cannot be referenced in
          roles or tasks later. Therefore, when running fact collecting modules,
          run them on both nodes. Do not use the "when: master_node" clause.
-
 '''
 
 # Add anything to this list from v$parameter table to retrieve for use in ansible_facts.
@@ -329,14 +322,14 @@ def main ():
 
         debugg("DEBUG[01] :: dsn_tns=%s system password=%s" % (dsn_tns,vdbpass))
         ansible_facts = { refname : { } }
+        debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
         try:
-            debugg("attempting to connect as system/{}@{}".format(vdbpass or "EMPTY!", str(dsn_tns)))
             con = cx_Oracle.connect('system', vdbpass, dsn_tns)
-            debugg("Connection good!")
         except cx_Oracle.OperationalError as exc:
         # except (cx_Oracle.OperationalError, cx_Oracle.DatabaseError) as exc:
             error, = exc.args
-            if "dr" in vdb:
+            debugg("EXCEPT TRYING TO MAKE CONNECTION\nvdbpass={} dsn_tns={}!".format(vdbpass or "EMPTY!", str(dsn_tns)))
+            if "dr" in vdbhost:
                 msg = "DR database {} cannot be queried in standby mode.\nExact error:\n\t{}".format(vdb, error.message)
                 debugg(msg)
                 ansible_facts[refname].update( { "success" : "false" } )
@@ -358,7 +351,7 @@ def main ():
                           module.exit_json(msg=msg, ansible_facts=ansible_facts, changed="False")
                         else:
                           module.fail_json(msg='Database connection error: %s, tnsname: %s host: %s' % (error.message, vdb, vdbhost), changed=False)
-
+        debugg("Connection good!")
         cur = con.cursor()
 
         # get parameters listed in the header of this program defined in "vparams"
