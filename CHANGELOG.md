@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v2.1.4] - 2022-02-28
+### dbafacts fix
+- keeps module from crashing when attempting to connect to dataguard standby db.
+
+## [v2.1.3] - 2022-02-28
+### linmapper fix
+- added required ans_dir parameter to module input to move away from ~/.utils
+
 ## [v2.1.2] - 2022-02-22
 ### dbfacts fix
 - Added code for dbfacts will handle situation where it tries to connect to dataguard standby database which is not queryable.
@@ -106,8 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more dynamic than Ansible. The functionality was moved to utils GUI app
   which resides in the DBA Google drive.
 
-[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.4...HEAD
 
+[v2.1.4]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.3...v2.1.4
+[v2.1.3]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.2...v2.1.3
 [v2.1.2]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.1...v2.1.2
 [v2.1.1]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.1.0...v2.1.1
 [v2.1.0]: https://github.com/CruGlobal/cru-ansible-modules/compare/v2.0.1...v2.1.0
