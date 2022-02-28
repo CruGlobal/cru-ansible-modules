@@ -120,7 +120,7 @@ default_refname = "linkmapper"
 p_dict = None
 oracle_staging=""
 ans_dir = ""
-cmd_temp_file = ""
+cmd_temp_file = "/tmp/cmd_temp_file.sql"
 prev_tmp_cmd_file_deleted = False
 oracle_home = ""
 module = None
@@ -175,9 +175,6 @@ def save_cmd(cmd_str):
     global cmd_temp_file
     global prev_tmp_cmd_file_deleted
 
-    if not cmd_temp_file:
-        cmd_temp_file = "{}/{}".format(ans_dir, "/bin/.utils/tmp.sql")
-
     # selects and alters are preps for actual commands to change links or synonyms
     if cmd_str and ( "select" not in cmd_str.lower() and "alter" not in cmd_str.lower() ):
         with open(cmd_temp_file, "a") as f:
@@ -200,8 +197,6 @@ def write_cmds_to_staging(owners_and_cmds):
 
     debugg("linkmapper :: write_cmds_to_staging()....starting...")
 
-    if not cmd_temp_file:
-        cmd_temp_file = "{}/{}".format(ans_dir, "bin/.utils/tmp.sql")
 
     debugg("------------------------------")
     debugg("Writing owners and cmds: {} to {}".format(str(owners_and_cmds), cmd_temp_file))
