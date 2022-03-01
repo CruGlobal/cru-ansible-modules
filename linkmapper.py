@@ -27,6 +27,7 @@ from os import path
 # import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
+from os.path import exists
 
 try:
     import cx_Oracle
@@ -128,6 +129,8 @@ cru_domain = ".ccci.org"
 dr_domain = ".dr.cru.org"
 utils_settings_file = os.path.expanduser("~/.utils")
 vault_file = ""
+ans_cfg_filename = "ansible.cfg"
+vault_file_var_name = "vault_password_file"
 
 
 def debugg(debug_str):
@@ -698,28 +701,56 @@ def get_vault_location():
        Read the ~/.utils settings file and
        retrieve the Anisble vault file location
        another piece of the puzzle needed to unlock the vault to get passwords
+           ans_cfg_filename = "ansible.cfg"
+           vault_file_var_name = "vault_password_file"
     """
     global vault_file
+    global ans_dir
+    global vault_file_var_name
+    global ans_cfg_filename
     debugg("\nGlobal :: utils :: get_vault_location() ...starting...\nvault_file={}".format(vault_file or "Empty!"))
 
     if vault_file:
         return(vault_file)
 
-    utils_settings_file = os.path.expanduser("~/.utils")
-    debugg("\nGlobal :: utils :: get_vault_location()\n\tutils_settings_file={}".format(utils_settings_file))
-    try:
-        cmd_str = "cat {} | grep ans_vault".format(utils_settings_file)
-        output = run_local(cmd_str)
-    except:
-        # print("Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
-        debugg("Global :: utils :: Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
-        return
-
-    debugg("\nGlobal :: utils :: get_vault_location()\n\toutput={}".format(output))
+    # utils_settings_file = os.path.expanduser("~/.utils") ::: changing utils_settings_file => ans_cfg_filename
+    repo_qual_path = ans_dir + "/" + ans_cfg_filename
+    home_qual_path = "~/.{cfg}".format(cfg=ans_cfg_filename)
+    home_qual_path = os.path.expanduser(home_qual_path)
+    if exists(repo_qual_path):
+        debugg("\nGlobal :: utils :: get_vault_location()\n\t ansible.cfg file =>{cfg}".format(cfg=utils_settings_file))
+        try:
+            # cmd_str = "cat {} | grep ans_vault".format(utils_settings_file)
+            cmd_str = "cat {cfg} | grep '^{vfv}'".format(cfg=repo_qual_path,vfv=vault_file_var_name)
+            output = run_local(cmd_str)
+        except:
+            # print("Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
+            debugg("Global :: utils :: Error: reading  repo ansible.cfg file: {cfg} to determine vault password file location cmd_str = {cmd}".format(cfg=ans_cfg_filename,cmd=cmd_str))
+            return()
+        # vault_password_file = ~/.vault_pass
+        debugg("\nGlobal :: get_vault_location()\n\toutput={}".format(output))
+    elif exists(home_qual_path):
+        debugg("\nGlobal :: get_vault_location()\n\tutils_settings_file={}".format(utils_settings_file))
+        try:
+            # cmd_str = "cat {} | grep ans_vault".format(utils_settings_file)
+            cmd_str = "cat {cfg} | grep '^{vfv}'".format(cfg=home_qual_path,vfv=vault_file_var_name)
+            output = run_local(cmd_str)
+        except:
+            # print("Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
+            debugg("Global :: Error: reading home dir ansible config file {cfg} to determine vault password file location cmd_str = {cmd}".format(cfg=ans_cfg_filename,cmd=cmd_str))
+            return()
+        # vault_password_file = ~/.vault_pass
+        debugg("\nGlobal :: get_vault_location()\n\toutput={}".format(output))
+    else:
+        debugg("ansible.cfg not found. Checked repo, then home directory.")
+        fail_module("#12 ansible.cfg not found")
 
     vault_file = output.split("=")[1].strip()  # output.decode('utf-8').split("=")[1]
+    if "~" in vault_file:
+        vault_file = os.path.expanduser(vault_file)
+
     debugg("\nGlobal :: utils :: get_vault_location()...exiting...\n\treturn={}".format(vault_file))
-    if not os.path.isfile(vault_file):
+    if not exists(vault_file):
         debugg("\nVault location defined\nHowever, file does not exist!\n{}".format(vault_file or "Empty!"))
         return(None)
     else:
@@ -767,6 +798,7 @@ def main ():
     global proxy_user
     global vorastage
     global affirm
+    global ans_dir
 
     syn_only_owners = None
     is_rac = None
@@ -784,6 +816,7 @@ def main ():
         proxy_user      =dict(required=True),
         proxy_pwd       =dict(required=True),
         db_name         =dict(required=True),
+        ans_dir         =dict(required=True),
         playbook_dir    =dict(required=True),
         src_db_name     =dict(required=False),
         ora_home        =dict(required=True),
@@ -808,6 +841,7 @@ def main ():
     vproxyid       = module.params.get('proxy_user')
     vproxypwd      = module.params.get('proxy_pwd')
     vdb            = module.params.get('db_name')
+    vans_dir       = module.params.get('ans_dir')
     vsrc_db        = module.params.get('src_db_name')
     vora_home      = module.params.get('ora_home')
     vhost          = module.params.get('host')
@@ -826,6 +860,12 @@ def main ():
         debugme = True
     else:
         debugme = False
+
+    if not vans_dir:
+        debugg("ans_dir parameter not given... vans_dir={}".format(vans_dir or "Empty!"))
+        fail_module("#11 ans_dir empty!")
+    else:
+        ans_dir = vans_dir
 
     # Print some markers to debug log for start of linkmapper
     debugg(50*"\n")
