@@ -27,6 +27,7 @@ from os import path
 # import pexpect
 # from datetime import datetime, date, time, timedelta
 from subprocess import (PIPE, Popen)
+from os.path import exists
 
 try:
     import cx_Oracle
@@ -118,8 +119,7 @@ debug_log = "/tmp/mod_debug.log"
 default_refname = "linkmapper"
 p_dict = None
 oracle_staging=""
-ans_dir = ""
-cmd_temp_file = ""
+cmd_temp_file = "/tmp/linkmapper.sql"
 prev_tmp_cmd_file_deleted = False
 oracle_home = ""
 module = None
@@ -129,6 +129,10 @@ cru_domain = ".ccci.org"
 dr_domain = ".dr.cru.org"
 utils_settings_file = os.path.expanduser("~/.utils")
 vault_file = ""
+vault_repo_relative_path = "vault/db_passwords.yml"
+ans_cfg_filename = "ansible.cfg"
+vault_file_var_name = "vault_password_file"
+v_loc = "" # vault key location
 
 
 def debugg(debug_str):
@@ -140,7 +144,7 @@ def debugg(debug_str):
 
     if debugme in affirm:
         add_to_msg(debug_str)
-        write_to_file(debug_str)
+        write_to_file(debug_str + "\n")
 
 
 def write_to_file(info_str):
@@ -160,7 +164,7 @@ def add_to_msg(a_msg):
     global msg
 
     if msg:
-        msg = msg + " " + a_msg
+        msg = msg + " " + a_msg + "\n"
     else:
         msg = a_msg
 
@@ -170,15 +174,8 @@ def save_cmd(cmd_str):
     As commands are executed in the database save them to a local temp file to be
     copied to oracle_stage on the remote host.
     """
-    global ans_dir
     global cmd_temp_file
     global prev_tmp_cmd_file_deleted
-
-    if not ans_dir:
-        ans_dir = get_utils_setting("ans_dir")
-
-    if not cmd_temp_file:
-        cmd_temp_file = "{}/{}".format(ans_dir, "/bin/.utils/tmp.sql")
 
     # selects and alters are preps for actual commands to change links or synonyms
     if cmd_str and ( "select" not in cmd_str.lower() and "alter" not in cmd_str.lower() ):
@@ -198,15 +195,9 @@ def write_cmds_to_staging(owners_and_cmds):
     """
     global oracle_staging
     global cmd_temp_file
-    global ans_dir
 
     debugg("linkmapper :: write_cmds_to_staging()....starting...")
 
-    if not ans_dir:
-        ans_dir = get_utils_setting("ans_dir")
-
-    if not cmd_temp_file:
-        cmd_temp_file = "{}/{}".format(ans_dir, "bin/.utils/tmp.sql")
 
     debugg("------------------------------")
     debugg("Writing owners and cmds: {} to {}".format(str(owners_and_cmds), cmd_temp_file))
@@ -284,7 +275,7 @@ def create_conn(p_dsn, p_uid, p_pwd):
             save_cmd("connect {}/{}".format(p_uid,p_pwd))
     except cx_Oracle.DatabaseError as exc:
         error, = exc.args
-        temp_msg = "DB CONNECTION FAILED : {err} dsn={dsn} user={usr} passwd={pw}".format(err=error.message, dsn=str(p_dsn) or "Empty!",usr=p_uid or "Empty!", pw="super secret")
+        temp_msg = "DB CONNECTION FAILED : {err} dsn={dsn} user={usr} passwd={pw}".format(err=error.message, dsn=str(p_dsn) or "Empty!",usr=p_uid or "Empty!", pw=p_pwd or "Empty!")
         add_to_msg(temp_msg)
         debugg(temp_msg)
         fail_module("#3")
@@ -308,7 +299,7 @@ def execute_cmd(p_cur, p_cmd_str, p_expect):
     execute the command
     """
     global affirm
-    debugg("\nexecute_cmd()...starting....with parameters p_cur = {} p_cmd_str = {} p_expect={}\n".format(p_cur or "EMPTY!", p_cmd_str or "EMPTY!", p_expect or "EMPTY!"))
+    debugg("\nexecute_cmd()...starting....with parameters\np_cur = {}\np_cmd_str = {}\np_expect={}\n".format(p_cur or "EMPTY!", p_cmd_str or "EMPTY!", p_expect or "EMPTY!"))
 
     if not p_cur:
         debugg("linkmapper() :: ERROR :: execute_cmd called with empty crusor! returning.")
@@ -570,32 +561,6 @@ def prep_sid(dbName, host):
     return(sid)
 
 
-def get_utils_setting(get_param):
-    """ Given a parameter from ~/.utils file return its value
-        valid parameter settings are:
-            ans_dir         ans_vault       pass_files
-            ans_aws_dir     ssh_user        log_dir
-            exe_dir         resend_vault    ora_client
-            symlinknag      debug
-
-        Note:
-        returns only the value of the setting
-    """
-    global debug_log
-    global utils_settings_file
-    debugg("Global :: get_utils_setting()....starting....get_param={} sfk".format(get_param or "None passed!"))
-
-    cmd_str = "cat {} | grep {}".format(utils_settings_file, get_param)
-    debugg("cmd_str = {}".format(cmd_str))
-    output = run_local(cmd_str)
-    debugg("Global :: get_utils_setting() ... output={}".format(output))
-    if output and get_param in output:
-        tmp = output.split('=')[1]
-        return(tmp)
-
-    return(None)
-
-
 def pkg_pass(db, user, pri_filter=None, sec_filter=None):
     """
         ====================================
@@ -621,9 +586,10 @@ def pkg_pass(db, user, pri_filter=None, sec_filter=None):
     Attempting new method to retrieve ansible vault passwords when this code is packaged.
 
     """
-    debug_passwords = False
+    debug_passwords = True
     global affirm
     global p_dict
+    global v_loc
     new_yml_str = ""
     if not pri_filter:
         pri_filter = "database_passwords"
@@ -641,17 +607,18 @@ def pkg_pass(db, user, pri_filter=None, sec_filter=None):
     if not p_dict:
         unlock_lpass()
 
-        v_loc = get_vault_location()
+        if not v_loc:
+            v_loc = get_vault_location()
 
         debugg("\nGlobal pkg_pass():: \n\tv_loc = {}".format(v_loc))
 
         # /Users/samk/.pyenv/shims/ansible-vault if needed
         cmd_str = "ansible-vault view {}".format(v_loc)
 
-        if debug_passwords in affirm: debugg("\nGlobal pkg_pass() :: CALLING SUBPROCESS...\n\tcmd_str = {}\n\toutput={}".format(cmd_str, output))
+
         output = run_local(cmd_str)
 
-        if debug_passwords in affirm: debugg("\nGlobal pkg_pass():: ...after communicate() ... \n\touput = {} ".format(output or "Empty!") ) #), code or "Empty!"))
+        if debug_passwords in affirm: debugg("\nGlobal pkg_pass() :: CALLING SUBPROCESS...\n\tcmd_str = {}\n\toutput={}".format(cmd_str, str(output)))
 
         for item in output.split("\n"):
             if debug_passwords in affirm: debugg("for loop() === line={}".format(item))
@@ -738,32 +705,29 @@ def get_vault_location():
        Read the ~/.utils settings file and
        retrieve the Anisble vault file location
        another piece of the puzzle needed to unlock the vault to get passwords
+           ans_cfg_filename = "ansible.cfg"
+           vault_file_var_name = "vault_password_file"
     """
     global vault_file
-    debugg("\nGlobal :: utils :: get_vault_location() ...starting...\nvault_file={}".format(vault_file or "Empty!"))
+    global vault_repo_relative_path
+    global ans_dir
+
+    debugg("\nGlobal :: get_vault_location() ...starting..vault_file={}".format(vault_file or "Empty!"))
 
     if vault_file:
         return(vault_file)
 
-    utils_settings_file = os.path.expanduser("~/.utils")
-    debugg("\nGlobal :: utils :: get_vault_location()\n\tutils_settings_file={}".format(utils_settings_file))
-    try:
-        cmd_str = "cat {} | grep ans_vault".format(utils_settings_file)
-        output = run_local(cmd_str)
-    except:
-        # print("Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
-        debugg("Global :: utils :: Error: reading ~/.utils to determine vault file location cmd_str = {}".format(cmd_str))
-        return
+    repo_qual_path = ans_dir + "/" + vault_repo_relative_path
+    results = exists(repo_qual_path)
+    debugg("get_vault_location()...repo_qual_path={} exists: {}".format(repo_qual_path, str(results)))
 
-    debugg("\nGlobal :: utils :: get_vault_location()\n\toutput={}".format(output))
-
-    vault_file = output.split("=")[1].strip()  # output.decode('utf-8').split("=")[1]
-    debugg("\nGlobal :: utils :: get_vault_location()...exiting...\n\treturn={}".format(vault_file))
-    if not os.path.isfile(vault_file):
+    debugg("\nGlobal :: utils :: get_vault_location()...exiting...\n\treturn={}".format(repo_qual_path))
+    if not exists(repo_qual_path):
         debugg("\nVault location defined\nHowever, file does not exist!\n{}".format(vault_file or "Empty!"))
-        return(None)
+        fail_module("#13 vault password location cannot be determined. No ansible.cfg file found.")
     else:
-        debugg("\nVault location defined\nreturning vault_file={}\n".format(vault_file))
+        vault_file = repo_qual_path
+        debugg("\nVault location defined\nreturning vault_file={}\n".format(repo_qual_path))
         return(vault_file)
 
 
@@ -807,6 +771,7 @@ def main ():
     global proxy_user
     global vorastage
     global affirm
+    global ans_dir
 
     syn_only_owners = None
     is_rac = None
@@ -824,6 +789,7 @@ def main ():
         proxy_user      =dict(required=True),
         proxy_pwd       =dict(required=True),
         db_name         =dict(required=True),
+        ans_dir         =dict(required=True),
         src_db_name     =dict(required=False),
         ora_home        =dict(required=True),
         host            =dict(required=True),
@@ -847,6 +813,7 @@ def main ():
     vproxyid       = module.params.get('proxy_user')
     vproxypwd      = module.params.get('proxy_pwd')
     vdb            = module.params.get('db_name')
+    vans_dir       = module.params.get('ans_dir')
     vsrc_db        = module.params.get('src_db_name')
     vora_home      = module.params.get('ora_home')
     vhost          = module.params.get('host')
@@ -865,6 +832,13 @@ def main ():
         debugme = True
     else:
         debugme = False
+
+    if not vans_dir:
+        debugg("ans_dir parameter not given... vans_dir={}".format(vans_dir or "Empty!"))
+        fail_module("#11 ans_dir empty!")
+    else:
+        ans_dir = vans_dir
+        debugg("ansible directory location set {}".format(ans_dir))
 
     # Print some markers to debug log for start of linkmapper
     debugg(50*"\n")
@@ -931,8 +905,9 @@ def main ():
         save_cmd("export ORACLE_HOME={}".format(vora_home.lower()))
         export_once = True
 
+
     # create dsn_tns
-    dsn_tns = create_dsn(vhost, vdb)
+    dsn_tns = create_dsn(vhost, v_sid)
     # pkg_pass(db, user, pri_filter=None, sec_filter=None)
     if not vpass:
         vpass = pkg_pass(vsrc_db.lower(), vuid.lower(), pri_filter=None, sec_filter=None)
