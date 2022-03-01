@@ -114,7 +114,7 @@ msg = ""
 module = None
 vignore = ""
 default_ignore = False
-debugme = True
+debugme = False
 debug_log = "/tmp/mod_debug.log"
 default_refname = "linkmapper"
 p_dict = None
@@ -586,7 +586,7 @@ def pkg_pass(db, user, pri_filter=None, sec_filter=None):
     Attempting new method to retrieve ansible vault passwords when this code is packaged.
 
     """
-    debug_passwords = True
+    debug_passwords = False
     global affirm
     global p_dict
     global v_loc
