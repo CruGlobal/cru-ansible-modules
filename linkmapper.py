@@ -64,7 +64,6 @@ EXAMPLES = '''
         proxy_user: system
         proxy_pwd: "{{ database_passwords[source_db_name].system }}"
         db_name: "{{ db_sid }}"
-        ans_dir: "{{ playbook_dir }}"
     (1) src_db_name: "{{ source_db_name }}"
     (2) host: "{{ host }}" (2)
         is_rac: "{{ orafacts['is_rac'] }}"
@@ -119,7 +118,6 @@ debug_log = "/tmp/mod_debug.log"
 default_refname = "linkmapper"
 p_dict = None
 oracle_staging=""
-ans_dir = ""
 cmd_temp_file = "/tmp/linkmapper.sql"
 prev_tmp_cmd_file_deleted = False
 oracle_home = ""
@@ -171,7 +169,6 @@ def save_cmd(cmd_str):
     As commands are executed in the database save them to a local temp file to be
     copied to oracle_stage on the remote host.
     """
-    global ans_dir
     global cmd_temp_file
     global prev_tmp_cmd_file_deleted
 
@@ -193,7 +190,6 @@ def write_cmds_to_staging(owners_and_cmds):
     """
     global oracle_staging
     global cmd_temp_file
-    global ans_dir
 
     debugg("linkmapper :: write_cmds_to_staging()....starting...")
 
@@ -771,7 +767,6 @@ def main ():
     global proxy_user
     global vorastage
     global affirm
-    global ans_dir
 
     syn_only_owners = None
     is_rac = None
@@ -813,7 +808,6 @@ def main ():
     vproxyid       = module.params.get('proxy_user')
     vproxypwd      = module.params.get('proxy_pwd')
     vdb            = module.params.get('db_name')
-    ans_dir       = module.params.get('ans_dir')
     vsrc_db        = module.params.get('src_db_name')
     vora_home      = module.params.get('ora_home')
     vhost          = module.params.get('host')
